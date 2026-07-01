@@ -106,6 +106,21 @@ npm start
 
 ---
 
+### 🟢 System Architecture
+
+![System Architecture](outputs/system_architecture.png)
+
+### 🟢 Data Flow
+
+![Data Flow](outputs/data_flow.png)
+
+### 🟢 Authentication Flow
+
+![Authentication Flow](outputs/authentication_flow.png)
+
+
+---
+
 ## ⚙️ Environment Variables
 
 | Variable | Description | Example |
