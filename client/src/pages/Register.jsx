@@ -19,7 +19,7 @@ function Register() {
 
   useEffect(() => {
     if (getStoredToken()) {
-      navigate("/");
+      navigate("/dashboard");
     }
   }, [navigate]);
 

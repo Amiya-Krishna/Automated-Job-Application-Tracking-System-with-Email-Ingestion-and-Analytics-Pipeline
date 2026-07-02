@@ -137,7 +137,7 @@ npm list
 If you need custom API endpoints, create `.env.local` in the `client` directory:
 
 ```env
-VITE_API_URL=http://localhost:5000/api
+VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
 ```
 
 ---
@@ -283,7 +283,7 @@ NODE_ENV=development
 JWT_SECRET=your_super_secret_key_min_32_characters_long_here_12345
 
 # ===== CLIENT =====
-CLIENT_URL=http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 ```
 
 ### Variable Definitions
@@ -463,7 +463,7 @@ PORT=5001
 **Solution:**
 Verify `.env` has correct URLs:
 ```env
-CLIENT_URL=http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 ```
 
 Restart server after changing.

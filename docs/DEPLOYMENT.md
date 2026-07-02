@@ -59,7 +59,7 @@ heroku create your-app-name
 heroku config:set MONGODB_URI=mongodb+srv://user:pass@...
 heroku config:set JWT_SECRET=your_secret_key
 heroku config:set NODE_ENV=production
-heroku config:set CLIENT_URL=https://your-app-name.herokuapp.com
+heroku config:set CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 ```
 
 #### Step 5: Deploy
@@ -91,7 +91,7 @@ heroku run npm run seed
 
 **Environment Variables:**
 ```
-VITE_API_URL=https://your-backend-url/api
+VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
 ```
 
 ### Option 3: Railway (Full Stack)
@@ -255,7 +255,7 @@ JWT_SECRET=generate-a-long-random-string-minimum-32-characters
 JWT_EXPIRE=7d
 
 # Frontend
-CLIENT_URL=https://yourdomain.com
+CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 
 # CORS
 CORS_ORIGIN=https://yourdomain.com

@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>TrackTrail</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <span class="logo">TT</span>
+        <span class="brand">TrackTrail</span>
+      </header>
+
+      <div id="loggedOutView">
+        <p class="hint">Sign in to save jobs from LinkedIn and Indeed with one click.</p>
+
+        <form id="loginForm">
+          <label>Email</label>
+          <input type="email" id="email" required placeholder="you@example.com" />
+
+          <label>Password</label>
+          <input type="password" id="password" required placeholder="Password" />
+
+          <button type="submit" id="loginBtn">Log in</button>
+          <p id="loginError" class="error"></p>
+        </form>
+      </div>
+
+      <div id="loggedInView" class="hidden">
+        <p class="hint">Signed in as <span id="userName"></span></p>
+        <p class="hint">Visit a LinkedIn or Indeed job posting — a "Save to TrackTrail" button will appear on the page.</p>
+        <button id="logoutBtn" class="secondary">Log out</button>
+      </div>
+
+      <details class="settings">
+        <summary>API settings</summary>
+        <label>Backend API URL</label>
+        <input type="text" id="apiBaseUrl" placeholder="https://your-backend.onrender.com" />
+        <button id="saveApiUrlBtn" class="secondary">Save URL</button>
+        <p id="apiUrlSaved" class="success"></p>
+      </details>
+    </div>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

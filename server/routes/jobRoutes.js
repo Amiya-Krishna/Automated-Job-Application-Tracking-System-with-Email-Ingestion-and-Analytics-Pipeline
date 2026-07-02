@@ -46,11 +46,17 @@ router.put("/:id", auth, async (req, res) => {
 
   try {
 
-    const job = await Job.findByIdAndUpdate(
-      req.params.id,
+    // Scope the update to the logged-in user so nobody can edit
+    // another user's job just by guessing/knowing the id.
+    const job = await Job.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.id },
       req.body,
       { new: true }
     );
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
 
     res.json(job);
 
@@ -65,7 +71,15 @@ router.delete("/:id", auth, async (req, res) => {
 
   try {
 
-    await Job.findByIdAndDelete(req.params.id);
+    // Same ownership scoping as above.
+    const job = await Job.findOneAndDelete({
+      _id: req.params.id,
+      userId: req.user.id,
+    });
+
+    if (!job) {
+      return res.status(404).json({ message: "Job not found" });
+    }
 
     res.json({ message: "Job deleted" });
 

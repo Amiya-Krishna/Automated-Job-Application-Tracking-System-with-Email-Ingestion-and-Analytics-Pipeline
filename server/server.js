@@ -10,10 +10,30 @@ connectDB();
 
 const app = express();
 
-app.use(cors());
+// Only allow the configured frontend origin(s) to call the API.
+// CLIENT_URL can be a single URL or a comma-separated list.
+const allowedOrigins = (process.env.CLIENT_URL || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow non-browser requests (e.g. curl/Postman) with no origin,
+      // and allow any origin if none are configured (local dev fallback).
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
 app.use(express.json());
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/jobs", require("./routes/jobRoutes"));
+app.use("/api/gmail", require("./routes/gmailRoutes"));
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

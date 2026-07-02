@@ -17,7 +17,7 @@ function Login() {
 
   useEffect(() => {
     if (getStoredToken()) {
-      navigate("/");
+      navigate("/dashboard");
     }
   }, [navigate]);
 
@@ -57,7 +57,7 @@ function Login() {
 
       toast.success(`Welcome back, ${res.data.user.name}`);
 
-      navigate("/");
+      navigate("/dashboard");
 
     } catch (error) {
       const message = error.response?.data?.message || "Login failed";

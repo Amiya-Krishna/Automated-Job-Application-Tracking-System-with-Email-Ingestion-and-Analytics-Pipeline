@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "TrackTrail — Job Application Tracker",
+  "version": "1.0.0",
+  "description": "Save jobs from LinkedIn and Indeed straight to your TrackTrail dashboard with one click.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://*.linkedin.com/*",
+    "https://*.indeed.com/*",
+    "https://job-application-tracker-portal-o1ls.onrender.com/*",
+    "http://localhost:5000/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.linkedin.com/jobs/*",
+        "https://*.indeed.com/*"
+      ],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "TrackTrail"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

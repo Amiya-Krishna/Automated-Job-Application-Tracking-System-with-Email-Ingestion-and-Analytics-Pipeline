@@ -1,0 +1,32 @@
+.tracktrail-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 999999;
+  background: #020617;
+  color: #ffffff;
+  border: none;
+  border-radius: 9999px;
+  padding: 12px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.35);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.tracktrail-fab:hover {
+  transform: translateY(-2px);
+  background: #0f172a;
+}
+
+.tracktrail-fab:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+
+.tracktrail-fab--success {
+  background: #059669;
+}

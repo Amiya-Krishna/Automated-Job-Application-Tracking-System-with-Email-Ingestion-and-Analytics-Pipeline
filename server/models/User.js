@@ -16,6 +16,13 @@ const userSchema = new mongoose.Schema({
   password: {
     type: String,
     required: true
+  },
+
+  // Set only if the user connects Gmail. Used to fetch a fresh access
+  // token when scanning their inbox for interview-related emails.
+  gmailRefreshToken: {
+    type: String,
+    default: null
   }
 
 });

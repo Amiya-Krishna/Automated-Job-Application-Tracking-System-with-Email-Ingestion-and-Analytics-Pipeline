@@ -68,7 +68,7 @@ MONGODB_URI=mongodb://localhost:27017/job-tracker
 JWT_SECRET=your-secret-key-here
 NODE_ENV=development
 PORT=5000
-CLIENT_URL=http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 ```
 
 ---
@@ -193,7 +193,7 @@ Access to XMLHttpRequest has been blocked by CORS policy
 ```
 **Solution**: Ensure `.env` has correct `CLIENT_URL`:
 ```env
-CLIENT_URL=http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
 ```
 
 ---
