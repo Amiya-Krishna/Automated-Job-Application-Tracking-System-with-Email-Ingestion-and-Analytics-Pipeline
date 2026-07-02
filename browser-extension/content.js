@@ -12,6 +12,7 @@ function detectLinkedIn() {
   const titleSelectors = [
     "h1.job-details-jobs-unified-top-card__job-title",
     "h1.top-card-layout__title",
+    '[role="heading"][aria-level="1"]',
     "h1",
   ];
   const companySelectors = [
@@ -32,10 +33,27 @@ function detectLinkedIn() {
     if (company) break;
   }
 
+  // DOM selectors above rely on LinkedIn's CSS classnames, which are
+  // increasingly hashed/randomized (e.g. "bed7a945") and change often.
+  // document.title is far more stable and LinkedIn keeps it in one of
+  // two formats depending on the listing:
+  //   "(N) Company hiring Role in Location | LinkedIn"   (older format)
+  //   "Role | Company | LinkedIn"                         (current format)
   if (!role || !company) {
-    // Fallback: LinkedIn <title> is usually "(N) Company hiring Role in Location | LinkedIn"
-    const match = document.title.match(/hiring\s+(.+?)\s+in\s+/i);
-    if (match && !role) role = match[1];
+    const title = document.title.replace(/^\(\d+\)\s*/, "");
+
+    const hiringMatch = title.match(/^(.+?)\s+hiring\s+(.+?)\s+in\s+/i);
+    if (hiringMatch) {
+      if (!company) company = hiringMatch[1].trim();
+      if (!role) role = hiringMatch[2].trim();
+    } else {
+      const parts = title.split("|").map((p) => p.trim()).filter(Boolean);
+      // parts look like ["Role", "Company", "LinkedIn"] — drop the
+      // trailing "LinkedIn" and use what's left.
+      const withoutSiteName = parts.filter((p) => p.toLowerCase() !== "linkedin");
+      if (!role && withoutSiteName[0]) role = withoutSiteName[0];
+      if (!company && withoutSiteName[1]) company = withoutSiteName[1];
+    }
 
     const ogSiteName = document.querySelector('meta[property="og:title"]');
     if (ogSiteName && !role) role = ogSiteName.content;
