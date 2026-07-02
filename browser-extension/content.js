@@ -98,6 +98,11 @@ function injectButton() {
   document.body.appendChild(button);
 
   button.addEventListener("click", async () => {
+    if (!chrome.runtime?.id) {
+      button.textContent = "Reload this page";
+      return;
+    }
+
     const { company: liveCompany, role: liveRole } = detectJob();
 
     button.disabled = true;
@@ -138,5 +143,18 @@ function injectButton() {
 
 // Job sites are single-page apps — the URL changes without a full reload,
 // so re-check periodically for a new posting being viewed.
+//
+// If the extension gets reloaded/updated while this script is still
+// running on an old tab, `chrome.runtime.id` becomes undefined and any
+// further chrome.* calls throw "Extension context invalidated" — which
+// can spam the console forever since we're on a setInterval. Detect that
+// and stop cleanly instead of retrying forever.
+const pollId = setInterval(() => {
+  if (!chrome.runtime?.id) {
+    clearInterval(pollId);
+    return;
+  }
+  injectButton();
+}, 1500);
+
 injectButton();
-setInterval(injectButton, 1500);
