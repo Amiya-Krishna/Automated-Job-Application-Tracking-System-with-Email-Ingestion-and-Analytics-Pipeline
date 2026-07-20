@@ -59,6 +59,28 @@ async function saveJob(job) {
   return data;
 }
 
+async function getJobs() {
+  const base = await getApiBaseUrl();
+  const token = await getToken();
+
+  if (!token) {
+    throw new Error("Not logged in. Open the extension and sign in first.");
+  }
+
+  const res = await fetch(`${base}/jobs`, {
+    method: "GET",
+    headers: { token },
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to load jobs");
+  }
+
+  return data;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
@@ -94,6 +116,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "SAVE_JOB": {
           const job = await saveJob(message.job);
           sendResponse({ ok: true, job });
+          break;
+        }
+        case "GET_JOBS": {
+          const jobs = await getJobs();
+          sendResponse({ ok: true, jobs });
           break;
         }
         default:

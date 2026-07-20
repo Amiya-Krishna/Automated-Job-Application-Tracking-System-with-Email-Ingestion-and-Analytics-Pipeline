@@ -30,6 +30,15 @@
       <div id="loggedInView" class="hidden">
         <p class="hint">Signed in as <span id="userName"></span></p>
         <p class="hint">Visit a LinkedIn or Indeed job posting — a "Save to TrackTrail" button will appear on the page.</p>
+
+        <div class="jobsHeader">
+          <span>Your saved jobs</span>
+          <button id="refreshJobsBtn" class="link-btn" type="button">Refresh</button>
+        </div>
+        <ul id="jobsList" class="jobsList"></ul>
+        <p id="jobsEmpty" class="hint hidden">No jobs saved yet.</p>
+        <p id="jobsError" class="error"></p>
+
         <button id="logoutBtn" class="secondary">Log out</button>
       </div>
 

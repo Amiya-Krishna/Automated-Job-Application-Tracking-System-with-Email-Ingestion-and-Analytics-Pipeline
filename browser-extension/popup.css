@@ -130,3 +130,87 @@ button.secondary:hover {
 #userName {
   font-weight: 700;
 }
+
+.jobsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 4px 0 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #334155;
+}
+
+.link-btn {
+  width: auto;
+  margin: 0;
+  padding: 2px 4px;
+  background: none;
+  color: #06b6d4;
+  font-weight: 600;
+  font-size: 11.5px;
+}
+
+.link-btn:hover {
+  background: none;
+  text-decoration: underline;
+}
+
+.jobsList {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.jobsList:empty {
+  border: none;
+}
+
+.jobItem {
+  padding: 8px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.jobItem:last-child {
+  border-bottom: none;
+}
+
+.jobItem-role {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.jobItem-company {
+  font-size: 12px;
+  color: #475569;
+  margin-top: 1px;
+}
+
+.jobItem-meta {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.jobItem-status {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #0369a1;
+  background: #e0f2fe;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.jobItem-date {
+  font-size: 10.5px;
+  color: #94a3b8;
+  align-self: center;
+}
