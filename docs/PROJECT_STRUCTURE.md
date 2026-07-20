@@ -10,76 +10,118 @@ Comprehensive guide to the Job Application Tracker Portal's structure and archit
 Job Application Tracker Portal/
 │
 ├── 📄 README.md                          # Project overview and quick start
-├── 📄 .env.example                       # Environment variables template
-├── 📄 .gitignore                         # Git ignore rules
+├── 📄 package.json                       # Root-level scripts/metadata
 │
 ├── 📁 server/                            # Backend - Node.js/Express
 │   ├── 📄 server.js                      # Express server entry point
 │   ├── 📄 package.json                   # Backend dependencies
+│   ├── 📄 migrate.js                     # Applies db/schema.sql (npm run db:migrate)
+│   ├── 📄 worker.js                      # Boots the BullMQ background workers
+│   ├── 📄 .env                           # Environment variables (not committed)
 │   │
-│   ├── 📁 config/                        # Configuration files
-│   │   └── database.js                   # MongoDB connection
+│   ├── 📁 db/                            # Postgres connection + schema
+│   │   ├── pg.js                         # Shared `pg` connection pool + query() helper
+│   │   └── schema.sql                    # Full Postgres schema (tracker + engine tables)
 │   │
-│   ├── 📁 models/                        # Mongoose schemas
-│   │   ├── User.js                       # User schema & model
-│   │   └── Job.js                        # Job schema & model
+│   ├── 📁 config/
+│   │   └── google.js                     # Gmail OAuth client setup
 │   │
-│   ├── 📁 routes/                        # API route definitions
-│   │   ├── authRoutes.js                 # Authentication routes
-│   │   └── jobRoutes.js                  # Job management routes
+│   ├── 📁 models/                        # Postgres-backed data access (plain functions, no ORM)
+│   │   ├── User.js                       # users table — findByEmail, create, setGmailRefreshToken...
+│   │   └── Job.js                        # tracked_jobs table — create, findAllByUser, update, delete
 │   │
-│   ├── 📁 controllers/                   # Request handlers
-│   │   ├── authController.js             # Auth logic
-│   │   └── jobController.js              # Job operations logic
+│   ├── 📁 routes/                        # API route definitions (logic lives directly in routes)
+│   │   ├── authRoutes.js                 # /api/auth — register, login
+│   │   ├── jobRoutes.js                  # /api/jobs — manual tracker CRUD
+│   │   ├── gmailRoutes.js                # /api/gmail — OAuth connect + inbox scan
+│   │   ├── ingestRoutes.js               # /api/ingest — engine: job ingestion entrypoint
+│   │   ├── engineJobsRoutes.js           # /api/engine/jobs — engine: browse scraped/matched jobs
+│   │   ├── applyRoutes.js                # /api/applications — engine: apply + outcome tracking
+│   │   ├── analyticsRoutes.js            # /api/analytics — engine: summary + funnel stats
+│   │   └── profileRoutes.js              # /api/profile — engine: resume/skills profile
 │   │
-│   └── 📁 middleware/                    # Custom middleware
-│       └── authMiddleware.js             # JWT verification
+│   ├── 📁 middleware/
+│   │   └── authMiddleware.js             # JWT verification (reads the `token` header)
+│   │
+│   ├── 📁 services/                      # Intelligent Job Application Engine logic
+│   │   ├── ingestionService.js           # normalize → dedup → insert → enqueue match
+│   │   ├── dedupService.js               # exact hash + fuzzy duplicate detection
+│   │   ├── matchingService.js            # TF-IDF + keyword / embedding scoring
+│   │   ├── learningService.js            # adjusts skill weights from outcomes
+│   │   ├── applyEngine.js                # Playwright-driven, human-in-the-loop apply flow
+│   │   ├── rateLimiter.js                # Redis token bucket for scrape/apply rate limits
+│   │   ├── scraper.js                    # scheduled LinkedIn/Indeed scraper
+│   │   ├── skills.js                     # skill keyword extraction
+│   │   └── textUtils.js                  # text normalization helpers
+│   │
+│   ├── 📁 adapters/                      # Per-ATS field-mapping adapters for the apply engine
+│   │   ├── greenhouseAdapter.js
+│   │   ├── genericAdapter.js
+│   │   └── index.js
+│   │
+│   ├── 📁 workers/                       # BullMQ worker processes (run via `npm run worker`)
+│   │   ├── matchWorker.js
+│   │   ├── applyWorker.js
+│   │   └── analyticsWorker.js
+│   │
+│   ├── 📁 queue/                         # BullMQ queue definitions
+│   │   └── index.js
+│   │
+│   └── 📁 playwright-profile/            # Persistent browser profile for the apply engine (gitignored in practice)
 │
 ├── 📁 client/                            # Frontend - React/Vite
 │   ├── 📄 index.html                     # HTML entry point
 │   ├── 📄 package.json                   # Frontend dependencies
 │   ├── 📄 vite.config.js                 # Vite configuration
+│   ├── 📄 vercel.json                    # SPA rewrite rule for Vercel
+│   ├── 📄 .env                           # VITE_API_BASE_URL (not committed)
 │   │
-│   ├── 📁 src/                           # Source code
+│   ├── 📁 src/
 │   │   ├── 📄 main.jsx                   # React entry point
-│   │   ├── 📄 App.jsx                    # Root component
-│   │   ├── 📄 index.css                  # Global styles
-│   │   ├── 📄 App.css                    # App styles
+│   │   ├── 📄 App.jsx                    # Route definitions
+│   │   ├── 📄 api.js                     # Axios instance (base URL + token header + 401 handling)
+│   │   ├── 📄 index.css                  # Global styles (Tailwind)
 │   │   │
-│   │   ├── 📁 components/                # Reusable components
-│   │   │   ├── Navbar.jsx                # Navigation bar
-│   │   │   ├── JobCard.jsx               # Job application card
-│   │   │   ├── SearchFilter.jsx          # Search & filter
-│   │   │   ├── Analytics.jsx             # Analytics display
-│   │   │   └── ...                       # Other components
+│   │   ├── 📁 components/
+│   │   │   ├── Navbar.jsx
+│   │   │   ├── Sidebar.jsx
+│   │   │   ├── AuthShell.jsx             # Shared layout for login/register
+│   │   │   ├── DashboardCards.jsx        # Summary stat cards
+│   │   │   ├── JobTable.jsx              # Job list table
+│   │   │   └── ProtectedRoute.jsx        # Redirects to /login if not authenticated
 │   │   │
-│   │   ├── 📁 pages/                     # Page components
-│   │   │   ├── Login.jsx                 # Login page
-│   │   │   ├── Register.jsx              # Registration page
-│   │   │   ├── Dashboard.jsx             # Main dashboard
-│   │   │   ├── JobForm.jsx               # Job creation/edit
-│   │   │   └── ...                       # Other pages
+│   │   ├── 📁 pages/
+│   │   │   ├── Landing.jsx               # Public marketing/landing page (`/`)
+│   │   │   ├── Login.jsx                 # `/login`
+│   │   │   ├── Register.jsx              # `/register`
+│   │   │   ├── Dashboard.jsx             # `/dashboard`
+│   │   │   ├── AddJob.jsx                # Add-job entry point
+│   │   │   ├── JobForm.jsx               # `/add-job`, `/edit-job/:id`
+│   │   │   ├── Integrations.jsx          # `/integrations` — Gmail connect/scan
+│   │   │   └── NotFound.jsx              # `*`
 │   │   │
-│   │   ├── 📁 services/                  # API communication
-│   │   │   ├── authService.js            # Auth API calls
-│   │   │   ├── jobService.js             # Job API calls
-│   │   │   └── api.js                    # API configuration
-│   │   │
-│   │   └── 📁 assets/                    # Static assets
-│   │       ├── images/                   # Image files
-│   │       └── icons/                    # Icon files
+│   │   └── 📁 utils/
+│   │       ├── auth.js                   # Token storage helpers
+│   │       └── emailParser.js            # Parses pasted/Gmail email text into job fields
 │   │
-│   ├── 📁 public/                        # Static files
-│   └── 📁 node_modules/                  # Dependencies (not in git)
+│   └── 📁 public/                        # Static assets (favicon, icons.svg)
 │
-├── 📁 docs/                              # Documentation
-│   ├── GETTING_STARTED.md                # Quick start guide
-│   ├── INSTALLATION.md                   # Installation instructions
-│   ├── API_ENDPOINTS.md                  # API documentation
-│   ├── PROJECT_STRUCTURE.md              # This file
-│   └── DEPLOYMENT.md                     # Deployment guide
+├── 📁 browser-extension/                 # Chrome extension — manual job capture (posts to /api/ingest)
+│   ├── manifest.json
+│   ├── content.js / content.css
+│   ├── background.js
+│   ├── popup.html / popup.js / popup.css
+│   └── config.js
 │
-└── 📁 node_modules/                      # Root dependencies (not in git)
+└── 📁 docs/                              # Documentation (this folder)
+    ├── GETTING_STARTED.md
+    ├── INSTALLATION.md
+    ├── API_ENDPOINTS.md
+    ├── PROJECT_STRUCTURE.md              # This file
+    ├── DEPLOYMENT.md
+    ├── GMAIL_INTEGRATION.md
+    ├── CONTRIBUTING.md
+    └── intelligent-job-application-engine-design.md
 ```
 
 ---
@@ -93,105 +135,115 @@ Job Application Tracker Portal/
 ```javascript
 // Key responsibilities:
 - Initialize Express app
-- Connect to MongoDB
-- Setup middleware (CORS, body parser)
-- Define routes
+- Health-check the Postgres pool on startup ("Postgres connected")
+- Setup CORS (allowlist from CLIENT_URL, plus chrome-extension:// origins)
+- Mount all route modules (auth, jobs, gmail, and the engine routes)
+- Centralized JSON error handler
 - Start server on specified port
 ```
 
-### Directory: `server/config/`
+### Directory: `server/db/`
 
-**Database Configuration**
+**Postgres Connection & Schema**
 
 ```javascript
-// config/database.js
-- MongoDB connection setup
-- Connection error handling
-- Database initialization
+// db/pg.js
+- Single `pg` Pool, built from PG_CONNECTION_STRING
+- query(text, params) helper used by every model/route
+- Logs any query slower than 200ms
+
+// db/schema.sql
+- Full schema: users, tracked_jobs (auth/tracker)
+- jobs, companies, applications, match_scores,
+  user_profile, job_sources, analytics_daily (engine)
+- Applied via `npm run db:migrate`
 ```
 
 ### Directory: `server/models/`
 
-**Mongoose Schemas & Models**
+**Postgres-backed data access** — plain async functions over the shared
+connection pool (no ORM). Each function maps snake_case DB columns to the
+camelCase shape the rest of the app expects.
 
-#### `User.js`
+#### `User.js` (`users` table)
 ```
-Schema:
-├── username (String, unique, required)
-├── email (String, unique, required)
-├── password (String, hashed, required)
-├── createdAt (Date, auto)
-└── updatedAt (Date, auto)
+Columns:
+├── id (SERIAL PRIMARY KEY)
+├── name (VARCHAR, required)
+├── email (VARCHAR, unique, required)
+├── password (VARCHAR, bcrypt hash, required)
+├── gmail_refresh_token (TEXT, nullable)
+└── created_at (TIMESTAMPTZ, auto)
+
+Functions: findByEmail, findById, create, setGmailRefreshToken
 ```
 
-#### `Job.js`
+#### `Job.js` (`tracked_jobs` table)
 ```
-Schema:
-├── userId (Reference to User)
-├── company (String, required)
-├── position (String, required)
-├── location (String)
-├── status (Enum: Applied, Interviewed, Rejected, Offered)
-├── appliedDate (Date)
-├── salary (String)
-├── jobUrl (String)
-├── notes (String)
-├── createdAt (Date, auto)
-└── updatedAt (Date, auto)
+Columns:
+├── id (SERIAL PRIMARY KEY)
+├── user_id (INT, FK → users.id)
+├── company (VARCHAR, required)
+├── role (VARCHAR, required)
+├── status (VARCHAR, default 'Applied')
+├── interview_date (VARCHAR)
+├── notes (TEXT)
+├── created_at / updated_at (TIMESTAMPTZ, auto)
+
+Functions: create, findAllByUser, findOneAndUpdate, findOneAndDelete
+(update/delete are always scoped to the owning user_id)
 ```
 
 ### Directory: `server/routes/`
 
-**API Route Definitions**
+**API Route Definitions** — business logic lives directly in each route
+handler (there is no separate `controllers/` layer).
 
-#### `authRoutes.js`
+#### `authRoutes.js` — mounted at `/api/auth`
 ```
-POST   /api/auth/register          - User registration
-POST   /api/auth/login             - User login
-POST   /api/auth/logout            - User logout
-GET    /api/auth/profile           - Get user profile
-```
-
-#### `jobRoutes.js`
-```
-GET    /api/jobs                   - Get all jobs
-POST   /api/jobs                   - Create job
-GET    /api/jobs/:id               - Get single job
-PUT    /api/jobs/:id               - Update job
-DELETE /api/jobs/:id               - Delete job
-GET    /api/jobs/search            - Search jobs
-GET    /api/analytics/summary      - Get analytics
+POST   /api/auth/register          - Create a user
+POST   /api/auth/login             - Log in, receive a JWT
 ```
 
-### Directory: `server/controllers/`
+#### `jobRoutes.js` — mounted at `/api/jobs`
+```
+POST   /api/jobs                   - Create a tracked job
+GET    /api/jobs                   - Get all jobs for the logged-in user
+PUT    /api/jobs/:id                - Update a job (ownership-checked)
+DELETE /api/jobs/:id                - Delete a job (ownership-checked)
+```
 
-**Business Logic Handlers**
+#### `gmailRoutes.js` — mounted at `/api/gmail`
+```
+GET    /api/gmail/auth-url         - Get the Google consent URL
+GET    /api/gmail/callback         - OAuth redirect target
+GET    /api/gmail/status           - Is Gmail connected?
+POST   /api/gmail/disconnect       - Remove the stored refresh token
+GET    /api/gmail/scan             - Scan inbox for interview/offer/rejection emails
+```
 
-#### `authController.js`
-- User registration validation
-- Password hashing (bcrypt)
-- JWT token generation
-- Login/logout logic
-- Profile retrieval
-
-#### `jobController.js`
-- Create job application
-- Get all user jobs
-- Get single job details
-- Update job information
-- Delete job
-- Search functionality
-- Analytics calculation
+#### Engine routes — `ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js`
+See [API_ENDPOINTS.md](API_ENDPOINTS.md) for the full list — these back the
+Intelligent Job Application Engine described in
+[intelligent-job-application-engine-design.md](intelligent-job-application-engine-design.md).
 
 ### Directory: `server/middleware/`
 
 **Custom Middleware**
 
 #### `authMiddleware.js`
-- JWT token verification
-- User authentication check
-- Attach user to request object
-- Error handling
+- Reads the JWT from the `token` request header (not `Authorization: Bearer`)
+- Verifies it and attaches the decoded payload to `req.user`
+- Returns 401/400 on missing or invalid tokens
+
+### Directories: `server/services/`, `adapters/`, `workers/`, `queue/`
+
+These power the **Intelligent Job Application Engine** — scraping,
+deduplication, TF-IDF/embedding matching, a human-in-the-loop Playwright apply
+flow, and analytics aggregation, all running as BullMQ workers (`npm run
+worker`) separate from the API process. See
+[intelligent-job-application-engine-design.md](intelligent-job-application-engine-design.md)
+for the full design.
 
 ---
 
@@ -199,25 +251,21 @@ GET    /api/analytics/summary      - Get analytics
 
 ### File: `client/src/main.jsx`
 
-**Purpose**: React application entry point
-
-```javascript
-// Responsibilities:
-- Mount React app to DOM
-- Initialize root component
-- Setup React version
-```
+**Purpose**: React application entry point — mounts `<App />` to the DOM.
 
 ### File: `client/src/App.jsx`
 
-**Purpose**: Root component
+**Purpose**: Route definitions
 
 ```javascript
-// Key responsibilities:
-- Define main routing
-- Setup global state management
-- Handle authentication logic
-- Render page components
+/                    → Landing
+/login               → Login
+/register            → Register
+/dashboard           → Dashboard        (protected)
+/add-job             → JobForm          (protected)
+/edit-job/:id        → JobForm          (protected)
+/integrations        → Integrations     (protected)
+*                    → NotFound
 ```
 
 ### Directory: `client/src/components/`
@@ -226,14 +274,12 @@ GET    /api/analytics/summary      - Get analytics
 
 | Component | Purpose |
 |-----------|---------|
-| `Navbar.jsx` | Navigation header |
-| `JobCard.jsx` | Job application card display |
-| `SearchFilter.jsx` | Search and filter UI |
-| `Analytics.jsx` | Statistics and charts |
-| `Modal.jsx` | Popup dialogs |
-| `Button.jsx` | Reusable button |
-| `Input.jsx` | Form input fields |
-| `Loading.jsx` | Loading spinner |
+| `Navbar.jsx` | Top navigation bar |
+| `Sidebar.jsx` | Dashboard side navigation |
+| `AuthShell.jsx` | Shared layout wrapper for Login/Register |
+| `DashboardCards.jsx` | Summary stat cards on the dashboard |
+| `JobTable.jsx` | Tabular job list |
+| `ProtectedRoute.jsx` | Redirects unauthenticated users to `/login` |
 
 ### Directory: `client/src/pages/`
 
@@ -241,58 +287,37 @@ GET    /api/analytics/summary      - Get analytics
 
 | Page | Route | Purpose |
 |------|-------|---------|
+| `Landing.jsx` | `/` | Public marketing page |
 | `Login.jsx` | `/login` | User authentication |
 | `Register.jsx` | `/register` | Account creation |
 | `Dashboard.jsx` | `/dashboard` | Main application hub |
-| `JobForm.jsx` | `/job/new`, `/job/:id/edit` | Create/edit jobs |
-| `Profile.jsx` | `/profile` | User profile |
+| `AddJob.jsx` | — | Entry point used before `JobForm` |
+| `JobForm.jsx` | `/add-job`, `/edit-job/:id` | Create/edit a job |
+| `Integrations.jsx` | `/integrations` | Connect Gmail, scan inbox |
 | `NotFound.jsx` | `*` | 404 page |
 
-### Directory: `client/src/services/`
+### File: `client/src/api.js`
 
 **API Communication Layer**
 
-#### `api.js`
-- Axios/Fetch instance setup
-- Base URL configuration
-- Global error handling
-- Token management
-
-#### `authService.js`
-- Register API call
-- Login API call
-- Logout API call
-- Profile API call
-
-#### `jobService.js`
-- Get jobs API call
-- Create job API call
-- Update job API call
-- Delete job API call
-- Search API call
-- Analytics API call
-
-### File: `client/src/App.css`
-
-**Application Styles**
-
-```css
-- Global styles
-- Layout styles
-- Responsive design
-- Theme colors
+```javascript
+// Responsibilities:
+- Single Axios instance, baseURL = `${VITE_API_BASE_URL}/api`
+- Request interceptor: attaches the stored JWT as the `token` header
+- Response interceptor: on 401, clears the token and redirects to /login
 ```
+
+There is no separate `services/` layer — pages call `api.js` directly.
+
+### File: `client/src/utils/`
+
+- `auth.js` — reads/writes the JWT in local/session storage
+- `emailParser.js` — parses pasted or Gmail-scanned email text into
+  company/role/status fields for the "paste an email" quick-add flow
 
 ### File: `client/src/index.css`
 
-**Global Styles**
-
-```css
-- Reset styles
-- Font definitions
-- Base element styles
-- Tailwind CSS imports
-```
+Tailwind CSS entry point (base styles + utility imports).
 
 ---
 
@@ -303,19 +328,17 @@ GET    /api/analytics/summary      - Get analytics
 ```
 User Input
     ↓
-LoginPage Component
+Login/Register page component
     ↓
-authService.login()
+api.js → POST /api/auth/login (or /register)
     ↓
-POST /api/auth/login
+authRoutes.js → User.findByEmail / User.create (models/User.js)
     ↓
-authController.login()
+bcrypt compare/hash + jwt.sign()
     ↓
-Generate JWT Token
+Token + user returned to client
     ↓
-Send Token to Client
-    ↓
-Store in localStorage
+Stored in localStorage/sessionStorage
     ↓
 Redirect to Dashboard
 ```
@@ -325,17 +348,15 @@ Redirect to Dashboard
 ```
 User Fills Form
     ↓
-JobForm Component
+JobForm component
     ↓
-jobService.createJob(data)
+api.js → POST /api/jobs   (token header attached automatically)
     ↓
-POST /api/jobs
+jobRoutes.js → Job.create() (models/Job.js)
     ↓
-jobController.createJob()
+INSERT INTO tracked_jobs ...
     ↓
-Save to MongoDB
-    ↓
-Return created job
+Return created row (camelCase-mapped)
     ↓
 Update UI
 ```
@@ -347,13 +368,11 @@ Dashboard Mounts
     ↓
 useEffect triggers
     ↓
-jobService.getJobs()
+api.js → GET /api/jobs
     ↓
-GET /api/jobs
+jobRoutes.js → Job.findAllByUser(userId)
     ↓
-jobController.getJobs()
-    ↓
-Query MongoDB
+SELECT * FROM tracked_jobs WHERE user_id = $1
     ↓
 Return jobs array
     ↓
@@ -368,17 +387,18 @@ Render jobs
 
 ### Backend
 - **Runtime**: Node.js
-- **Framework**: Express.js
-- **Database**: MongoDB + Mongoose ODM
-- **Authentication**: JWT + bcrypt
-- **Validation**: Mongoose schema validation
+- **Framework**: Express 5
+- **Database**: PostgreSQL (hosted) via the `pg` driver — no ORM
+- **Queue**: BullMQ + Redis (matching/apply/analytics engine)
+- **Automation**: Playwright (scraper + semi-automated apply)
+- **Authentication**: JWT + bcryptjs
 
 ### Frontend
-- **Library**: React
+- **Library**: React 19
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS
-- **HTTP Client**: Axios/Fetch API
-- **State Management**: React Context API or Redux
+- **HTTP Client**: Axios
+- **Routing**: React Router
 
 ### Development Tools
 - **Package Manager**: npm
@@ -392,22 +412,28 @@ Render jobs
 ### Backend (`server/package.json`)
 ```json
 {
-  "express": "^4.18.2",
-  "mongoose": "^7.0.0",
-  "jsonwebtoken": "^9.0.0",
-  "bcryptjs": "^2.4.3",
-  "dotenv": "^16.0.3",
-  "cors": "^2.8.5"
+  "express": "^5.2.1",
+  "pg": "^8.22.0",
+  "bcryptjs": "^3.0.3",
+  "jsonwebtoken": "^9.0.3",
+  "dotenv": "^17.4.2",
+  "cors": "^2.8.6",
+  "bullmq": "^5.80.9",
+  "ioredis": "^5.11.1",
+  "playwright": "^1.49.1",
+  "googleapis": "^173.0.0",
+  "natural": "^7.1.0"
 }
 ```
 
 ### Frontend (`client/package.json`)
 ```json
 {
-  "react": "^18.2.0",
-  "react-router-dom": "^6.11.0",
-  "axios": "^1.4.0",
-  "vite": "^4.3.0"
+  "react": "^19.x",
+  "react-router-dom": "^7.15.1",
+  "axios": "^1.16.1",
+  "vite": "^6.x",
+  "tailwindcss": "^4.3.0"
 }
 ```
 
@@ -416,101 +442,77 @@ Render jobs
 ## Security Considerations
 
 ### Password Security
-- Hashed with bcrypt (10 rounds)
+- Hashed with bcryptjs (10 salt rounds)
 - Never stored in plain text
 - Validated on login
 
 ### JWT Authentication
-- Token generated on login
-- Stored in client localStorage
-- Verified on each request
-- Expires after set duration
+- Token generated on login (unsigned expiry — no `expiresIn` set on the main login token)
+- Sent as a plain `token` request header (not `Authorization: Bearer`)
+- Verified on every protected route via `authMiddleware.js`
 
 ### CORS Protection
-- Configured to allow specific origins
-- Prevents unauthorized cross-origin requests
-- Production uses explicit domain list
+- Configured via `CLIENT_URL` (comma-separated allowlist)
+- Also explicitly allows any `chrome-extension://` origin, for the browser extension
+- Requests with no `Origin` header (curl/Postman) are allowed through
 
 ### Environment Variables
-- Sensitive data in `.env`
+- Sensitive data in `server/.env` (`PG_CONNECTION_STRING`, `JWT_SECRET`, Google OAuth secrets)
 - Never committed to version control
-- Loaded at application start
+- Loaded via `dotenv` at application start
 
 ---
 
 ## Scalability Considerations
 
-### Current (Monolithic)
-- Single server handles all requests
-- Good for small to medium apps
-- Simple deployment
-
-### Future (Microservices)
-- Separate auth service
-- Separate job service
-- Separate analytics service
-- API gateway
-- Message queue (RabbitMQ/Kafka)
+### Current (Modular Monolith)
+- One Express app serves both the manual tracker and the engine API
+- Background work (scraping, matching, applying, analytics) already runs as
+  **separate worker processes** (`npm run worker`) so a Playwright crash never
+  takes the API down
+- Good for small to medium usage
 
 ### Database Optimization
-- Indexes on frequently queried fields
-- Connection pooling
-- Query optimization
-- Caching layer (Redis)
+- Indexes on frequently queried columns (see `db/schema.sql`)
+- Connection pooling via `pg.Pool`
+- `analytics_daily` is a precomputed daily rollup rather than live joins on every dashboard load
 
----
-
-## Testing Structure (Future)
-
-```
-📁 tests/
-├── 📁 unit/
-│   ├── authController.test.js
-│   └── jobController.test.js
-├── 📁 integration/
-│   ├── auth.integration.test.js
-│   └── jobs.integration.test.js
-└── 📁 e2e/
-    └── login.e2e.test.js
-```
+### Future Directions
+- Split the engine (scraping/matching/apply/analytics) into its own deployable service
+- Add `pgvector` for embedding-based matching at scale (see the engine design doc)
+- API gateway / rate limiting in front of both services
 
 ---
 
 ## Environment-Specific Configuration
 
 ### Development
-- Debug logging enabled
-- CORS allows localhost
-- No rate limiting
-- Detailed error messages
+- CORS allows `localhost` explicitly via `CLIENT_URL`
+- Detailed error messages returned in JSON error responses
 
 ### Production
-- Optimized bundle
-- Logging limited
-- Rate limiting enabled
-- Error messages sanitized
-- SSL/TLS encryption
+- Optimized Vite bundle (`npm run build`)
+- `CLIENT_URL` restricted to the actual deployed frontend domain(s)
+- `PG_CONNECTION_STRING` points at a production-tier hosted Postgres instance
 
 ---
 
 ## File Naming Conventions
 
 ### React Components
-- PascalCase: `JobCard.jsx`, `LoginForm.jsx`
+- PascalCase: `JobTable.jsx`, `AuthShell.jsx`
 - One component per file
-- Directory structure mirrors routes
+- `pages/` mirrors routes; `components/` holds shared/reusable pieces
 
 ### JavaScript Files
-- camelCase: `authService.js`, `jobController.js`
+- camelCase: `authMiddleware.js`, `ingestionService.js`
 - Functions and variables: camelCase
 - Constants: UPPER_SNAKE_CASE
 
 ### CSS/Styling
-- CSS files: same name as component
-- BEM methodology for classes
-- Tailwind utility classes when possible
+- Tailwind utility classes, configured via `index.css`
 
 ---
 
-**Last Updated**: May 26, 2026  
-**Version**: 1.0.0
+**Last Updated**: July 20, 2026  
+**Version**: 2.0.0 (PostgreSQL)

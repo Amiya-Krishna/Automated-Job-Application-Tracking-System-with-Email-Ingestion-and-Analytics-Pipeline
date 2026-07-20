@@ -7,7 +7,7 @@ router.post("/", auth, async (req, res) => {
 
   try {
 
-    const job = new Job({
+    const job = await Job.create({
       userId: req.user.id,
       company: req.body.company,
       role: req.body.role,
@@ -15,8 +15,6 @@ router.post("/", auth, async (req, res) => {
       interviewDate: req.body.interviewDate,
       notes: req.body.notes
     });
-
-    await job.save();
 
     res.json(job);
 
@@ -31,7 +29,7 @@ router.get("/", auth, async (req, res) => {
 
   try {
 
-    const jobs = await Job.find({ userId: req.user.id });
+    const jobs = await Job.findAllByUser(req.user.id);
 
     res.json(jobs);
 
@@ -49,9 +47,9 @@ router.put("/:id", auth, async (req, res) => {
     // Scope the update to the logged-in user so nobody can edit
     // another user's job just by guessing/knowing the id.
     const job = await Job.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      req.body,
-      { new: true }
+      req.params.id,
+      req.user.id,
+      req.body
     );
 
     if (!job) {
@@ -72,10 +70,7 @@ router.delete("/:id", auth, async (req, res) => {
   try {
 
     // Same ownership scoping as above.
-    const job = await Job.findOneAndDelete({
-      _id: req.params.id,
-      userId: req.user.id,
-    });
+    const job = await Job.findOneAndDelete(req.params.id, req.user.id);
 
     if (!job) {
       return res.status(404).json({ message: "Job not found" });

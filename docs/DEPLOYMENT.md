@@ -26,7 +26,7 @@ Complete guide to deploying the Job Application Tracker Portal to production.
 - Heroku account (free tier available)
 - Heroku CLI installed
 - Git installed
-- MongoDB Atlas account
+- A hosted PostgreSQL database (Neon, Supabase, Render, etc.) — connection URL, no local install
 
 #### Step 1: Prepare Application
 
@@ -56,7 +56,7 @@ heroku create your-app-name
 #### Step 4: Set Environment Variables
 
 ```bash
-heroku config:set MONGODB_URI=mongodb+srv://user:pass@...
+heroku config:set PG_CONNECTION_STRING=postgresql://user:pass@host/dbname?sslmode=require
 heroku config:set JWT_SECRET=your_secret_key
 heroku config:set NODE_ENV=production
 heroku config:set CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
@@ -119,9 +119,10 @@ VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
 
 In Railway dashboard:
 ```
-MONGODB_URI=mongodb+srv://...
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
 JWT_SECRET=your_secret_key
 NODE_ENV=production
+REDIS_URL=rediss://default:password@host:port
 ```
 
 #### Step 4: Deploy
@@ -152,8 +153,6 @@ apt update && apt upgrade -y
 curl -sL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 apt install -y nodejs
 
-# Install MongoDB (or use Atlas)
-apt install -y mongodb
 
 # Install Nginx (reverse proxy)
 apt install -y nginx
@@ -243,8 +242,11 @@ certbot --nginx -d your_domain.com
 ### Environment Variables for Production
 
 ```env
-# Database (Must use MongoDB Atlas for reliability)
-MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/job-tracker?retryWrites=true&w=majority
+# Database (hosted PostgreSQL — Neon, Supabase, Render, etc.)
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+
+# Queue backend for the matching/apply/analytics engine
+REDIS_URL=rediss://default:password@host:port
 
 # Server
 NODE_ENV=production
@@ -278,11 +280,10 @@ CORS_ORIGIN=https://yourdomain.com
    - Enforce HTTPS only
 
 4. **Database**
-   - Use MongoDB Atlas (managed service)
-   - Enable authentication
-   - Use strong passwords
-   - Regular backups
-   - Network security
+   - Use a managed hosted Postgres provider (Neon, Supabase, Render)
+   - Use strong passwords / connection-string credentials
+   - Regular backups (most providers automate this)
+   - Restrict network access where the provider supports it
 
 5. **Headers**
    ```javascript
@@ -335,29 +336,30 @@ app.use(compression());
 
 ## Database Setup for Production
 
-### MongoDB Atlas
+### Hosted PostgreSQL (Neon / Supabase / Render)
 
-1. **Create Cluster**
-   - Go to MongoDB Atlas
-   - Create M2+ cluster (production)
-   - Select appropriate region
+1. **Create a production-tier database**
+   - Free tiers are fine for development; move to a paid tier for production
+     traffic (more connections, no auto-pausing, better backup retention)
+   - Select a region close to your app server
 
-2. **Create User**
-   - Go to Database Access
-   - Create user with strong password
-   - Assign admin role for app user
+2. **Credentials**
+   - Use the connection string your provider issues; rotate it if it's ever exposed
+   - Most providers manage the underlying database user for you
 
 3. **Network Access**
-   - Whitelist production server IP
-   - Or use VPC peering for cloud
+   - Most hosted providers accept connections from anywhere over SSL by
+     default (that's what `?sslmode=require` in the connection string is for)
+   - Some let you restrict by IP allowlist — use it if your app server has a
+     static IP
 
 4. **Backups**
-   - Enable automatic backups
-   - Test backup restoration
+   - Enable automatic backups (Neon/Supabase/Render all offer this)
+   - Periodically test restoring from a backup
 
 5. **Monitoring**
-   - Enable Performance Advisor
-   - Monitor query performance
+   - Use your provider's built-in query/connection dashboard
+   - Watch for slow queries — `server/db/pg.js` already logs any query over 200ms
 
 ---
 
@@ -419,10 +421,9 @@ const client = redis.createClient();
 ### Database Indexing
 
 ```javascript
-// In models/Job.js
-jobSchema.index({ userId: 1 });
-jobSchema.index({ company: 1 });
-jobSchema.index({ status: 1 });
+-- In db/schema.sql
+CREATE INDEX IF NOT EXISTS idx_tracked_jobs_user_id ON tracked_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_jobs_status ON tracked_jobs(status);
 ```
 
 ### Load Testing
@@ -529,12 +530,12 @@ pm2 restart job-tracker
 
 ## Troubleshooting Deployment
 
-### Issue: MongoDB Connection Failed
+### Issue: Postgres Connection Failed
 ```bash
-# Check connection string
-# Verify IP whitelist
-# Verify credentials
-# Check firewall rules
+# Check PG_CONNECTION_STRING is the exact URL from your provider
+# Verify ?sslmode=require is present if your provider needs it
+# Check the database isn't paused (common on free tiers)
+# Verify IP allowlist / firewall rules if your provider restricts access
 ```
 
 ### Issue: CORS Errors in Production
@@ -606,7 +607,7 @@ pm2 delete app-name
 ## Checklist for Production
 
 - [ ] Environment variables configured
-- [ ] MongoDB Atlas setup complete
+- [ ] Hosted PostgreSQL database provisioned and schema migrated (`npm run db:migrate`)
 - [ ] SSL/HTTPS enabled
 - [ ] CORS properly configured
 - [ ] Security headers in place
@@ -623,7 +624,8 @@ pm2 delete app-name
 ## Resources
 
 - [Heroku Deployment](https://devcenter.heroku.com)
-- [MongoDB Atlas](https://docs.atlas.mongodb.com)
+- [Neon Docs](https://neon.tech/docs)
+- [Supabase Docs](https://supabase.com/docs)
 - [Nginx Docs](https://nginx.org/en/docs/)
 - [PM2 Docs](https://pm2.keymetrics.io)
 - [SSL Certificates - Let's Encrypt](https://letsencrypt.org)
@@ -631,7 +633,7 @@ pm2 delete app-name
 
 ---
 
-**Last Updated**: May 26, 2026  
-**Version**: 1.0.0
+**Last Updated**: July 20, 2026  
+**Version**: 2.0.0 (PostgreSQL)
 
 **Next Steps**: Monitor your deployment regularly and keep dependencies updated!

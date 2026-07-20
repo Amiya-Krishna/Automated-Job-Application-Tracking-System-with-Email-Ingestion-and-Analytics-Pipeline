@@ -10,65 +10,81 @@ Complete reference for all Job Application Tracker Portal API endpoints.
 http://localhost:5000/api
 ```
 
+In production this is whatever host you deploy the server to (e.g.
+`https://job-application-tracker-portal-o1ls.onrender.com/api`).
+
 ---
 
 ## Authentication
 
-Most endpoints require JWT authentication. Include the token in the Authorization header:
+Protected endpoints require a JWT, sent as a plain **`token`** request header
+(not the `Authorization: Bearer` convention):
 
 ```
-Authorization: Bearer <your_jwt_token>
+token: <your_jwt_token>
 ```
+
+The token is returned by `POST /api/auth/login` and doesn't currently carry an
+expiry — it's valid until your `JWT_SECRET` changes.
 
 ---
 
 ## Response Format
 
-All responses are in JSON format:
+Responses are plain JSON — there is no `{ success, data }` envelope. A
+successful response returns the resource (or an object with a `message`)
+directly; an error response is:
 
-**Success Response (2xx):**
 ```json
-{
-  "success": true,
-  "data": { /* response data */ }
-}
-```
-
-**Error Response (4xx, 5xx):**
-```json
-{
-  "success": false,
-  "message": "Error description"
-}
+{ "message": "Error description" }
 ```
 
 ---
 
-## 🔐 Authentication Endpoints
+## 🔐 Auth Endpoints (`/api/auth`)
 
-### 1. Register User
+### 1. Register
 
-**POST** `/auth/register`
-
-Create a new user account.
+**POST** `/api/auth/register`
 
 **Request Body:**
 ```json
 {
-  "username": "john_doe",
+  "name": "John Doe",
   "email": "john@example.com",
   "password": "SecurePass123"
 }
 ```
 
-**Response (201):**
+**Response (200):**
+```json
+{ "message": "User Registered Successfully" }
+```
+
+**Error (400):**
+```json
+{ "message": "User already exists" }
+```
+
+### 2. Login
+
+**POST** `/api/auth/login`
+
+**Request Body:**
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
-  "data": {
-    "id": "user_id_123",
-    "username": "john_doe",
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
+```
+
+**Response (200):**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": 1,
+    "name": "John Doe",
     "email": "john@example.com"
   }
 }
@@ -76,391 +92,368 @@ Create a new user account.
 
 **Error (400):**
 ```json
-{
-  "success": false,
-  "message": "Email already exists"
-}
+{ "message": "User not found" }
 ```
+or
+```json
+{ "message": "Invalid Password" }
+```
+
+> There is no `/logout` or `/profile` endpoint — logout is handled entirely on
+> the frontend by discarding the stored token.
 
 ---
 
-### 2. Login User
+## 💼 Job Tracker Endpoints (`/api/jobs`)
 
-**POST** `/auth/login`
+All endpoints below require the `token` header and only ever operate on jobs
+owned by the authenticated user.
 
-Authenticate and receive JWT token.
+### 3. Create Job
 
-**Request Body:**
-```json
-{
-  "email": "john@example.com",
-  "password": "SecurePass123"
-}
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "id": "user_id_123",
-      "username": "john_doe",
-      "email": "john@example.com"
-    }
-  }
-}
-```
-
-**Error (401):**
-```json
-{
-  "success": false,
-  "message": "Invalid credentials"
-}
-```
-
----
-
-### 3. Get User Profile
-
-**GET** `/auth/profile`
-
-Retrieve authenticated user's profile information.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "user_id_123",
-    "username": "john_doe",
-    "email": "john@example.com",
-    "createdAt": "2024-01-15T10:30:00Z"
-  }
-}
-```
-
----
-
-### 4. Logout User
-
-**POST** `/auth/logout`
-
-End user session (optional, mainly for frontend state management).
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "message": "Logged out successfully"
-}
-```
-
----
-
-## 💼 Job Application Endpoints
-
-### 5. Get All Job Applications
-
-**GET** `/jobs`
-
-Fetch all job applications for the authenticated user.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `status` | string | Filter by status (Applied, Interviewed, Rejected, Offered) |
-| `company` | string | Filter by company name |
-| `page` | number | Page number (default: 1) |
-| `limit` | number | Results per page (default: 10) |
-
-**Example Request:**
-```
-GET /jobs?status=Applied&page=1&limit=10
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "job_id_1",
-      "company": "Tech Corp",
-      "position": "Frontend Developer",
-      "status": "Applied",
-      "appliedDate": "2024-01-10",
-      "notes": "Great company"
-    }
-  ],
-  "pagination": {
-    "total": 25,
-    "page": 1,
-    "pages": 3
-  }
-}
-```
-
----
-
-### 6. Get Single Job Application
-
-**GET** `/jobs/:id`
-
-Retrieve details of a specific job application.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**URL Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Job application ID |
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "id": "job_id_1",
-    "company": "Tech Corp",
-    "position": "Frontend Developer",
-    "location": "San Francisco, CA",
-    "status": "Applied",
-    "appliedDate": "2024-01-10",
-    "salary": "$120,000 - $150,000",
-    "jobUrl": "https://example.com/job/123",
-    "notes": "Great company, good team",
-    "createdAt": "2024-01-10T08:00:00Z",
-    "updatedAt": "2024-01-10T08:00:00Z"
-  }
-}
-```
-
----
-
-### 7. Create Job Application
-
-**POST** `/jobs`
-
-Add a new job application.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
+**POST** `/api/jobs`
 
 **Request Body:**
 ```json
 {
   "company": "Tech Corp",
-  "position": "Frontend Developer",
-  "location": "San Francisco, CA",
+  "role": "Frontend Developer",
   "status": "Applied",
-  "appliedDate": "2024-01-10",
-  "salary": "$120,000 - $150,000",
-  "jobUrl": "https://example.com/job/123",
-  "notes": "Great company, good team"
+  "interviewDate": "2026-08-01",
+  "notes": "Great company"
 }
 ```
 
-**Response (201):**
+**Response (200):**
 ```json
 {
-  "success": true,
-  "message": "Job application created successfully",
-  "data": {
-    "id": "job_id_1",
+  "id": 12,
+  "userId": 1,
+  "company": "Tech Corp",
+  "role": "Frontend Developer",
+  "status": "Applied",
+  "interviewDate": "2026-08-01",
+  "notes": "Great company",
+  "createdAt": "2026-07-20T08:00:00.000Z",
+  "updatedAt": "2026-07-20T08:00:00.000Z"
+}
+```
+
+### 4. Get All Jobs
+
+**GET** `/api/jobs`
+
+Returns every job belonging to the authenticated user, newest first. No
+pagination, filtering, or search query params are supported — the frontend
+filters client-side.
+
+**Response (200):**
+```json
+[
+  {
+    "id": 12,
+    "userId": 1,
     "company": "Tech Corp",
-    "position": "Frontend Developer",
+    "role": "Frontend Developer",
     "status": "Applied",
-    "appliedDate": "2024-01-10"
+    "interviewDate": "2026-08-01",
+    "notes": "Great company",
+    "createdAt": "2026-07-20T08:00:00.000Z",
+    "updatedAt": "2026-07-20T08:00:00.000Z"
   }
+]
+```
+
+### 5. Update Job
+
+**PUT** `/api/jobs/:id`
+
+**Request Body (any subset of):**
+```json
+{
+  "status": "Interview",
+  "notes": "Had a great interview, waiting for response"
 }
+```
+
+**Response (200):** the updated job (same shape as above).
+
+**Error (404):**
+```json
+{ "message": "Job not found" }
+```
+(returned if the id doesn't exist, or belongs to a different user)
+
+### 6. Delete Job
+
+**DELETE** `/api/jobs/:id`
+
+**Response (200):**
+```json
+{ "message": "Job deleted" }
+```
+
+**Error (404):**
+```json
+{ "message": "Job not found" }
 ```
 
 ---
 
-### 8. Update Job Application
+## 📧 Gmail Integration Endpoints (`/api/gmail`)
 
-**PUT** `/jobs/:id`
+See [GMAIL_INTEGRATION.md](GMAIL_INTEGRATION.md) for the full OAuth setup.
+All endpoints below require the `token` header unless noted.
 
-Update an existing job application.
+### 7. Get Auth URL
 
-**Headers Required:**
-```
-Authorization: Bearer <token>
-Content-Type: application/json
-```
+**GET** `/api/gmail/auth-url`
 
-**URL Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Job application ID |
-
-**Request Body (all fields optional):**
+**Response (200):**
 ```json
-{
-  "status": "Interviewed",
-  "notes": "Had great interview, waiting for response"
-}
+{ "url": "https://accounts.google.com/o/oauth2/v2/auth?..." }
 ```
+
+### 8. OAuth Callback
+
+**GET** `/api/gmail/callback`
+
+Not called directly by the frontend — Google redirects the browser here after
+consent. Redirects on to `${CLIENT_URL}/integrations?gmail=connected` (or
+`...=error` / `...=no_refresh_token`). No auth header (unauthenticated
+browser redirect).
+
+### 9. Connection Status
+
+**GET** `/api/gmail/status`
+
+**Response (200):**
+```json
+{ "connected": true }
+```
+
+### 10. Disconnect
+
+**POST** `/api/gmail/disconnect`
+
+**Response (200):**
+```json
+{ "message": "Gmail disconnected" }
+```
+
+### 11. Scan Inbox
+
+**GET** `/api/gmail/scan`
+
+Scans the last 30 days for interview/application/offer/rejection-looking
+subject lines.
 
 **Response (200):**
 ```json
 {
-  "success": true,
-  "message": "Job application updated successfully",
-  "data": {
-    "id": "job_id_1",
-    "company": "Tech Corp",
-    "position": "Frontend Developer",
-    "status": "Interviewed",
-    "notes": "Had great interview, waiting for response"
-  }
-}
-```
-
----
-
-### 9. Delete Job Application
-
-**DELETE** `/jobs/:id`
-
-Remove a job application.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**URL Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | string | Job application ID |
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "message": "Job application deleted successfully"
-}
-```
-
----
-
-### 10. Search Job Applications
-
-**GET** `/jobs/search`
-
-Search job applications by query.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**Query Parameters:**
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `query` | string | Search term (company name, position, etc.) |
-| `field` | string | Field to search (company, position, all) |
-
-**Example Request:**
-```
-GET /jobs/search?query=Tech&field=company
-```
-
-**Response (200):**
-```json
-{
-  "success": true,
-  "data": [
+  "messages": [
     {
-      "id": "job_id_1",
-      "company": "Tech Corp",
-      "position": "Frontend Developer"
+      "id": "18cfa1...",
+      "subject": "Moving forward with your application",
+      "from": "recruiting@techcorp.com",
+      "date": "Sat, 18 Jul 2026 10:00:00 -0700",
+      "snippet": "We'd like to schedule..."
     }
   ]
 }
 ```
 
----
-
-## 📊 Analytics Endpoints
-
-### 11. Get Analytics Summary
-
-**GET** `/analytics/summary`
-
-Retrieve overall application statistics.
-
-**Headers Required:**
-```
-Authorization: Bearer <token>
-```
-
-**Response (200):**
+**Error (400):**
 ```json
-{
-  "success": true,
-  "data": {
-    "totalApplications": 25,
-    "applied": 10,
-    "interviewed": 5,
-    "rejected": 3,
-    "offered": 2,
-    "pending": 5
-  }
-}
+{ "message": "Gmail is not connected" }
 ```
 
 ---
 
-### 12. Get Status Breakdown
+## 🤖 Intelligent Job Application Engine
 
-**GET** `/analytics/status-breakdown`
+These endpoints back the scraping/matching/apply/analytics engine described
+in [intelligent-job-application-engine-design.md](intelligent-job-application-engine-design.md).
+They read/write the Postgres `jobs`, `companies`, `applications`,
+`match_scores`, `user_profile`, and `analytics_daily` tables — separate from
+the `tracked_jobs` table used by `/api/jobs` above. None of these currently
+require the `token` auth header.
 
-Get detailed status distribution for charts/graphs.
+### 12. Ingest a Job
 
-**Headers Required:**
+**POST** `/api/ingest`
+
+Shared entrypoint used by both the Playwright scraper and the browser
+extension's manual capture.
+
+**Request Body:**
+```json
+{
+  "title": "Backend Engineer",
+  "company": "Acme Inc",
+  "description": "Full job description text...",
+  "location": "Remote",
+  "remoteType": "remote",
+  "sourceName": "linkedin",
+  "sourceUrl": "https://www.linkedin.com/jobs/view/12345",
+  "externalJobId": "12345",
+  "postedAt": "2026-07-15T00:00:00.000Z"
+}
 ```
-Authorization: Bearer <token>
-```
+`title`, `company`, `description`, `sourceName`, and `sourceUrl` are required.
+
+**Response (201):** result of normalization/dedup/insert (job id, whether it
+was a duplicate, etc. — see `services/ingestionService.js`).
+
+### 13. Browse Engine Jobs
+
+**GET** `/api/engine/jobs?status=matched&minScore=70&page=1&pageSize=25`
 
 **Response (200):**
 ```json
 {
-  "success": true,
+  "data": [
+    {
+      "id": 101,
+      "title": "Backend Engineer",
+      "location": "Remote",
+      "remote_type": "remote",
+      "status": "matched",
+      "source_url": "https://...",
+      "company": "Acme Inc",
+      "score": 82.5,
+      "explanation": { "matchedSkills": ["node.js", "postgresql"] }
+    }
+  ],
+  "meta": { "page": 1, "pageSize": 25 }
+}
+```
+
+### 14. Get a Single Engine Job
+
+**GET** `/api/engine/jobs/:id`
+
+**Response (200):** `{ "data": { ...full job row, company, score, explanation } }`
+**Error (404):** `{ "message": "Job not found" }`
+
+### 15. Start an Application
+
+**POST** `/api/applications/:jobId`
+
+Enqueues the Playwright apply worker for this job (`apply:prepare`).
+
+**Response (202):**
+```json
+{ "status": "queued", "jobId": 101 }
+```
+
+### 16. List Applications
+
+**GET** `/api/applications?status=pending_review`
+
+**Response (200):**
+```json
+{
+  "data": [
+    {
+      "id": 5,
+      "job_id": 101,
+      "status": "pending_review",
+      "title": "Backend Engineer",
+      "source_url": "https://...",
+      "company": "Acme Inc"
+    }
+  ]
+}
+```
+
+### 17. Confirm Manual Submit
+
+**POST** `/api/applications/:id/submit`
+
+Called once the user has manually clicked submit in the Playwright-driven
+session.
+
+**Response (200):**
+```json
+{ "status": "applied" }
+```
+
+### 18. Record an Outcome
+
+**POST** `/api/applications/:id/outcome`
+
+**Request Body:**
+```json
+{ "status": "interview" }
+```
+`status` must be one of `interview`, `rejected`, `offer`. Also nudges the
+matching engine's per-skill weights via the learning loop.
+
+**Response (200):**
+```json
+{ "status": "updated" }
+```
+
+### 19. Analytics Summary
+
+**GET** `/api/analytics/summary?range=30d`
+
+**Response (200):**
+```json
+{
   "data": {
-    "Applied": 10,
-    "Interviewed": 5,
-    "Rejected": 3,
-    "Offered": 2,
-    "Pending": 5
+    "jobs_scraped": 120,
+    "jobs_matched": 34,
+    "applications_sent": 18,
+    "responses": 5,
+    "response_rate_pct": 27.8
+  },
+  "meta": { "rangeDays": 30 }
+}
+```
+
+### 20. Analytics Funnel
+
+**GET** `/api/analytics/funnel`
+
+**Response (200):**
+```json
+{
+  "data": {
+    "scraped": 120,
+    "matched": 34,
+    "applied": 18,
+    "interview": 5,
+    "offer": 1
   }
 }
 ```
+
+### 21. Get Profile
+
+**GET** `/api/profile`
+
+**Response (200):** `{ "data": { ...user_profile row, or null if none set } }`
+
+### 22. Create/Update Profile
+
+**POST** `/api/profile`
+
+**Request Body:**
+```json
+{
+  "fullName": "Jane Doe",
+  "email": "jane@example.com",
+  "resumeText": "...",
+  "skills": ["react", "node.js", "postgresql"],
+  "experienceYears": 3
+}
+```
+
+**Response:** `201 { "status": "created" }` on first save, or
+`200 { "status": "updated" }` on subsequent saves — there's only ever one
+profile row.
 
 ---
 
@@ -470,43 +463,32 @@ Authorization: Bearer <token>
 |------|---------|
 | 200 | OK - Successful request |
 | 201 | Created - Resource created successfully |
+| 202 | Accepted - Work enqueued (apply engine) |
 | 400 | Bad Request - Invalid input |
-| 401 | Unauthorized - Missing/invalid token |
-| 403 | Forbidden - Access denied |
+| 401 | Unauthorized - Missing/invalid token (tracker/auth/gmail routes) |
 | 404 | Not Found - Resource not found |
-| 409 | Conflict - Resource already exists |
 | 500 | Server Error - Internal server error |
 
 ---
 
 ## Common Errors
 
-### Missing Token
+### Missing Token (tracker/gmail routes)
 ```json
-{
-  "success": false,
-  "message": "Authorization token is required"
-}
+{ "message": "No token, authorization denied" }
 ```
 
 ### Invalid Token
 ```json
-{
-  "success": false,
-  "message": "Invalid or expired token"
-}
+{ "message": "Token is not valid" }
 ```
 
-### Validation Error
+### CORS Rejection
+Requests from an origin not in `CLIENT_URL` (and not a `chrome-extension://`
+origin) are rejected by the CORS middleware and surfaced via the server's
+catch-all JSON error handler:
 ```json
-{
-  "success": false,
-  "message": "Validation error",
-  "errors": {
-    "email": "Invalid email format",
-    "password": "Password must be at least 8 characters"
-  }
-}
+{ "message": "Not allowed by CORS" }
 ```
 
 ---
@@ -518,7 +500,7 @@ Authorization: Bearer <token>
 curl -X POST http://localhost:5000/api/auth/register \
   -H "Content-Type: application/json" \
   -d '{
-    "username": "john_doe",
+    "name": "John Doe",
     "email": "john@example.com",
     "password": "SecurePass123"
   }'
@@ -534,14 +516,14 @@ curl -X POST http://localhost:5000/api/auth/login \
   }'
 ```
 
-### Create Job Application
+### Create Job
 ```bash
 curl -X POST http://localhost:5000/api/jobs \
-  -H "Authorization: Bearer <your_token>" \
+  -H "token: <your_token>" \
   -H "Content-Type: application/json" \
   -d '{
     "company": "Tech Corp",
-    "position": "Frontend Developer",
+    "role": "Frontend Developer",
     "status": "Applied"
   }'
 ```
@@ -549,24 +531,31 @@ curl -X POST http://localhost:5000/api/jobs \
 ### Get All Jobs
 ```bash
 curl -X GET http://localhost:5000/api/jobs \
-  -H "Authorization: Bearer <your_token>"
+  -H "token: <your_token>"
+```
+
+### Seed an Engine Profile
+```bash
+curl -X POST http://localhost:5000/api/profile \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"Your Name","email":"you@example.com","resumeText":"...","skills":["react","node.js","postgresql"]}'
 ```
 
 ---
 
 ## Rate Limiting
 
-Currently no rate limiting is enforced. Future versions may implement rate limits.
+No rate limiting is enforced on the tracker/auth API. The engine's Playwright
+scraper/apply worker does rate-limit itself per target domain via a
+Redis-backed token bucket (see `services/rateLimiter.js`) — that's an
+internal safeguard, not an API-level limit.
 
 ---
 
 ## Versioning
 
-**Current API Version**: v1.0  
-**Base URL**: `/api`
-
-Future versions (v2) will use `/api/v2`
+**Base URL**: `/api` (no version prefix currently in use)
 
 ---
 
-**Last Updated**: May 26, 2026
+**Last Updated**: July 20, 2026

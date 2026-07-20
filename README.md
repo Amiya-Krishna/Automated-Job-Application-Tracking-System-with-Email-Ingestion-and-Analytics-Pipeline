@@ -3,10 +3,12 @@
 [![React](https://img.shields.io/badge/React-19.x-blue?logo=react)](https://react.dev)
 [![Node.js](https://img.shields.io/badge/Node.js-16.x+-green?logo=node.js)](https://nodejs.org)
 [![Express](https://img.shields.io/badge/Express-5.x-black?logo=express)](https://expressjs.com)
-[![MongoDB](https://img.shields.io/badge/MongoDB-Latest-green?logo=mongodb)](https://www.mongodb.com)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Latest-blue?logo=postgresql)](https://www.postgresql.org)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
-A full-stack job application tracker built with React, Vite, Express, and MongoDB. Manage job applications, track status changes, and keep interview details and notes in one place.
+A full-stack job application tracker built with React, Vite, Express, and PostgreSQL. Manage job applications, track status changes, and keep interview details and notes in one place.
+
+> **Database:** this project uses a single **hosted PostgreSQL** instance (e.g. [Neon](https://neon.tech), [Supabase](https://supabase.com), or Render Postgres) via a connection string in `PG_CONNECTION_STRING` — no local Postgres install required.
 
 ---
 
@@ -25,12 +27,11 @@ npm install
 cd ../client
 npm install
 
-# Copy environment template
-cd ..
-copy .env.example .env
+# Apply the schema to that hosted database
+cd server
+npm run db:migrate
 
 # Start server in one terminal
-cd server
 npm start
 
 # Start client in another terminal
@@ -46,7 +47,7 @@ Open the frontend at `http://localhost:5173`
 
 ### Prerequisites
 - Node.js 16.x or higher
-- MongoDB (local or Atlas)
+- A hosted PostgreSQL database (Neon, Supabase, Render, etc.) — a connection URL, no local Postgres install needed
 - npm package manager
 
 ### Server Setup
@@ -65,20 +66,19 @@ npm install
 
 ### Environment Configuration
 
-Copy the example file and update values:
-
-```bash
-copy .env.example .env
-```
-
-Example `.env` values:
-
 ```env
-MONGODB_URI=mongodb://localhost:27017/job-tracker
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
 JWT_SECRET=your_jwt_secret_key_here
 NODE_ENV=development
 PORT=5000
 CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+```
+
+Then apply the schema once to that database:
+
+```bash
+cd server
+npm run db:migrate
 ```
 
 ### Run Application
@@ -125,7 +125,7 @@ npm start
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `MONGODB_URI` | MongoDB connection URI | `mongodb://localhost:27017/job-tracker` |
+| `PG_CONNECTION_STRING` | Hosted PostgreSQL connection URL | `postgresql://user:pass@host/db?sslmode=require` |
 | `JWT_SECRET` | Secret key for JWT signing | `your_secret_key_12345` |
 | `NODE_ENV` | App environment | `development` or `production` |
 | `PORT` | Backend port | `5000` |
@@ -172,7 +172,7 @@ npm start
   - API integration via Axios
 - **Backend**
   - Express 5 server
-  - MongoDB with Mongoose models
+  - PostgreSQL (hosted) via the `pg` driver
   - Protected routes using middleware
 
 ---
@@ -195,10 +195,6 @@ npm start
 
 ![Postman](outputs/Postman%20request.png)
 
-### 🚀 MongoDB
-
-![MongoDB](outputs/MongoDB%20users%20collection.png)
-
 ### 🚀 Server
 
 ![Server](outputs/Server_terminal.png)
@@ -220,10 +216,9 @@ Job Application Tracker Portal/
 │   └── vite.config.js               # Vite configuration
 |
 ├── server/                          # Node backend
-│   ├── config/                      # Database connection files
-│   ├── controllers/                 # Business logic handlers
+│   ├── db/                          # Postgres pool + schema.sql
 │   ├── middleware/                  # Auth middleware
-│   ├── models/                      # Mongoose models
+│   ├── models/                      # Postgres-backed models (User, Job)
 │   ├── routes/                      # API route definitions
 │   ├── package.json                 # Server dependencies and scripts
 │   └── server.js                    # Backend entry point
@@ -232,6 +227,65 @@ Job Application Tracker Portal/
 ├── .env.example                     # Environment variable template
 └── README.md                        # Project documentation
 ```
+
+---
+
+---
+
+## 🧠 Intelligent Job Application Engine (new)
+
+This upgrade adds a decision-based, semi-automated engine alongside the original tracker.
+It lives in `server/` as new modules, sharing the same Express app **and the same Postgres
+database** as the auth/tracker routes above — everything in this project now runs on a
+single hosted PostgreSQL instance (see `db/schema.sql` for the full schema, including the
+`users`/`tracked_jobs` tables used by the tracker).
+
+**New pieces:**
+- `db/schema.sql` — Postgres schema (jobs, companies, applications, match_scores, user_profile, job_sources, analytics_daily)
+- `services/ingestionService.js` — shared entrypoint for both capture paths (Playwright scraper + this repo's existing browser extension), does normalize → dedup → insert → enqueue match
+- `services/dedupService.js` — exact hash + fuzzy (Jaro-Winkler title + TF-IDF description) duplicate detection
+- `services/matchingService.js` — free-tier TF-IDF + keyword matcher (`scoreTfIdf`), plus an embeddings-based scorer (`scoreEmbedding`) that takes an injected `embedFn` so it isn't tied to one provider
+- `services/learningService.js` — nudges per-skill weights up/down based on interview/offer/rejection outcomes
+- `services/applyEngine.js` + `adapters/` — Playwright-driven, human-in-the-loop apply flow; stops before the final submit click
+- `services/rateLimiter.js` — Redis token bucket, capped per target domain, plus randomized human-like delays
+- `services/scraper.js` — scheduled LinkedIn/Indeed scraper skeleton (selectors will need upkeep — see comments in the file)
+- `workers/` + `worker.js` — BullMQ workers (match, apply, analytics), run as a **separate process** from the API (`npm run worker`) so a Playwright crash never takes the API down
+- `routes/ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js` — new REST surface, mounted at `/api/ingest`, `/api/engine/jobs`, `/api/applications`, `/api/analytics`, `/api/profile`
+
+### Setup
+
+```bash
+cd server
+npm install                       # installs pg, bullmq, ioredis, natural, playwright
+npx playwright install chromium   # one-time browser download for the apply engine/scraper
+cp .env              # fill in PG_CONNECTION_STRING and REDIS_URL
+npm run db:migrate                # applies db/schema.sql (users, tracked_jobs, jobs, etc.) to your Postgres instance
+
+# terminal 1: API (unchanged)
+npm start
+
+# terminal 2: background workers (new — required for matching/apply/analytics to run)
+npm run worker
+
+# one-off: seed your profile so the matcher has something to compare against
+curl -X POST http://localhost:5000/api/profile \
+  -H "Content-Type: application/json" \
+  -d '{"fullName":"Your Name","email":"you@example.com","resumeText":"...","skills":["react","node.js","postgresql"]}'
+
+# one-off / cron: run a scrape pass
+npm run scrape "backend developer intern"
+```
+
+Requires a hosted **PostgreSQL** connection string (`PG_CONNECTION_STRING`) and a local or
+hosted **Redis** instance for the queue (`REDIS_URL`/`REDIS_HOST`). Nothing needs to be
+installed locally for Postgres — just point the connection string at your hosted database.
+
+### What's a skeleton vs. fully built
+
+The Greenhouse adapter's field selectors are illustrative (extend `adapters/` per real ATS
+you encounter), the embeddings matcher needs an `embedFn` wired to whichever provider you
+pick, and the LinkedIn/Indeed scraper's selectors will need periodic upkeep as those sites
+change their DOM — all called out in comments at the top of the relevant files.
 
 ---
 

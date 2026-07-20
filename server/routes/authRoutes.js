@@ -11,7 +11,7 @@ router.post("/register", async (req, res) => {
 
     const { name, email, password } = req.body;
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findByEmail(email);
 
     if (existingUser) {
       return res.status(400).json({
@@ -23,13 +23,11 @@ router.post("/register", async (req, res) => {
 
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
+    await User.create({
       name,
       email,
       password: hashedPassword
     });
-
-    await newUser.save();
 
     res.json({
       message: "User Registered Successfully"
@@ -51,7 +49,7 @@ router.post("/login", async (req, res) => {
 
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findByEmail(email);
 
     if (!user) {
       return res.status(400).json({
@@ -71,14 +69,14 @@ router.post("/login", async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user._id },
+      { id: user.id },
       process.env.JWT_SECRET
     );
 
     res.json({
       token,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email
       }

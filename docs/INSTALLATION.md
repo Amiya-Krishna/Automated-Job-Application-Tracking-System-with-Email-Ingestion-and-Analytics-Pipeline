@@ -26,7 +26,8 @@ Complete installation instructions for the Job Application Tracker Portal.
 |-------------|---------|----------|
 | Node.js | 16.x or higher | [nodejs.org](https://nodejs.org) |
 | npm | 7.x or higher | Comes with Node.js |
-| MongoDB | 4.x or higher | [mongodb.com](https://www.mongodb.com) |
+| PostgreSQL | Hosted instance (Neon, Supabase, Render, etc.) | No local install needed — just a connection URL |
+| Redis | Local or hosted (Upstash, etc.) — used by the matching/apply/analytics engine | [redis.io](https://redis.io) |
 | Git | Latest | [git-scm.com](https://git-scm.com) |
 
 ### Recommended Specifications
@@ -41,8 +42,9 @@ Complete installation instructions for the Job Application Tracker Portal.
 ## Pre-Installation Checklist
 
 - [ ] Node.js installed and accessible via terminal
-- [ ] npm or yarn installed
-- [ ] MongoDB installed or Atlas account created
+- [ ] npm installed
+- [ ] A hosted PostgreSQL connection string ready (no local Postgres install needed)
+- [ ] A Redis instance ready (local or hosted) if you plan to run the background workers
 - [ ] Git installed
 - [ ] Code editor (VSCode recommended)
 - [ ] 2GB free disk space
@@ -94,16 +96,23 @@ npm list
 
 This shows all installed packages and their versions.
 
-### Step 4: Create .env File (in root directory)
-
-Go back to the root directory and create `.env`:
+### Step 4: Create `.env` File (inside `server/`)
 
 ```bash
-cd ..
 cp .env.example .env
 ```
 
-Edit `.env` with your database and server configuration.
+Edit `.env` with your Postgres connection string, JWT secret, and (optionally)
+Gmail/Redis configuration — see [Environment Setup](#environment-setup) below.
+
+### Step 5 (one-time): Apply the Database Schema
+
+```bash
+npm run db:migrate
+```
+
+This runs `db/schema.sql` against whatever `PG_CONNECTION_STRING` points to,
+creating all tables the app needs. Safe to re-run any time.
 
 ---
 
@@ -134,110 +143,58 @@ npm list
 
 ### Step 4: Environment Configuration (Optional)
 
-If you need custom API endpoints, create `.env.local` in the `client` directory:
+If you need to point the frontend at a specific backend, create/edit `.env` in
+the `client` directory:
 
 ```env
-VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
+VITE_API_BASE_URL=https://job-application-tracker-portal-o1ls.onrender.com
 ```
+
+Falls back to `http://localhost:5000` if unset.
 
 ---
 
 ## Database Configuration
 
-### Option A: Local MongoDB Installation
+This project uses a **single hosted PostgreSQL database** — there is no local
+Postgres server to install or run. Pick any provider that gives you a
+connection URL:
 
-#### Windows
+### Option A: Neon (recommended — generous free tier)
 
-1. **Download MongoDB Community**
-   - Go to [MongoDB Download](https://www.mongodb.com/try/download/community)
-   - Select your OS and download the installer
+1. Go to [neon.tech](https://neon.tech) and create a free account.
+2. Create a project/database.
+3. Copy the connection string shown in the dashboard (it already includes
+   `?sslmode=require`).
 
-2. **Install MongoDB**
-   - Run the installer
-   - Choose "Complete" installation
-   - Check "Install MongoDB as a Service"
+### Option B: Supabase
 
-3. **Start MongoDB Service**
-   ```bash
-   net start MongoDB
-   ```
+1. Go to [supabase.com](https://supabase.com) and create a free project.
+2. Go to **Project Settings → Database** and copy the connection string
+   (use the "Connection pooling" URI for serverless-style usage, or the
+   direct URI for a long-running server).
 
-4. **Verify Installation**
-   ```bash
-   mongod --version
-   ```
+### Option C: Render Postgres
 
-#### macOS
+1. In the [Render dashboard](https://render.com), create a new **PostgreSQL**
+   instance.
+2. Copy the **External Connection String** (or **Internal** if your app is
+   also hosted on Render).
 
-```bash
-# Install using Homebrew
-brew tap mongodb/brew
-brew install mongodb-community
+### Whichever provider you choose
 
-# Start MongoDB
-brew services start mongodb-community
+Put the connection string in `server/.env`:
 
-# Verify
-mongod --version
+```env
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
 ```
 
-#### Ubuntu/Linux
+Then apply the schema once:
 
 ```bash
-# Import the public key
-wget -qO - https://www.mongodb.org/static/pgp/server-5.0.asc | sudo apt-key add -
-
-# Add MongoDB repository
-echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/5.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-5.0.list
-
-# Install MongoDB
-sudo apt-get update
-sudo apt-get install -y mongodb-org
-
-# Start service
-sudo systemctl start mongod
-
-# Verify
-mongod --version
+cd server
+npm run db:migrate
 ```
-
-### Option B: MongoDB Atlas (Cloud) - Recommended for Development
-
-1. **Create Account**
-   - Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-   - Sign up for free account
-
-2. **Create Cluster**
-   - Click "Create Deployment"
-   - Choose "M0 Sandbox" (free tier)
-   - Select your region
-   - Click "Create Deployment"
-
-3. **Set Network Access**
-   - Go to "Security" → "Network Access"
-   - Click "Add IP Address"
-   - Choose "Allow Access from Anywhere" for development
-   - Click "Confirm"
-
-4. **Create Database User**
-   - Go to "Security" → "Database Access"
-   - Click "Add Database User"
-   - Username: `jobtracker`
-   - Password: Create a strong password
-   - Click "Create User"
-
-5. **Get Connection String**
-   - Go to "Databases" → "Overview"
-   - Click "Connect"
-   - Choose "Drivers"
-   - Copy the connection string
-   - Replace `<password>` with your password
-   - Replace `myFirstDatabase` with `job-tracker`
-
-6. **Update .env**
-   ```env
-   MONGODB_URI=mongodb+srv://jobtracker:password@cluster0.xxxxx.mongodb.net/job-tracker?retryWrites=true&w=majority
-   ```
 
 ### Verify Database Connection
 
@@ -251,50 +208,65 @@ npm start
 
 Expected output:
 ```
-Server is running on http://localhost:5000
-MongoDB connected successfully
+Server Running on 5000
+Postgres connected
 ```
 
 ---
 
 ## Environment Setup
 
-### Create .env File
+### Create `.env` File
 
-In the project root directory, create a `.env` file:
+Inside the `server` directory, create a `.env` file:
 
 ```bash
+cd server
 cp .env.example .env
 ```
 
 ### Configure Environment Variables
 
-Edit `.env` with proper values:
+Edit `server/.env` with proper values:
 
 ```env
 # ===== DATABASE =====
-MONGODB_URI=mongodb://localhost:27017/job-tracker
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
 
 # ===== SERVER =====
 PORT=5000
-NODE_ENV=development
 
 # ===== JWT =====
 JWT_SECRET=your_super_secret_key_min_32_characters_long_here_12345
 
 # ===== CLIENT =====
-CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
+
+# ===== GMAIL INTEGRATION (optional — leave blank to disable) =====
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
+
+# ===== PLAYWRIGHT APPLY/SCRAPE WORKER =====
+PLAYWRIGHT_PROFILE_DIR=./playwright-profile
+PLAYWRIGHT_HEADLESS=true
+
+# ===== REDIS (queues for the matching/apply/analytics engine) =====
+REDIS_URL=
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
 ```
 
 ### Variable Definitions
 
 | Variable | Purpose | Example |
 |----------|---------|---------|
-| `MONGODB_URI` | Database connection | `mongodb://localhost:27017/job-tracker` |
+| `PG_CONNECTION_STRING` | Hosted Postgres connection URL — used by everything, auth included | `postgresql://user:pass@host/db?sslmode=require` |
 | `PORT` | Server port | `5000` |
-| `NODE_ENV` | Environment type | `development` |
 | `JWT_SECRET` | Token secret (min 32 chars) | `my_secret_key_...` |
-| `CLIENT_URL` | Frontend URL for CORS | `http://localhost:5173` |
+| `CLIENT_URL` | Frontend URL(s) for CORS, comma-separated | `http://localhost:5173` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Gmail OAuth (optional) — see [GMAIL_INTEGRATION.md](GMAIL_INTEGRATION.md) | — |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` | Queue backend for the matching/apply/analytics engine | `rediss://default:...` |
 
 **Security Note**: Never commit `.env` to version control. It's already in `.gitignore`.
 
@@ -305,7 +277,7 @@ CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localho
 ### Prerequisites Met?
 
 - [ ] Node.js and npm installed
-- [ ] MongoDB running (local or Atlas)
+- [ ] `PG_CONNECTION_STRING` configured and schema applied (`npm run db:migrate`)
 - [ ] `.env` file configured
 - [ ] Dependencies installed for both server and client
 
@@ -320,8 +292,8 @@ npm start
 
 Expected output:
 ```
-Server is running on http://localhost:5000
-MongoDB connected successfully
+Server Running on 5000
+Postgres connected
 ```
 
 **Terminal 2 - Start Frontend:**
@@ -333,11 +305,22 @@ npm run dev
 
 Expected output:
 ```
-  VITE v4.x.x  ready in XXX ms
+  VITE v6.x.x  ready in XXX ms
 
   ➜  Local:   http://localhost:5173/
   ➜  press h to show help
 ```
+
+**Terminal 3 (optional) - Background Engine Workers:**
+
+```bash
+cd server
+npm run worker
+```
+
+Required only if you want the matching/apply/analytics engine (scraping,
+scoring, semi-automated apply) running — the core tracker (register, login,
+add/edit/delete jobs) works without it.
 
 ### Method 2: Production Build
 
@@ -346,7 +329,7 @@ Expected output:
 cd client
 npm run build
 
-# Start server (serves built frontend)
+# Start server
 cd ../server
 npm start
 ```
@@ -361,7 +344,7 @@ npm start
 curl http://localhost:5000
 ```
 
-Expected: Server status information
+Expected: `Backend Running`
 
 ### Step 2: Access Frontend
 
@@ -370,18 +353,18 @@ Open browser and visit:
 http://localhost:5173
 ```
 
-Expected: Login page loads without errors
+Expected: Landing/login page loads without errors
 
 ### Step 3: Test Authentication
 
 1. Click "Register"
 2. Create account with:
-   - Username: `testuser`
+   - Name: `Test User`
    - Email: `test@example.com`
    - Password: `Test@1234`
-3. Click "Submit"
+3. Submit
 
-Expected: Account created and redirected to login
+Expected: Account created, then redirected to log in
 
 ### Step 4: Login
 
@@ -391,12 +374,12 @@ Expected: Dashboard loads successfully
 
 ### Step 5: Test Job Creation
 
-1. Click "Add New Job"
+1. Click "Add Job"
 2. Fill in form:
    - Company: `Test Corp`
-   - Position: `Developer`
+   - Role: `Developer`
    - Status: `Applied`
-3. Click "Save"
+3. Save
 
 Expected: Job appears in dashboard
 
@@ -404,7 +387,7 @@ Expected: Job appears in dashboard
 
 - [ ] Server running on port 5000
 - [ ] Frontend running on port 5173
-- [ ] MongoDB connected
+- [ ] Postgres connected (check server startup log)
 - [ ] Login page accessible
 - [ ] Account registration works
 - [ ] Login works
@@ -428,15 +411,15 @@ npm install
 npm cache clean --force
 ```
 
-### Problem: MongoDB Connection Error
+### Problem: Postgres Connection Error
 
-**Error:** `Error: connect ECONNREFUSED 127.0.0.1:27017`
+**Error:** `Postgres connection error ...` or `ECONNREFUSED`
 
 **Solution:**
-- Check MongoDB is running
-- Verify `MONGODB_URI` in `.env`
-- For local DB: `mongod` should be running
-- For Atlas: Check connection string format
+- Verify `PG_CONNECTION_STRING` in `server/.env` is the exact URL your provider gave you
+- Make sure `?sslmode=require` is included if your provider needs it (most hosted providers do)
+- Confirm the database is active (some free tiers pause after inactivity)
+- Run `npm run db:migrate` again to confirm the schema applied cleanly
 
 ### Problem: Port Already in Use
 
@@ -463,17 +446,17 @@ PORT=5001
 **Solution:**
 Verify `.env` has correct URLs:
 ```env
-CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
 ```
 
 Restart server after changing.
 
 ### Problem: Environment Variables Not Loading
 
-**Error:** `Process is undefined` or variables are undefined
+**Error:** `process.env.X is undefined`
 
 **Solution:**
-1. Make sure `.env` file exists in root directory
+1. Make sure `.env` file exists inside `server/`
 2. Restart server after creating/modifying `.env`
 3. Check file is named exactly `.env` (not `.env.example`)
 
@@ -505,8 +488,8 @@ npm run dev
 ### Problem: Login Not Working
 
 **Causes & Solutions:**
-1. Check JWT_SECRET in `.env` is set
-2. Verify database has user collection
+1. Check `JWT_SECRET` in `.env` is set
+2. Confirm `npm run db:migrate` ran successfully (the `users` table must exist)
 3. Check browser console for errors
 4. Restart both servers
 
@@ -514,11 +497,11 @@ npm run dev
 
 1. **Check Console Errors**
    - Browser: F12 → Console
-   - Server: Terminal where npm start runs
+   - Server: Terminal where `npm start` runs
 
 2. **Verify All Services**
-   - MongoDB: `mongod` running
-   - Server: Terminal shows "Server running"
+   - Postgres: reachable via `PG_CONNECTION_STRING`
+   - Server: Terminal shows "Server Running on 5000" and "Postgres connected"
    - Frontend: Terminal shows "Local: http://localhost:5173"
 
 3. **Check Ports**
@@ -533,7 +516,7 @@ npm run dev
 2. 📖 Read [GETTING_STARTED.md](GETTING_STARTED.md)
 3. 📚 Review [API_ENDPOINTS.md](API_ENDPOINTS.md)
 4. 💻 Explore the codebase
-5. 🚀 Deploy to production (see deployment guide)
+5. 🚀 Deploy to production (see [DEPLOYMENT.md](DEPLOYMENT.md))
 
 ---
 
@@ -543,14 +526,17 @@ npm run dev
 # Install all dependencies
 npm install
 
+# Apply/re-apply the Postgres schema
+npm run db:migrate
+
 # Start development server
 npm start
 
+# Start background engine workers
+npm run worker
+
 # Build for production
 npm run build
-
-# Run tests
-npm test
 
 # Stop server
 Ctrl + C
@@ -567,5 +553,5 @@ npm audit fix
 
 ---
 
-**Last Updated**: May 26, 2026  
-**Version**: 1.0.0
+**Last Updated**: July 20, 2026  
+**Version**: 2.0.0 (PostgreSQL)

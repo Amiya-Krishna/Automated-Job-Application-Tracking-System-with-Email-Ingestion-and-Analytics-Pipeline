@@ -47,7 +47,9 @@ function JobForm() {
     const loadJob = async () => {
       try {
         const res = await api.get("/jobs");
-        const job = res.data.find((j) => j._id === id);
+        // useParams() gives id as a string; job.id from the API is a
+        // number (Postgres serial), so compare loosely.
+        const job = res.data.find((j) => String(j.id) === id);
 
         if (!job) {
           toast.error("Job not found");

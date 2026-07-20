@@ -1,30 +1,42 @@
-const mongoose = require("mongoose");
+const { query } = require("../db/pg");
 
-const userSchema = new mongoose.Schema({
+// Maps a DB row (snake_case) to the camelCase shape the rest of the
+// app expects, so callers don't need to know about column names.
+function toUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    password: row.password,
+    gmailRefreshToken: row.gmail_refresh_token,
+  };
+}
 
-  name: {
-    type: String,
-    required: true
-  },
+async function findByEmail(email) {
+  const { rows } = await query("SELECT * FROM users WHERE email = $1", [email]);
+  return toUser(rows[0]);
+}
 
-  email: {
-    type: String,
-    required: true,
-    unique: true
-  },
+async function findById(id) {
+  const { rows } = await query("SELECT * FROM users WHERE id = $1", [id]);
+  return toUser(rows[0]);
+}
 
-  password: {
-    type: String,
-    required: true
-  },
+async function create({ name, email, password }) {
+  const { rows } = await query(
+    "INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING *",
+    [name, email, password]
+  );
+  return toUser(rows[0]);
+}
 
-  // Set only if the user connects Gmail. Used to fetch a fresh access
-  // token when scanning their inbox for interview-related emails.
-  gmailRefreshToken: {
-    type: String,
-    default: null
-  }
+async function setGmailRefreshToken(id, token) {
+  const { rows } = await query(
+    "UPDATE users SET gmail_refresh_token = $2 WHERE id = $1 RETURNING *",
+    [id, token]
+  );
+  return toUser(rows[0]);
+}
 
-});
-
-module.exports = mongoose.model("User", userSchema);
+module.exports = { findByEmail, findById, create, setGmailRefreshToken };

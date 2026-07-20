@@ -9,8 +9,9 @@ Welcome to the Job Application Tracker Portal! This guide will help you set up a
 Before you start, ensure you have:
 
 - **Node.js** 16.x or higher ([Download](https://nodejs.org))
-- **npm** (comes with Node.js) or **yarn**
-- **MongoDB** ([Local](https://www.mongodb.com/try/download/community) or [Atlas Cloud](https://www.mongodb.com/cloud/atlas))
+- **npm** (comes with Node.js)
+- **A hosted PostgreSQL database** — e.g. [Neon](https://neon.tech), [Supabase](https://supabase.com), or Render Postgres. You just need a connection URL; there's nothing to install locally.
+- **A Redis instance** (for the background job queue used by the matching/apply/analytics engine) — local Redis, or a hosted one like Upstash
 - **Git** ([Download](https://git-scm.com))
 - A code editor (VSCode recommended)
 
@@ -32,53 +33,50 @@ cd "Job Application Tracker Portal"
 
 ---
 
-## Step 2: Setup MongoDB
+## Step 2: Get a Postgres Connection String
 
-### Option A: Local MongoDB
-```bash
-# Start MongoDB service
-# Windows:
-mongod
+Create a free hosted Postgres database (Neon is quickest) and copy its connection
+string — it looks like:
 
-# Mac/Linux:
-brew services start mongodb-community
+```
+postgresql://user:password@host/dbname?sslmode=require
 ```
 
-### Option B: MongoDB Atlas (Cloud)
-1. Go to [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)
-2. Create a free account
-3. Create a cluster
-4. Get your connection string
-5. Update `MONGODB_URI` in `.env`
+You don't need to install Postgres locally — the server connects to this URL directly.
 
 ---
 
 ## Step 3: Configure Environment Variables
 
 ```bash
+cd server
 # Copy the template
 cp .env.example .env
 
 # Edit .env with your values
 ```
 
-**Minimal .env:**
+**Minimal `server/.env`:**
 ```env
-MONGODB_URI=mongodb://localhost:27017/job-tracker
+PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
 JWT_SECRET=your-secret-key-here
-NODE_ENV=development
 PORT=5000
-CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
 ```
 
 ---
 
-## Step 4: Install Server Dependencies
+## Step 4: Install Server Dependencies & Apply the Schema
 
 ```bash
-cd server
 npm install
+npm run db:migrate   # applies server/db/schema.sql to your Postgres database
 ```
+
+`db:migrate` creates every table the app needs — `users` and `tracked_jobs` for
+the auth/tracker portion, plus `jobs`, `companies`, `applications`,
+`match_scores`, `user_profile`, `job_sources`, and `analytics_daily` for the
+intelligent job-application engine. It's safe to re-run.
 
 ---
 
@@ -88,6 +86,9 @@ npm install
 cd ../client
 npm install
 ```
+
+If you need to point the frontend at a specific backend, set `VITE_API_BASE_URL`
+in `client/.env` (defaults to `http://localhost:5000` for local dev).
 
 ---
 
@@ -103,8 +104,8 @@ npm start
 
 Expected output:
 ```
-Server is running on http://localhost:5000
-MongoDB connected successfully
+Server Running on 5000
+Postgres connected
 ```
 
 **Terminal 2 - Start Frontend Client:**
@@ -118,6 +119,13 @@ Expected output:
 ➜  Local:   http://localhost:5173/
 ```
 
+*(Optional)* If you want the matching/apply/analytics engine running in the
+background, open a third terminal:
+```bash
+cd server
+npm run worker
+```
+
 ---
 
 ## Step 7: Access the Application
@@ -127,7 +135,7 @@ Open your browser and go to:
 http://localhost:5173
 ```
 
-You should see the login page. Create a new account and start tracking!
+You should see the landing page. Register a new account and start tracking!
 
 ---
 
@@ -135,8 +143,9 @@ You should see the login page. Create a new account and start tracking!
 
 ### Backend Health Check
 ```bash
-curl http://localhost:5000/api/health
+curl http://localhost:5000/
 ```
+Expected: `Backend Running`
 
 ### Frontend Loading
 - [ ] Login page loads
@@ -149,14 +158,17 @@ curl http://localhost:5000/api/health
 
 ## Troubleshooting
 
-### MongoDB Connection Error
+### Postgres Connection Error
 ```
-Error: connect ECONNREFUSED 127.0.0.1:27017
+Error: connect ECONNREFUSED
 ```
-**Solution**: Ensure MongoDB is running
-- Windows: Start MongoDB service
-- Mac: `brew services start mongodb-community`
-- Cloud: Check your Atlas connection string
+or
+```
+Postgres connection error ...
+```
+**Solution**: Double-check `PG_CONNECTION_STRING` in `server/.env` — make sure it's
+the full URL from your provider (including `?sslmode=require` if it's included),
+and that the database is actually reachable from wherever you're running the server.
 
 ### Port Already in Use
 ```
@@ -193,7 +205,7 @@ Access to XMLHttpRequest has been blocked by CORS policy
 ```
 **Solution**: Ensure `.env` has correct `CLIENT_URL`:
 ```env
-CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
 ```
 
 ---
@@ -202,20 +214,22 @@ CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localho
 
 ```
 ├── server/
-│   ├── models/              # Database schemas
-│   ├── routes/              # API endpoints
-│   ├── controllers/         # Request handlers
-│   ├── middleware/          # Auth & error handling
-│   ├── server.js            # Entry point
+│   ├── db/                  # Postgres pool + schema.sql
+│   ├── models/               # Postgres-backed User & Job models
+│   ├── routes/                # API endpoints
+│   ├── middleware/            # Auth middleware
+│   ├── services/, adapters/, workers/, queue/  # Matching/apply/analytics engine
+│   ├── server.js               # Entry point
 │   └── package.json
 ├── client/
 │   ├── src/
-│   │   ├── components/      # UI components
-│   │   ├── pages/          # Page components
-│   │   ├── services/       # API calls
-│   │   └── main.jsx        # Entry point
+│   │   ├── components/       # UI components
+│   │   ├── pages/            # Page components
+│   │   ├── api.js            # Axios instance / API calls
+│   │   └── main.jsx          # Entry point
 │   └── vite.config.js
-└── .env
+├── browser-extension/        # Chrome extension for manual job capture
+└── docs/
 ```
 
 ---
@@ -240,11 +254,14 @@ cd server && npm start
 # Terminal 2:
 cd client && npm run dev
 
+# Terminal 3 (optional, engine background workers):
+cd server && npm run worker
+
 # Build for production
 cd client && npm run build
 
-# Run tests (if configured)
-npm test
+# Apply/re-apply the Postgres schema
+cd server && npm run db:migrate
 
 # Install new package (from respective directory)
 npm install package-name

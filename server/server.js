@@ -4,9 +4,14 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
-const connectDB = require("./config/db");
+const { pool } = require("./db/pg");
 
-connectDB();
+// Fail fast if Postgres isn't reachable, instead of discovering it on
+// the first request.
+pool
+  .query("SELECT 1")
+  .then(() => console.log("Postgres connected"))
+  .catch((err) => console.error("Postgres connection error", err));
 
 const app = express();
 
@@ -42,6 +47,16 @@ app.use(express.json());
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/jobs", require("./routes/jobRoutes"));
 app.use("/api/gmail", require("./routes/gmailRoutes"));
+
+// --- Intelligent Job Application Engine ---
+// Everything in this app is now Postgres-backed — the manual tracker
+// (auth/jobs above) and the engine below share the same database.
+// See db/schema.sql.
+app.use("/api/ingest", require("./routes/ingestRoutes"));
+app.use("/api/engine/jobs", require("./routes/engineJobsRoutes"));
+app.use("/api/applications", require("./routes/applyRoutes"));
+app.use("/api/analytics", require("./routes/analyticsRoutes"));
+app.use("/api/profile", require("./routes/profileRoutes"));
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

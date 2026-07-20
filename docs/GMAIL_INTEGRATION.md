@@ -52,7 +52,7 @@ variables (Render doesn't read your local `.env` file).
 1. Redeploy the backend so it picks up the new env vars.
 2. In the app, go to **Integrations** in the nav bar → **Connect Gmail**.
 3. Approve access with a test-user Gmail account.
-4. Click **Scan inbox** — it looks at the last 30 days for messages
+4. Click **Scan inbox** — it looks at the last 30 days for messagesF
    matching interview/application/offer/rejection keywords and lets you
    add each one to your pipeline with one click.
 

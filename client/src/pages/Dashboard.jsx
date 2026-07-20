@@ -51,7 +51,7 @@ function Dashboard() {
   const deleteJob = async (id) => {
     try {
       await api.delete(`/jobs/${id}`);
-      setJobs((prev) => prev.filter((job) => job._id !== id));
+      setJobs((prev) => prev.filter((job) => job.id !== id));
       toast.success("Job deleted");
     } catch (err) {
       console.error(err);
@@ -65,7 +65,7 @@ function Dashboard() {
     try {
       await api.put(`/jobs/${id}`, { status });
       setJobs((prev) =>
-        prev.map((job) => (job._id === id ? { ...job, status } : job))
+        prev.map((job) => (job.id === id ? { ...job, status } : job))
       );
       toast.success("Status updated");
     } catch (err) {
@@ -267,7 +267,7 @@ function Dashboard() {
                     {filteredJobs.map((job) => {
                       const style = STATUS_STYLES[job.status] || STATUS_STYLES.Applied;
                       return (
-                        <tr key={job._id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
+                        <tr key={job.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60">
                           <td className="px-5 py-3.5 font-semibold text-slate-900">
                             {job.company}
                           </td>
@@ -275,7 +275,7 @@ function Dashboard() {
                           <td className="px-5 py-3.5">
                             <select
                               value={job.status}
-                              onChange={(e) => updateStatus(job._id, e.target.value)}
+                              onChange={(e) => updateStatus(job.id, e.target.value)}
                               className={`rounded-full border-0 px-3 py-1 text-xs font-semibold outline-none ${style.badge}`}
                             >
                               <option value="Applied">Applied</option>
@@ -288,17 +288,17 @@ function Dashboard() {
                             <div className="flex justify-end gap-2">
                               <button
                                 onClick={() =>
-                                  navigate(`/edit-job/${job._id}`, { state: { job } })
+                                  navigate(`/edit-job/${job.id}`, { state: { job } })
                                 }
                                 className="rounded-xl border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-slate-300"
                               >
                                 Edit
                               </button>
 
-                              {confirmDeleteId === job._id ? (
+                              {confirmDeleteId === job.id ? (
                                 <div className="flex gap-1">
                                   <button
-                                    onClick={() => deleteJob(job._id)}
+                                    onClick={() => deleteJob(job.id)}
                                     className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
                                   >
                                     Confirm
@@ -312,7 +312,7 @@ function Dashboard() {
                                 </div>
                               ) : (
                                 <button
-                                  onClick={() => setConfirmDeleteId(job._id)}
+                                  onClick={() => setConfirmDeleteId(job.id)}
                                   className="rounded-xl border border-rose-200 px-3 py-1.5 text-xs font-semibold text-rose-600 transition hover:bg-rose-50"
                                 >
                                   Delete

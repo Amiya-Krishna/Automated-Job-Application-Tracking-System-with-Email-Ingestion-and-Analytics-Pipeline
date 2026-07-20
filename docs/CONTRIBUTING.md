@@ -136,53 +136,58 @@ Follow these guidelines:
 // ✅ Good
 const handleUserLogin = async (email, password) => {
   try {
-    const response = await authService.login(email, password);
-    setUser(response.data);
+    const response = await api.post("/auth/login", { email, password });
+    localStorage.setItem("token", response.data.token);
     navigate('/dashboard');
   } catch (error) {
-    setError(error.message);
+    setError(error.response?.data?.message || error.message);
   }
 };
 
 // ❌ Bad
 const h = async (e, p) => {
-  const r = await as.l(e, p);
+  const r = await api.post("/auth/login", { email: e, password: p });
   setU(r.d);
 };
 ```
 
 #### Backend (Node.js)
+
+This project keeps route logic directly in `routes/*.js` (there's no separate
+`controllers/` layer), and the `models/*.js` files are plain functions over a
+shared Postgres pool — not an ORM. Follow that pattern:
+
 ```javascript
-// ✅ Good
-exports.createJob = async (req, res) => {
+// ✅ Good — server/routes/jobRoutes.js style
+router.post("/", auth, async (req, res) => {
   try {
-    const { company, position, status } = req.body;
-    
-    // Validate input
-    if (!company || !position) {
-      return res.status(400).json({ error: 'Missing fields' });
+    const { company, role, status, interviewDate, notes } = req.body;
+
+    if (!company || !role) {
+      return res.status(400).json({ message: "company and role are required" });
     }
-    
-    const job = new Job({
+
+    const job = await Job.create({
       userId: req.user.id,
       company,
-      position,
-      status
+      role,
+      status,
+      interviewDate,
+      notes,
     });
-    
-    await job.save();
-    res.status(201).json(job);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+
+    res.json(job);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
-};
+});
 
 // ❌ Bad
-exports.createJob = (req, res) => {
+router.post("/", (req, res) => {
   const j = new Job(req.body);
   j.save();
   res.json(j);
-};
+});
 ```
 
 ### 5. Test Your Changes
@@ -342,32 +347,24 @@ export default JobCard;
 ### Error Handling
 
 ```javascript
-// Backend
+// Backend — this project returns the resource or a { message } object,
+// not a { success, data } envelope
 try {
-  const job = await Job.findById(id);
-  if (!job) {
-    return res.status(404).json({ 
-      success: false, 
-      message: 'Job not found' 
-    });
-  }
-  res.json({ success: true, data: job });
-} catch (error) {
-  res.status(500).json({ 
-    success: false, 
-    message: error.message 
-  });
+  const jobs = await Job.findAllByUser(req.user.id);
+  res.json(jobs);
+} catch (err) {
+  res.status(500).json({ message: err.message });
 }
 
-// Frontend
+// Frontend — pages call api.js directly (no separate service layer)
 const [error, setError] = useState(null);
 
 const handleSubmit = async (data) => {
   try {
     setError(null);
-    await jobService.create(data);
+    await api.post("/jobs", data);
   } catch (err) {
-    setError(err.message || 'Something went wrong');
+    setError(err.response?.data?.message || "Something went wrong");
   }
 };
 ```
@@ -472,4 +469,4 @@ Thank you for contributing! 🎉
 
 Your efforts help make this project better for everyone.
 
-**Last Updated**: May 26, 2026
+**Last Updated**: July 20, 2026

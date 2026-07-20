@@ -53,9 +53,7 @@ router.get("/callback", async (req, res) => {
       return res.redirect(`${clientUrl}/integrations?gmail=no_refresh_token`);
     }
 
-    await User.findByIdAndUpdate(decoded.id, {
-      gmailRefreshToken: tokens.refresh_token,
-    });
+    await User.setGmailRefreshToken(decoded.id, tokens.refresh_token);
 
     res.redirect(`${clientUrl}/integrations?gmail=connected`);
   } catch (err) {
@@ -68,7 +66,7 @@ router.get("/callback", async (req, res) => {
 router.get("/status", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    res.json({ connected: Boolean(user?.gmailRefreshToken) });
+    res.json({ connected: Boolean(user && user.gmailRefreshToken) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -76,7 +74,7 @@ router.get("/status", auth, async (req, res) => {
 
 router.post("/disconnect", auth, async (req, res) => {
   try {
-    await User.findByIdAndUpdate(req.user.id, { gmailRefreshToken: null });
+    await User.setGmailRefreshToken(req.user.id, null);
     res.json({ message: "Gmail disconnected" });
   } catch (err) {
     res.status(500).json({ message: err.message });
