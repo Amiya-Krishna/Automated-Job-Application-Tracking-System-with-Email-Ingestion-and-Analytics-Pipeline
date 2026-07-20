@@ -103,16 +103,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true, loggedIn: Boolean(token), user: user || null });
           break;
         }
-        case "SET_API_BASE_URL": {
-          await chrome.storage.local.set({ apiBaseUrl: message.apiBaseUrl });
-          sendResponse({ ok: true });
-          break;
-        }
-        case "GET_API_BASE_URL": {
-          const apiBaseUrl = await getApiBaseUrl();
-          sendResponse({ ok: true, apiBaseUrl });
-          break;
-        }
         case "SAVE_JOB": {
           const job = await saveJob(message.job);
           sendResponse({ ok: true, job });

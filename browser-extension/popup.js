@@ -1,5 +1,3 @@
-import { DEFAULT_API_BASE_URL } from "./config.js";
-
 function sendMessage(message) {
   return new Promise((resolve) => {
     chrome.runtime.sendMessage(message, resolve);
@@ -13,9 +11,6 @@ const loginBtn = document.getElementById("loginBtn");
 const loginError = document.getElementById("loginError");
 const userName = document.getElementById("userName");
 const logoutBtn = document.getElementById("logoutBtn");
-const apiBaseUrlInput = document.getElementById("apiBaseUrl");
-const saveApiUrlBtn = document.getElementById("saveApiUrlBtn");
-const apiUrlSaved = document.getElementById("apiUrlSaved");
 const jobsList = document.getElementById("jobsList");
 const jobsEmpty = document.getElementById("jobsEmpty");
 const jobsError = document.getElementById("jobsError");
@@ -104,9 +99,6 @@ async function render() {
     loggedOutView.classList.remove("hidden");
     loggedInView.classList.add("hidden");
   }
-
-  const { ok, apiBaseUrl } = await sendMessage({ type: "GET_API_BASE_URL" });
-  apiBaseUrlInput.value = ok ? apiBaseUrl.replace(/\/api$/, "") : DEFAULT_API_BASE_URL.replace(/\/api$/, "");
 }
 
 loginForm.addEventListener("submit", async (e) => {
@@ -133,15 +125,6 @@ loginForm.addEventListener("submit", async (e) => {
 logoutBtn.addEventListener("click", async () => {
   await sendMessage({ type: "LOGOUT" });
   render();
-});
-
-saveApiUrlBtn.addEventListener("click", async () => {
-  const raw = apiBaseUrlInput.value.trim().replace(/\/+$/, "");
-  const apiBaseUrl = raw.endsWith("/api") ? raw : `${raw}/api`;
-
-  await sendMessage({ type: "SET_API_BASE_URL", apiBaseUrl });
-  apiUrlSaved.textContent = "Saved!";
-  setTimeout(() => (apiUrlSaved.textContent = ""), 2000);
 });
 
 refreshJobsBtn.addEventListener("click", () => {
