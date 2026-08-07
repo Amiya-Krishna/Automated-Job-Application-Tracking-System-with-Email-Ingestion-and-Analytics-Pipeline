@@ -1,4 +1,4 @@
-const { query } = require("../db/pg");
+const { query } = require("@prisma/client");
 
 const ANALYTICS_SQL = `
 WITH submitted AS (

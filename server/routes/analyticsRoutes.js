@@ -54,7 +54,7 @@ router.get("/metrics", async (req, res) => {
 router.get("/summary", async (req, res) => {
   try {
     const days = parseInt(req.query.range, 10) || 30;
-    const { rows } = await require("../db/pg").query(
+    const { rows } = await require("..@prisma/client").query(
       `SELECT
           coalesce(sum(jobs_scraped), 0) AS jobs_scraped,
           coalesce(sum(jobs_matched), 0) AS jobs_matched,
@@ -76,7 +76,7 @@ router.get("/summary", async (req, res) => {
 // GET /api/analytics/funnel -> scraped -> matched -> applied -> interview -> offer
 router.get("/funnel", async (req, res) => {
   try {
-    const { rows } = await require("../db/pg").query(
+    const { rows } = await require("..@prisma/client").query(
       `SELECT
           count(*) FILTER (WHERE j.status != 'duplicate') AS scraped,
           count(*) FILTER (WHERE ms.score >= 70) AS matched,

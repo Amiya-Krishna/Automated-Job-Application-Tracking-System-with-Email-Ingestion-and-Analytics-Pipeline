@@ -2,14 +2,12 @@ const router = require("express").Router();
 const jwt = require("jsonwebtoken");
 const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
-const Job = require("../models/Job");
-const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
 
-// STEP 1 — logged-in user asks for a Google consent URL.
-// We sign a short-lived state token carrying their user id, since the
-// redirect back from Google (step 2) is a plain browser navigation with
-// no Authorization header we can otherwise tie to a user.
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
+// STEP 1 — Get Google auth URL
 router.get("/auth-url", auth, (req, res) => {
   try {
     const oauth2Client = getOAuthClient();
@@ -20,7 +18,7 @@ router.get("/auth-url", auth, (req, res) => {
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
-      prompt: "consent", // forces a refresh_token on every connect, not just the first
+      prompt: "consent",
       scope: GMAIL_SCOPES,
       state,
     });
@@ -31,7 +29,7 @@ router.get("/auth-url", auth, (req, res) => {
   }
 });
 
-// STEP 2 — Google redirects the browser here after the user approves access.
+// STEP 2 — Callback
 router.get("/callback", async (req, res) => {
   const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "/";
 
@@ -48,13 +46,14 @@ router.get("/callback", async (req, res) => {
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
-      // Happens if the user had already granted access before and Google
-      // didn't issue a new refresh token. Ask them to revoke access at
-      // https://myaccount.google.com/permissions and try again.
       return res.redirect(`${clientUrl}/integrations?gmail=no_refresh_token`);
     }
 
-    await User.setGmailRefreshToken(decoded.id, tokens.refresh_token);
+    // ✅ Save refresh token in DB
+    await prisma.user.update({
+      where: { id: decoded.id },
+      data: { gmailRefreshToken: tokens.refresh_token },
+    });
 
     res.redirect(`${clientUrl}/integrations?gmail=connected`);
   } catch (err) {
@@ -63,60 +62,65 @@ router.get("/callback", async (req, res) => {
   }
 });
 
-// Is Gmail connected for the current user?
+// STATUS
 router.get("/status", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    res.json({ connected: Boolean(user && user.gmailRefreshToken) });
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    res.json({ connected: Boolean(user?.gmailRefreshToken) });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
+// DISCONNECT
 router.post("/disconnect", auth, async (req, res) => {
   try {
-    await User.setGmailRefreshToken(req.user.id, null);
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { gmailRefreshToken: null },
+    });
+
     res.json({ message: "Gmail disconnected" });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// Save a parsed Gmail/application email into the same tracked-jobs write
-// path as the manual form. That keeps deduplication centralized instead of
-// re-implementing it in a second endpoint.
+// IMPORT JOB FROM EMAIL
 router.post("/import", auth, async (req, res) => {
   try {
-    const result = await Job.create({
-      userId: req.user.id,
-      company: req.body.company,
-      role: req.body.role,
-      status: req.body.status,
-      interviewDate: req.body.interviewDate,
-      notes: req.body.notes,
-      applicationDate: req.body.applicationDate,
-      duplicateStrategy: req.body.duplicateStrategy,
+    const job = await prisma.trackedJob.create({
+      data: {
+        userId: req.user.id,
+        company: req.body.company,
+        role: req.body.role,
+        status: req.body.status,
+        interviewDate: req.body.interviewDate
+          ? new Date(req.body.interviewDate)
+          : null,
+        notes: req.body.notes,
+        applicationDate: req.body.applicationDate
+          ? new Date(req.body.applicationDate)
+          : new Date(),
+        duplicateStrategy: req.body.duplicateStrategy,
+      },
     });
 
-    res.status(result.action === "inserted" ? 201 : 200).json(result.job);
+    res.status(201).json(job);
   } catch (err) {
-    res
-      .status(err.status || 500)
-      .json({
-        message: err.message,
-        existingJob: err.existingJob || undefined,
-      });
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Scan the inbox for recent messages that look interview/offer/rejection
-// related and hand back subject + snippet + sender + date. Parsing that
-// into company/role/status happens on the frontend (same heuristics used
-// for the "paste an email" feature), so this endpoint stays lightweight
-// and never stores email content.
+// SCAN GMAIL
 router.get("/scan", auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
 
     if (!user?.gmailRefreshToken) {
       return res.status(400).json({ message: "Gmail is not connected" });
@@ -158,7 +162,7 @@ router.get("/scan", auth, async (req, res) => {
           date: getHeader("Date"),
           snippet: full.data.snippet || "",
         };
-      }),
+      })
     );
 
     res.json({ messages: details });

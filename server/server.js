@@ -4,12 +4,11 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
-const { pool } = require("./db/pg");
+const prisma = require('./lib/prisma');
 
 // Fail fast if Postgres isn't reachable, instead of discovering it on
 // the first request.
-pool
-  .query("SELECT 1")
+prisma.$connect()
   .then(() => console.log("Postgres connected"))
   .catch((err) => console.error("Postgres connection error", err));
 

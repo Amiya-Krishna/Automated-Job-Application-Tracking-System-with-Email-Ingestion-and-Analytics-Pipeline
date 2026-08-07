@@ -1,0 +1,139 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model tracked_jobs {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  company          String    @db.VarChar(255)
+  role             String    @db.VarChar(255)
+  application_date DateTime  @default(dbgenerated("CURRENT_DATE")) @db.Date
+  status           String?   @default("Applied") @db.VarChar(50)
+  interview_date   String?   @db.VarChar(50)
+  notes            String?
+  created_at       DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime? @default(now()) @db.Timestamptz(6)
+  users            users     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, application_date(sort: Desc)], map: "idx_tracked_jobs_user_application_date")
+  @@index([user_id], map: "idx_tracked_jobs_user_id")
+}
+
+model users {
+  id                  Int            @id @default(autoincrement())
+  name                String         @db.VarChar(255)
+  email               String         @unique @db.VarChar(255)
+  password            String         @db.VarChar(255)
+  gmail_refresh_token String?
+  created_at          DateTime?      @default(now()) @db.Timestamptz(6)
+  tracked_jobs        tracked_jobs[]
+}
+
+model analytics_daily {
+  day               DateTime  @id @db.Date
+  jobs_scraped      Int?      @default(0)
+  jobs_matched      Int?      @default(0)
+  applications_sent Int?      @default(0)
+  responses         Int?      @default(0)
+  response_rate_pct Decimal?  @db.Decimal(5, 1)
+  refreshed_at      DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model applications {
+  id                 BigInt    @id @default(autoincrement())
+  job_id             BigInt?   @unique
+  status             String    @default("pending") @db.VarChar(20)
+  applied_at         DateTime? @db.Timestamptz(6)
+  failure_reason     String?
+  retry_count        Int?      @default(0)
+  playwright_log     Json?
+  outcome_updated_at DateTime? @db.Timestamptz(6)
+  created_at         DateTime? @default(now()) @db.Timestamptz(6)
+  jobs               jobs?     @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([applied_at(sort: Desc)], map: "idx_applications_applied_at")
+  @@index([outcome_updated_at(sort: Desc)], map: "idx_applications_outcome_updated_at")
+  @@index([status], map: "idx_applications_status")
+}
+
+model companies {
+  id              Int       @id @default(autoincrement())
+  name            String    @db.VarChar(255)
+  normalized_name String    @unique @db.VarChar(255)
+  domain          String?   @db.VarChar(255)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  jobs            jobs[]
+
+  @@index([normalized_name], map: "idx_companies_normalized")
+}
+
+model job_sources {
+  id         Int       @id @default(autoincrement())
+  name       String    @unique @db.VarChar(50)
+  base_url   String?   @db.VarChar(255)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  jobs       jobs[]
+}
+
+model jobs {
+  id               BigInt         @id @default(autoincrement())
+  company_id       Int?
+  title            String         @db.VarChar(255)
+  normalized_title String         @db.VarChar(255)
+  description      String
+  location         String?        @db.VarChar(255)
+  remote_type      String?        @db.VarChar(20)
+  source_id        Int?
+  source_url       String         @db.VarChar(1000)
+  external_job_id  String?        @db.VarChar(255)
+  canonical_job_id BigInt?
+  status           String?        @default("new") @db.VarChar(20)
+  posted_at        DateTime?      @db.Timestamptz(6)
+  scraped_at       DateTime?      @default(now()) @db.Timestamptz(6)
+  content_hash     String         @db.VarChar(64)
+  applications     applications?
+  jobs             jobs?          @relation("jobsTojobs", fields: [canonical_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  other_jobs       jobs[]         @relation("jobsTojobs")
+  companies        companies?     @relation(fields: [company_id], references: [id], onUpdate: NoAction)
+  job_sources      job_sources?   @relation(fields: [source_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  match_scores     match_scores[]
+
+  @@unique([source_id, external_job_id])
+  @@index([company_id, normalized_title], map: "idx_jobs_company_title")
+  @@index([content_hash], map: "idx_jobs_content_hash")
+  @@index([posted_at(sort: Desc)], map: "idx_jobs_posted_at")
+  @@index([status], map: "idx_jobs_status")
+}
+
+model match_scores {
+  id           BigInt        @id @default(autoincrement())
+  job_id       BigInt?
+  profile_id   Int?
+  method       String        @db.VarChar(20)
+  score        Decimal       @db.Decimal(5, 2)
+  explanation  Json?
+  scored_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  jobs         jobs?         @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user_profile user_profile? @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([job_id, method])
+  @@index([score(sort: Desc)], map: "idx_match_scores_score")
+}
+
+model user_profile {
+  id               Int            @id @default(autoincrement())
+  full_name        String?        @db.VarChar(255)
+  email            String?        @db.VarChar(255)
+  resume_text      String?
+  skills           String[]       @default([])
+  experience_years Decimal?       @db.Decimal(3, 1)
+  skill_weights    Json?          @default("{}")
+  updated_at       DateTime?      @default(now()) @db.Timestamptz(6)
+  match_scores     match_scores[]
+}

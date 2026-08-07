@@ -1,6 +1,6 @@
 const { Worker } = require("bullmq");
 const { connection } = require("../queue");
-const { query } = require("../db/pg");
+const { query } = require("@prisma/client");
 
 const ROLLUP_SQL = `
   INSERT INTO analytics_daily (day, jobs_scraped, jobs_matched, applications_sent, responses, response_rate_pct, refreshed_at)
@@ -34,7 +34,7 @@ const analyticsWorker = new Worker(
     await query(ROLLUP_SQL);
     return { refreshedAt: new Date().toISOString() };
   },
-  { connection, concurrency: 1 }
+  { connection, concurrency: 1 },
 );
 
 analyticsWorker.on("failed", (job, err) => {

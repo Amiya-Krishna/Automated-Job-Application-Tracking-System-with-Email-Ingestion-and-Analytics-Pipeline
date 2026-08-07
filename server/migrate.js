@@ -1,17 +1,17 @@
 // migrate.js
-const { Client } = require('pg');
-const fs = require('fs');
-require('dotenv').config();
+const { Client } = require("pg");
+const fs = require("fs");
+require("dotenv").config();
 
 const client = new Client({
-  connectionString: process.env.PG_CONNECTION_STRING,
+  connectionString: process.env.DATABASE_URL || process.env.DATABASE_URL,
 });
 
 async function run() {
   try {
     await client.connect();
 
-    const sql = fs.readFileSync('./db/schema.sql', 'utf-8');
+    const sql = fs.readFileSync("./db/schema.sql", "utf-8");
 
     await client.query(sql);
 

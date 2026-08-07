@@ -2,10 +2,11 @@ const path = require("path");
 const fs = require("fs");
 const { selectAdapter } = require("../adapters");
 const { allowApply, humanDelay } = require("./rateLimiter");
-const { query } = require("../db/pg");
+const { query } = require("..@prisma/client");
 
 const SCREENSHOT_DIR = path.join(__dirname, "..", "screenshots");
-if (!fs.existsSync(SCREENSHOT_DIR)) fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+if (!fs.existsSync(SCREENSHOT_DIR))
+  fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
 const NAV_TIMEOUT_MS = 30000;
 const MAX_RETRIES = 3;
@@ -22,7 +23,9 @@ const MAX_RETRIES = 3;
 async function prepareApplication(job, profile, browserContext) {
   const allowed = await allowApply(job.sourceUrl);
   if (!allowed) {
-    await setStatus(job.id, "rate_limited", { reason: "domain hourly cap reached" });
+    await setStatus(job.id, "rate_limited", {
+      reason: "domain hourly cap reached",
+    });
     return { status: "rate_limited" };
   }
 
@@ -39,7 +42,9 @@ async function prepareApplication(job, profile, browserContext) {
     } catch (err) {
       attempt += 1;
       if (attempt >= MAX_RETRIES) {
-        await setStatus(job.id, "failed", { reason: `navigation timeout: ${err.message}` });
+        await setStatus(job.id, "failed", {
+          reason: `navigation timeout: ${err.message}`,
+        });
         await page.close();
         return { status: "failed", reason: err.message };
       }
@@ -67,7 +72,10 @@ async function prepareApplication(job, profile, browserContext) {
       }
       filled.push(fieldKey);
     } catch (err) {
-      console.warn(`[applyEngine] field fill failed (${fieldKey}):`, err.message);
+      console.warn(
+        `[applyEngine] field fill failed (${fieldKey}):`,
+        err.message,
+      );
       skipped.push(fieldKey);
     }
   }
@@ -82,7 +90,11 @@ async function prepareApplication(job, profile, browserContext) {
   const screenshotPath = path.join(SCREENSHOT_DIR, `job-${job.id}.png`);
   await page.screenshot({ path: screenshotPath });
 
-  await setStatus(job.id, "pending_review", { filled, skipped, screenshotPath });
+  await setStatus(job.id, "pending_review", {
+    filled,
+    skipped,
+    screenshotPath,
+  });
 
   // Do NOT click submit. The user reviews `pending_review` applications in
   // the dashboard and confirms manually — see routes/applyRoutes.js
@@ -98,7 +110,7 @@ async function setStatus(jobId, status, logExtra = {}) {
        SET status = $2,
            playwright_log = applications.playwright_log || $3::jsonb,
            retry_count = CASE WHEN $2 = 'failed' THEN applications.retry_count + 1 ELSE applications.retry_count END`,
-    [jobId, status, JSON.stringify(logExtra)]
+    [jobId, status, JSON.stringify(logExtra)],
   );
 }
 
