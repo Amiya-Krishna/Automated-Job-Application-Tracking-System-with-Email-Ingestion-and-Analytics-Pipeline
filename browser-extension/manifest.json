@@ -7,7 +7,7 @@
   "host_permissions": [
     "https://*.linkedin.com/*",
     "https://*.indeed.com/*",
-    "https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-o1ls.onrender.com/*",
+    "https://job-application-tracker-portal-o1ls.onrender.com/*",
     "http://localhost:5000/*"
   ],
   "background": {
