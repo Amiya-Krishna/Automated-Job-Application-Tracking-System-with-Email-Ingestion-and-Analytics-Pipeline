@@ -26,3 +26,4 @@ dist/
 
 # Optional
 coverage/
+/generated/prisma

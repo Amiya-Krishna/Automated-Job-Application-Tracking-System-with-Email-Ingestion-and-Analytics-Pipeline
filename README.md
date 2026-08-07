@@ -22,6 +22,7 @@ Designed as a production-style system with queues, workers, and failure handling
 Most job trackers stop at CRUD: storing applications.
 
 This system focuses on the harder problems:
+
 - Identity resolution across noisy external sources
 - Ranking before action (deciding what to apply to)
 - Automating preparation without automating risk
@@ -74,6 +75,7 @@ This system is not a mock design. It is implemented with:
 - Persistent PostgreSQL schema with canonical job identity
 
 Observable behaviors:
+
 - Queue jobs can be inspected and retried
 - Failed scrapes do not crash the API
 - Apply pipeline halts at `pending_review` with filled fields visible
@@ -112,34 +114,37 @@ flowchart LR
 - BullMQ gives retry-with-backoff instead of a request failing outright, and the queue's own job history doubles as an audit log of what ran and when.
 - The API process (`server.js`) and worker process (`worker.js`) deploy and restart independently. A Playwright crash does not take the API down.
 
-
 **Modules:**
 
-| Module | Responsibility | Code |
-|---|---|---|
-| API layer | Auth, request validation, thin CRUD reads, queue enqueueing. No scraping, scoring, or browser work inline. | `routes/`, `middleware/authMiddleware.js` |
-| Ingestion | Single entrypoint (`ingestJob`) shared by the scheduled scraper and the extension's manual capture, so normalization and dedup logic exist in one place. | `services/ingestionService.js`, `services/scraper.js`, `adapters/` |
-| Deduplication | Exact hash match first, then a bounded fuzzy pass scoped to the same company within a 14-day window. | `services/dedupService.js` |
-| Matching / scoring | TF-IDF and curated skill-vocabulary scoring against the candidate's resume, run per job in a worker. | `services/matchingService.js`, `workers/matchWorker.js`, `services/skills.js` |
-| Apply engine | Playwright, per-ATS field detection, stops before final submit. Domain-scoped rate limiting via Redis. | `services/applyEngine.js`, `adapters/`, `services/rateLimiter.js`, `workers/applyWorker.js` |
-| Learning loop | Recorded outcomes adjust per-skill weights, feeding back into future match scores. | `services/learningService.js` |
-| Analytics | Scheduled rollup worker aggregates the funnel into a daily table instead of computing it live. | `workers/analyticsWorker.js`, `routes/analyticsRoutes.js` |
-| Outcome signal (Gmail) | Read-only OAuth scan for interview/offer/rejection-shaped emails, surfaced for manual confirmation. Not a write path. | `routes/gmailRoutes.js`, `config/google.js` |
+| Module                 | Responsibility                                                                                                                                           | Code                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| API layer              | Auth, request validation, thin CRUD reads, queue enqueueing. No scraping, scoring, or browser work inline.                                               | `routes/`, `middleware/authMiddleware.js`                                                   |
+| Ingestion              | Single entrypoint (`ingestJob`) shared by the scheduled scraper and the extension's manual capture, so normalization and dedup logic exist in one place. | `services/ingestionService.js`, `services/scraper.js`, `adapters/`                          |
+| Deduplication          | Exact hash match first, then a bounded fuzzy pass scoped to the same company within a 14-day window.                                                     | `services/dedupService.js`                                                                  |
+| Matching / scoring     | TF-IDF and curated skill-vocabulary scoring against the candidate's resume, run per job in a worker.                                                     | `services/matchingService.js`, `workers/matchWorker.js`, `services/skills.js`               |
+| Apply engine           | Playwright, per-ATS field detection, stops before final submit. Domain-scoped rate limiting via Redis.                                                   | `services/applyEngine.js`, `adapters/`, `services/rateLimiter.js`, `workers/applyWorker.js` |
+| Learning loop          | Recorded outcomes adjust per-skill weights, feeding back into future match scores.                                                                       | `services/learningService.js`                                                               |
+| Analytics              | Scheduled rollup worker aggregates the funnel into a daily table instead of computing it live.                                                           | `workers/analyticsWorker.js`, `routes/analyticsRoutes.js`                                   |
+| Outcome signal (Gmail) | Read-only OAuth scan for interview/offer/rejection-shaped emails, surfaced for manual confirmation. Not a write path.                                    | `routes/gmailRoutes.js`, `config/google.js`                                                 |
 
 ---
 
 ## System in Action (Proof)
 
 ### Data Flow
+
 ![Data Flow](outputs/data_flow.png)
 
 ### Login Page
+
 ![Login Page](outputs/Login_Page.png)
 
 ### Dashboard (Matched Jobs)
+
 ![Dashboard](outputs/dashboard.png)
 
 ### System Architecture
+
 ![System Architecture](outputs/system_architecture.png)
 
 ## Scaling Considerations
@@ -149,7 +154,7 @@ flowchart LR
 - Bottleneck: Playwright sessions (CPU + memory bound)
 - Database: write-heavy on ingestion, read-heavy on dashboard
 - Queue ensures backpressure instead of request failure under load
-- At higher volumes, ingestion can be split into its own service and   queues partitioned by job source to isolate scraper instability.
+- At higher volumes, ingestion can be split into its own service and queues partitioned by job source to isolate scraper instability.
 - System tested with >1,000 ingested job records without degradation in API latency (due to async pipeline design)
 
 ---
@@ -184,14 +189,17 @@ Everything past step 2 is a queue message or a database write. Nothing after ing
 ## Key Engineering Decisions
 
 **Synchronous deduplication, not its own queue stage**
+
 - Problem it solves: the fuzzy-match candidate set is bounded (same company, ±14-day window), so the check is cheap. Running it inline closes a race window — two near-simultaneous ingests of the same listing could both pass a "no duplicate yet" check if the comparison happened asynchronously.
 - Tradeoff: adds latency to `POST /api/ingest`. Accepted because the candidate set is small enough that the cost is bounded and predictable.
 
 **Two-stage dedup: exact hash, then fuzzy**
+
 - Problem it solves: an indexed hash lookup is O(1) and catches identical reposts for free. The fuzzy pass (title Jaro-Winkler + description TF-IDF cosine similarity) only runs on a miss, against a pre-filtered candidate set.
 - Tradeoff: a job re-titled and re-worded past a 0.85 similarity threshold slips through as a false negative. Judged acceptable against running full-corpus fuzzy matching on every ingest.
 
 **Gmail is a signal, not a write authority**
+
 - Problem it solves: `/api/gmail/scan` reads metadata only, using the `gmail.readonly` scope. It never writes application state directly — the user confirms a match manually.
 - Tradeoff: one extra manual step per outcome. Accepted because subject-line heuristics are noisy (a newsletter mentioning "interview tips" would match naively), and a false auto-written outcome doesn't just mislabel one row — it pushes learning-loop skill weights in the wrong direction for every future score.
 
@@ -199,6 +207,7 @@ Everything past step 2 is a queue message or a database write. Nothing after ing
 The apply engine is not a bot that blindly submits forms.
 
 It is a constrained automation system designed to:
+
 - maximize field-fill coverage
 - minimize incorrect submissions
 - preserve human control at critical decision points
@@ -208,10 +217,12 @@ This avoids a high-risk failure mode:
 incorrect auto-submissions at scale.
 
 **Analytics are precomputed, not queried live**
+
 - Problem it solves: `analytics_daily` is a scheduled per-day upsert instead of joining `jobs`, `match_scores`, and `applications` live on every dashboard load. Query cost scales with job volume, not with dashboard traffic.
 - Tradeoff: analytics are eventually consistent. A late outcome update requires a rollup recompute — made safe by an idempotent `ON CONFLICT (day) DO UPDATE`.
 
 **Canonical job identity, stored not inferred**
+
 - Problem it solves: every row settles on a canonical id at insert time. Applications, scores, and analytics all reference the same row, so nothing downstream has to reconcile competing duplicates.
 - Tradeoff: the ingest path is more complex than a plain insert. Accepted because pushing reconciliation downstream would mean every consumer re-implements dedup logic.
 
@@ -227,7 +238,7 @@ score = 0.6 * similarity + 0.4 * skill_overlap
 - `skill_overlap`: weighted overlap against a curated skill vocabulary, with per-skill weights adjusted by the learning loop.
 - Output is clamped to [0, 100] and stored with a JSONB explanation — matched skills, missing skills, raw similarity.
 
-TF-IDF was chosen over an embedding-based scorer as the default because the explanation output is a requirement, not a nice-to-have. A job scoring 82 needs to say *why* it scored 82 so the user can trust the ranking instead of treating it as a black box. An embedding scorer (`scoreEmbedding`) is defined behind the same interface, takes an injected `embedFn`, and is not tied to a specific provider — it's a defined upgrade path, not a missing feature, and it would catch semantic matches TF-IDF misses ("led a team" vs. "management experience") at the cost of losing that explanation.
+TF-IDF was chosen over an embedding-based scorer as the default because the explanation output is a requirement, not a nice-to-have. A job scoring 82 needs to say _why_ it scored 82 so the user can trust the ranking instead of treating it as a black box. An embedding scorer (`scoreEmbedding`) is defined behind the same interface, takes an injected `embedFn`, and is not tied to a specific provider — it's a defined upgrade path, not a missing feature, and it would catch semantic matches TF-IDF misses ("led a team" vs. "management experience") at the cost of losing that explanation.
 
 ---
 
@@ -246,18 +257,22 @@ This is what turns the matcher from a static keyword filter into a system that s
 ## Failure Handling
 
 **Scraper failure**
+
 - Cause: LinkedIn/Indeed change DOM structure, or rate-limit/CAPTCHA the scraper.
 - Mitigation: queue retry with exponential backoff; failures are isolated to the scraper job, not the API. Selector drift is treated as an ongoing maintenance cost, not a one-time bug — there's no official job-search API in use here, by design.
 
 **Worker crash**
+
 - Cause: Playwright or aggregation logic throws after a job is already accepted into the queue.
 - Mitigation: the worker process is separate from the API, so a crash doesn't take the API down. BullMQ retries the job from its last committed state instead of silently dropping it.
 
 **Duplicate race condition**
+
 - Cause: two sources (scraper + manual capture) ingest the same listing within seconds of each other.
 - Mitigation: dedup runs synchronously before insert, and every row commits to a canonical id at insert time — there's no window where two rows can both claim to be canonical for the same listing.
 
 **Noisy Gmail data**
+
 - Cause: inbox text is not a reliable ground truth — false positives on subject-line keyword matches are common.
 - Mitigation: Gmail is read-only and advisory. Application state only changes on explicit user confirmation, which keeps bad signal out of both the applications table and the learning loop's training data.
 
@@ -334,7 +349,7 @@ CREATE TABLE jobs (
 - Frontend: React (Vite), Tailwind, Recharts
 - Capture: Chrome extension, shares the same `/api/ingest` entrypoint as the scheduled scraper
 
-Required environment variables (`server/.env`): `PG_CONNECTION_STRING`, `REDIS_URL`, `JWT_SECRET`, `CLIENT_URL`. Gmail (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`) and Playwright (`PLAYWRIGHT_PROFILE_DIR`, `PLAYWRIGHT_HEADLESS`) are optional — the system runs with those features disabled if unset.
+Required environment variables (`server/.env`): `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET`, `CLIENT_URL`. Gmail (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`) and Playwright (`PLAYWRIGHT_PROFILE_DIR`, `PLAYWRIGHT_HEADLESS`) are optional — the system runs with those features disabled if unset.
 
 ---
 
@@ -372,10 +387,10 @@ cd ../server && npm run worker
 POST /api/ingest
 
 {
-  "title": "Backend Engineer",
-  "company": "Acme",
-  "description": "...",
-  "source": "linkedin"
+"title": "Backend Engineer",
+"company": "Acme",
+"description": "...",
+"source": "linkedin"
 }
 
 ---
@@ -388,6 +403,7 @@ POST /api/ingest
 - Workers: Separate process (auto-restart enabled)
 
 Production considerations:
+
 - Workers run independently of API
 - Redis persistence enabled (AOF)
 - Playwright runs in headless mode with persistent sessions
