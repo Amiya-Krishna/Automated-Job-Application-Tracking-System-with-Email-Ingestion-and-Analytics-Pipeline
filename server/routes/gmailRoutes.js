@@ -2,6 +2,7 @@ const router = require("express").Router();
 const jwt = require("jsonwebtoken");
 const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
+const Job = require("../models/Job");
 const User = require("../models/User");
 const auth = require("../middleware/authMiddleware");
 
@@ -81,6 +82,33 @@ router.post("/disconnect", auth, async (req, res) => {
   }
 });
 
+// Save a parsed Gmail/application email into the same tracked-jobs write
+// path as the manual form. That keeps deduplication centralized instead of
+// re-implementing it in a second endpoint.
+router.post("/import", auth, async (req, res) => {
+  try {
+    const result = await Job.create({
+      userId: req.user.id,
+      company: req.body.company,
+      role: req.body.role,
+      status: req.body.status,
+      interviewDate: req.body.interviewDate,
+      notes: req.body.notes,
+      applicationDate: req.body.applicationDate,
+      duplicateStrategy: req.body.duplicateStrategy,
+    });
+
+    res.status(result.action === "inserted" ? 201 : 200).json(result.job);
+  } catch (err) {
+    res
+      .status(err.status || 500)
+      .json({
+        message: err.message,
+        existingJob: err.existingJob || undefined,
+      });
+  }
+});
+
 // Scan the inbox for recent messages that look interview/offer/rejection
 // related and hand back subject + snippet + sender + date. Parsing that
 // into company/role/status happens on the frontend (same heuristics used
@@ -130,7 +158,7 @@ router.get("/scan", auth, async (req, res) => {
           date: getHeader("Date"),
           snippet: full.data.snippet || "",
         };
-      })
+      }),
     );
 
     res.json({ messages: details });

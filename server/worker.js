@@ -3,13 +3,9 @@
 // the REST API down with it.
 require("dotenv").config();
 
+require("./workers/ingestWorker");
 require("./workers/matchWorker");
 require("./workers/applyWorker");
 require("./workers/analyticsWorker");
 
-// Note: dedup runs inline inside services/ingestionService.js rather than as
-// its own queue — the fuzzy-match check is already scoped to one company +
-// a 14-day window, so it's cheap enough to do synchronously before insert.
-// Split it into its own worker later if ingestion volume makes it a bottleneck.
-
-console.log("Workers started: match, apply, analytics");
+console.log("Workers started: ingest, match, apply, analytics");

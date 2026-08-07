@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS tracked_jobs (
     user_id           INT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     company           VARCHAR(255) NOT NULL,
     role              VARCHAR(255) NOT NULL,
+    application_date  DATE,
     status            VARCHAR(50) DEFAULT 'Applied',
     interview_date    VARCHAR(50),
     notes             TEXT,
@@ -25,6 +26,25 @@ CREATE TABLE IF NOT EXISTS tracked_jobs (
     updated_at        TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_tracked_jobs_user_id ON tracked_jobs(user_id);
+CREATE INDEX IF NOT EXISTS idx_tracked_jobs_user_application_date ON tracked_jobs(user_id, application_date DESC);
+CREATE INDEX IF NOT EXISTS idx_tracked_jobs_user_company_role_norm ON tracked_jobs (
+    user_id,
+    lower(btrim(company)),
+    lower(btrim(role))
+);
+CREATE INDEX IF NOT EXISTS idx_tracked_jobs_user_company_role_date_norm ON tracked_jobs (
+    user_id,
+    application_date,
+    lower(btrim(company)),
+    lower(btrim(role))
+);
+
+ALTER TABLE tracked_jobs ADD COLUMN IF NOT EXISTS application_date DATE;
+UPDATE tracked_jobs
+SET application_date = COALESCE(application_date, created_at::date)
+WHERE application_date IS NULL;
+ALTER TABLE tracked_jobs ALTER COLUMN application_date SET DEFAULT CURRENT_DATE;
+ALTER TABLE tracked_jobs ALTER COLUMN application_date SET NOT NULL;
 
 -- --- Intelligent Job Application Engine ---
 
@@ -102,6 +122,9 @@ CREATE TABLE IF NOT EXISTS applications (
     created_at          TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
+CREATE INDEX IF NOT EXISTS idx_applications_applied_at ON applications(applied_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applications_outcome_updated_at ON applications(outcome_updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_applications_status_applied_at ON applications(status, applied_at DESC) WHERE applied_at IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS analytics_daily (
     day                     DATE PRIMARY KEY,
