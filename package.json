@@ -1,16 +1,18 @@
 {
   "dependencies": {
+    "@prisma/client": "^7.9.1",
     "@tailwindcss/vite": "^4.3.0",
     "axios": "^1.16.1",
     "bullmq": "^5.80.9",
     "dotenv": "^17.4.2",
     "ioredis": "^5.11.1",
+    "prisma": "^7.9.1",
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.15.1",
     "recharts": "^3.8.1",
     "tailwindcss": "^4.3.0"
   },
-  "name": "job-application-tracker-portal",
+  "name": "Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline",
   "version": "1.0.0",
   "description": "[![React](https://img.shields.io/badge/React-19.x-blue?logo=react)](https://react.dev) [![Node.js](https://img.shields.io/badge/Node.js-16.x+-green?logo=node.js)](https://nodejs.org) [![Express](https://img.shields.io/badge/Express-5.x-black?logo=express)](https://expressjs.com) [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Latest-blue?logo=postgresql)](https://www.postgresql.org) [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)",
   "main": "index.js",
@@ -22,14 +24,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Amiya-Krishna/Job-Application-Tracker-Portal.git"
+    "url": "git+https://github.com/Amiya-Krishna/Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/Amiya-Krishna/Job-Application-Tracker-Portal/issues"
+    "url": "https://github.com/Amiya-Krishna/Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline/issues"
   },
-  "homepage": "https://github.com/Amiya-Krishna/Job-Application-Tracker-Portal#readme"
+  "homepage": "https://github.com/Amiya-Krishna/Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline#readme"
 }
