@@ -148,7 +148,7 @@ Job Application Tracker Portal/
 
 ```javascript
 // db/pg.js
-- Single `pg` Pool, built from PG_CONNECTION_STRING
+- Single `pg` Pool, built from DATABASE_URL
 - query(text, params) helper used by every model/route
 - Logs any query slower than 200ms
 
@@ -166,6 +166,7 @@ connection pool (no ORM). Each function maps snake_case DB columns to the
 camelCase shape the rest of the app expects.
 
 #### `User.js` (`users` table)
+
 ```
 Columns:
 ├── id (SERIAL PRIMARY KEY)
@@ -179,6 +180,7 @@ Functions: findByEmail, findById, create, setGmailRefreshToken
 ```
 
 #### `Job.js` (`tracked_jobs` table)
+
 ```
 Columns:
 ├── id (SERIAL PRIMARY KEY)
@@ -200,12 +202,14 @@ Functions: create, findAllByUser, findOneAndUpdate, findOneAndDelete
 handler (there is no separate `controllers/` layer).
 
 #### `authRoutes.js` — mounted at `/api/auth`
+
 ```
 POST   /api/auth/register          - Create a user
 POST   /api/auth/login             - Log in, receive a JWT
 ```
 
 #### `jobRoutes.js` — mounted at `/api/jobs`
+
 ```
 POST   /api/jobs                   - Create a tracked job
 GET    /api/jobs                   - Get all jobs for the logged-in user
@@ -214,6 +218,7 @@ DELETE /api/jobs/:id                - Delete a job (ownership-checked)
 ```
 
 #### `gmailRoutes.js` — mounted at `/api/gmail`
+
 ```
 GET    /api/gmail/auth-url         - Get the Google consent URL
 GET    /api/gmail/callback         - OAuth redirect target
@@ -223,6 +228,7 @@ GET    /api/gmail/scan             - Scan inbox for interview/offer/rejection em
 ```
 
 #### Engine routes — `ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js`
+
 See [API_ENDPOINTS.md](API_ENDPOINTS.md) for the full list — these back the
 Intelligent Job Application Engine described in
 [intelligent-job-application-engine-design.md](intelligent-job-application-engine-design.md).
@@ -232,6 +238,7 @@ Intelligent Job Application Engine described in
 **Custom Middleware**
 
 #### `authMiddleware.js`
+
 - Reads the JWT from the `token` request header (not `Authorization: Bearer`)
 - Verifies it and attaches the decoded payload to `req.user`
 - Returns 401/400 on missing or invalid tokens
@@ -272,29 +279,29 @@ for the full design.
 
 **Reusable UI Components**
 
-| Component | Purpose |
-|-----------|---------|
-| `Navbar.jsx` | Top navigation bar |
-| `Sidebar.jsx` | Dashboard side navigation |
-| `AuthShell.jsx` | Shared layout wrapper for Login/Register |
-| `DashboardCards.jsx` | Summary stat cards on the dashboard |
-| `JobTable.jsx` | Tabular job list |
+| Component            | Purpose                                     |
+| -------------------- | ------------------------------------------- |
+| `Navbar.jsx`         | Top navigation bar                          |
+| `Sidebar.jsx`        | Dashboard side navigation                   |
+| `AuthShell.jsx`      | Shared layout wrapper for Login/Register    |
+| `DashboardCards.jsx` | Summary stat cards on the dashboard         |
+| `JobTable.jsx`       | Tabular job list                            |
 | `ProtectedRoute.jsx` | Redirects unauthenticated users to `/login` |
 
 ### Directory: `client/src/pages/`
 
 **Full-Page Components**
 
-| Page | Route | Purpose |
-|------|-------|---------|
-| `Landing.jsx` | `/` | Public marketing page |
-| `Login.jsx` | `/login` | User authentication |
-| `Register.jsx` | `/register` | Account creation |
-| `Dashboard.jsx` | `/dashboard` | Main application hub |
-| `AddJob.jsx` | — | Entry point used before `JobForm` |
-| `JobForm.jsx` | `/add-job`, `/edit-job/:id` | Create/edit a job |
-| `Integrations.jsx` | `/integrations` | Connect Gmail, scan inbox |
-| `NotFound.jsx` | `*` | 404 page |
+| Page               | Route                       | Purpose                           |
+| ------------------ | --------------------------- | --------------------------------- |
+| `Landing.jsx`      | `/`                         | Public marketing page             |
+| `Login.jsx`        | `/login`                    | User authentication               |
+| `Register.jsx`     | `/register`                 | Account creation                  |
+| `Dashboard.jsx`    | `/dashboard`                | Main application hub              |
+| `AddJob.jsx`       | —                           | Entry point used before `JobForm` |
+| `JobForm.jsx`      | `/add-job`, `/edit-job/:id` | Create/edit a job                 |
+| `Integrations.jsx` | `/integrations`             | Connect Gmail, scan inbox         |
+| `NotFound.jsx`     | `*`                         | 404 page                          |
 
 ### File: `client/src/api.js`
 
@@ -386,6 +393,7 @@ Render jobs
 ## Technology Stack Details
 
 ### Backend
+
 - **Runtime**: Node.js
 - **Framework**: Express 5
 - **Database**: PostgreSQL (hosted) via the `pg` driver — no ORM
@@ -394,6 +402,7 @@ Render jobs
 - **Authentication**: JWT + bcryptjs
 
 ### Frontend
+
 - **Library**: React 19
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS
@@ -401,6 +410,7 @@ Render jobs
 - **Routing**: React Router
 
 ### Development Tools
+
 - **Package Manager**: npm
 - **Version Control**: Git
 - **Environment**: Node.js development server
@@ -410,6 +420,7 @@ Render jobs
 ## Key Dependencies
 
 ### Backend (`server/package.json`)
+
 ```json
 {
   "express": "^5.2.1",
@@ -427,6 +438,7 @@ Render jobs
 ```
 
 ### Frontend (`client/package.json`)
+
 ```json
 {
   "react": "^19.x",
@@ -442,22 +454,26 @@ Render jobs
 ## Security Considerations
 
 ### Password Security
+
 - Hashed with bcryptjs (10 salt rounds)
 - Never stored in plain text
 - Validated on login
 
 ### JWT Authentication
+
 - Token generated on login (unsigned expiry — no `expiresIn` set on the main login token)
 - Sent as a plain `token` request header (not `Authorization: Bearer`)
 - Verified on every protected route via `authMiddleware.js`
 
 ### CORS Protection
+
 - Configured via `CLIENT_URL` (comma-separated allowlist)
 - Also explicitly allows any `chrome-extension://` origin, for the browser extension
 - Requests with no `Origin` header (curl/Postman) are allowed through
 
 ### Environment Variables
-- Sensitive data in `server/.env` (`PG_CONNECTION_STRING`, `JWT_SECRET`, Google OAuth secrets)
+
+- Sensitive data in `server/.env` (`DATABASE_URL`, `JWT_SECRET`, Google OAuth secrets)
 - Never committed to version control
 - Loaded via `dotenv` at application start
 
@@ -466,6 +482,7 @@ Render jobs
 ## Scalability Considerations
 
 ### Current (Modular Monolith)
+
 - One Express app serves both the manual tracker and the engine API
 - Background work (scraping, matching, applying, analytics) already runs as
   **separate worker processes** (`npm run worker`) so a Playwright crash never
@@ -473,11 +490,13 @@ Render jobs
 - Good for small to medium usage
 
 ### Database Optimization
+
 - Indexes on frequently queried columns (see `db/schema.sql`)
 - Connection pooling via `pg.Pool`
 - `analytics_daily` is a precomputed daily rollup rather than live joins on every dashboard load
 
 ### Future Directions
+
 - Split the engine (scraping/matching/apply/analytics) into its own deployable service
 - Add `pgvector` for embedding-based matching at scale (see the engine design doc)
 - API gateway / rate limiting in front of both services
@@ -487,29 +506,34 @@ Render jobs
 ## Environment-Specific Configuration
 
 ### Development
+
 - CORS allows `localhost` explicitly via `CLIENT_URL`
 - Detailed error messages returned in JSON error responses
 
 ### Production
+
 - Optimized Vite bundle (`npm run build`)
 - `CLIENT_URL` restricted to the actual deployed frontend domain(s)
-- `PG_CONNECTION_STRING` points at a production-tier hosted Postgres instance
+- `DATABASE_URL` points at a production-tier hosted Postgres instance
 
 ---
 
 ## File Naming Conventions
 
 ### React Components
+
 - PascalCase: `JobTable.jsx`, `AuthShell.jsx`
 - One component per file
 - `pages/` mirrors routes; `components/` holds shared/reusable pieces
 
 ### JavaScript Files
+
 - camelCase: `authMiddleware.js`, `ingestionService.js`
 - Functions and variables: camelCase
 - Constants: UPPER_SNAKE_CASE
 
 ### CSS/Styling
+
 - Tailwind utility classes, configured via `index.css`
 
 ---

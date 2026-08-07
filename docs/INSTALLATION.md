@@ -22,13 +22,13 @@ Complete installation instructions for the Job Application Tracker Portal.
 
 ### Minimum Requirements
 
-| Requirement | Version | Download |
-|-------------|---------|----------|
-| Node.js | 16.x or higher | [nodejs.org](https://nodejs.org) |
-| npm | 7.x or higher | Comes with Node.js |
-| PostgreSQL | Hosted instance (Neon, Supabase, Render, etc.) | No local install needed — just a connection URL |
-| Redis | Local or hosted (Upstash, etc.) — used by the matching/apply/analytics engine | [redis.io](https://redis.io) |
-| Git | Latest | [git-scm.com](https://git-scm.com) |
+| Requirement | Version                                                                       | Download                                        |
+| ----------- | ----------------------------------------------------------------------------- | ----------------------------------------------- |
+| Node.js     | 16.x or higher                                                                | [nodejs.org](https://nodejs.org)                |
+| npm         | 7.x or higher                                                                 | Comes with Node.js                              |
+| PostgreSQL  | Hosted instance (Neon, Supabase, Render, etc.)                                | No local install needed — just a connection URL |
+| Redis       | Local or hosted (Upstash, etc.) — used by the matching/apply/analytics engine | [redis.io](https://redis.io)                    |
+| Git         | Latest                                                                        | [git-scm.com](https://git-scm.com)              |
 
 ### Recommended Specifications
 
@@ -84,6 +84,7 @@ npm install
 ```
 
 **Expected output:**
+
 ```
 added XXX packages, and audited XXX packages in Xs
 ```
@@ -111,7 +112,7 @@ Gmail/Redis configuration — see [Environment Setup](#environment-setup) below.
 npm run db:migrate
 ```
 
-This runs `db/schema.sql` against whatever `PG_CONNECTION_STRING` points to,
+This runs `db/schema.sql` against whatever `DATABASE_URL` points to,
 creating all tables the app needs. Safe to re-run any time.
 
 ---
@@ -131,6 +132,7 @@ npm install
 ```
 
 **Expected output:**
+
 ```
 added XXX packages, and audited XXX packages in Xs
 ```
@@ -147,7 +149,7 @@ If you need to point the frontend at a specific backend, create/edit `.env` in
 the `client` directory:
 
 ```env
-VITE_API_BASE_URL=https://job-application-tracker-portal-o1ls.onrender.com
+VITE_API_BASE_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-o1ls.onrender.com
 ```
 
 Falls back to `http://localhost:5000` if unset.
@@ -186,7 +188,7 @@ connection URL:
 Put the connection string in `server/.env`:
 
 ```env
-PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 ```
 
 Then apply the schema once:
@@ -207,6 +209,7 @@ npm start
 ```
 
 Expected output:
+
 ```
 Server Running on 5000
 Postgres connected
@@ -231,7 +234,7 @@ Edit `server/.env` with proper values:
 
 ```env
 # ===== DATABASE =====
-PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 
 # ===== SERVER =====
 PORT=5000
@@ -240,7 +243,7 @@ PORT=5000
 JWT_SECRET=your_super_secret_key_min_32_characters_long_here_12345
 
 # ===== CLIENT =====
-CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
+CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ten.vercel.app,http://localhost:5173
 
 # ===== GMAIL INTEGRATION (optional — leave blank to disable) =====
 GOOGLE_CLIENT_ID=
@@ -259,14 +262,14 @@ REDIS_PORT=6379
 
 ### Variable Definitions
 
-| Variable | Purpose | Example |
-|----------|---------|---------|
-| `PG_CONNECTION_STRING` | Hosted Postgres connection URL — used by everything, auth included | `postgresql://user:pass@host/db?sslmode=require` |
-| `PORT` | Server port | `5000` |
-| `JWT_SECRET` | Token secret (min 32 chars) | `my_secret_key_...` |
-| `CLIENT_URL` | Frontend URL(s) for CORS, comma-separated | `http://localhost:5173` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Gmail OAuth (optional) — see [GMAIL_INTEGRATION.md](GMAIL_INTEGRATION.md) | — |
-| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT` | Queue backend for the matching/apply/analytics engine | `rediss://default:...` |
+| Variable                                                            | Purpose                                                                   | Example                                          |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------ |
+| `DATABASE_URL`                                                      | Hosted Postgres connection URL — used by everything, auth included        | `postgresql://user:pass@host/db?sslmode=require` |
+| `PORT`                                                              | Server port                                                               | `5000`                                           |
+| `JWT_SECRET`                                                        | Token secret (min 32 chars)                                               | `my_secret_key_...`                              |
+| `CLIENT_URL`                                                        | Frontend URL(s) for CORS, comma-separated                                 | `http://localhost:5173`                          |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Gmail OAuth (optional) — see [GMAIL_INTEGRATION.md](GMAIL_INTEGRATION.md) | —                                                |
+| `REDIS_URL` / `REDIS_HOST` / `REDIS_PORT`                           | Queue backend for the matching/apply/analytics engine                     | `rediss://default:...`                           |
 
 **Security Note**: Never commit `.env` to version control. It's already in `.gitignore`.
 
@@ -277,7 +280,7 @@ REDIS_PORT=6379
 ### Prerequisites Met?
 
 - [ ] Node.js and npm installed
-- [ ] `PG_CONNECTION_STRING` configured and schema applied (`npm run db:migrate`)
+- [ ] `DATABASE_URL` configured and schema applied (`npm run db:migrate`)
 - [ ] `.env` file configured
 - [ ] Dependencies installed for both server and client
 
@@ -291,6 +294,7 @@ npm start
 ```
 
 Expected output:
+
 ```
 Server Running on 5000
 Postgres connected
@@ -304,6 +308,7 @@ npm run dev
 ```
 
 Expected output:
+
 ```
   VITE v6.x.x  ready in XXX ms
 
@@ -349,6 +354,7 @@ Expected: `Backend Running`
 ### Step 2: Access Frontend
 
 Open browser and visit:
+
 ```
 http://localhost:5173
 ```
@@ -402,6 +408,7 @@ Expected: Job appears in dashboard
 ### Problem: "Cannot find module" errors
 
 **Solution:**
+
 ```bash
 # Delete node_modules and reinstall
 rm -r node_modules
@@ -416,7 +423,8 @@ npm cache clean --force
 **Error:** `Postgres connection error ...` or `ECONNREFUSED`
 
 **Solution:**
-- Verify `PG_CONNECTION_STRING` in `server/.env` is the exact URL your provider gave you
+
+- Verify `DATABASE_URL` in `server/.env` is the exact URL your provider gave you
 - Make sure `?sslmode=require` is included if your provider needs it (most hosted providers do)
 - Confirm the database is active (some free tiers pause after inactivity)
 - Run `npm run db:migrate` again to confirm the schema applied cleanly
@@ -426,6 +434,7 @@ npm cache clean --force
 **Error:** `Error: listen EADDRINUSE: address already in use :::5000`
 
 **Solution:**
+
 ```bash
 # Windows - Find and kill process
 netstat -ano | findstr :5000
@@ -445,8 +454,9 @@ PORT=5001
 
 **Solution:**
 Verify `.env` has correct URLs:
+
 ```env
-CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
+CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ten.vercel.app,http://localhost:5173
 ```
 
 Restart server after changing.
@@ -456,6 +466,7 @@ Restart server after changing.
 **Error:** `process.env.X is undefined`
 
 **Solution:**
+
 1. Make sure `.env` file exists inside `server/`
 2. Restart server after creating/modifying `.env`
 3. Check file is named exactly `.env` (not `.env.example`)
@@ -463,6 +474,7 @@ Restart server after changing.
 ### Problem: npm install Takes Too Long
 
 **Solution:**
+
 ```bash
 # Clear cache
 npm cache clean --force
@@ -479,6 +491,7 @@ npm ci
 **Error:** `TypeError: Cannot read properties of undefined`
 
 **Solution:**
+
 ```bash
 cd client
 npm install
@@ -488,6 +501,7 @@ npm run dev
 ### Problem: Login Not Working
 
 **Causes & Solutions:**
+
 1. Check `JWT_SECRET` in `.env` is set
 2. Confirm `npm run db:migrate` ran successfully (the `users` table must exist)
 3. Check browser console for errors
@@ -500,7 +514,7 @@ npm run dev
    - Server: Terminal where `npm start` runs
 
 2. **Verify All Services**
-   - Postgres: reachable via `PG_CONNECTION_STRING`
+   - Postgres: reachable via `DATABASE_URL`
    - Server: Terminal shows "Server Running on 5000" and "Postgres connected"
    - Frontend: Terminal shows "Local: http://localhost:5173"
 

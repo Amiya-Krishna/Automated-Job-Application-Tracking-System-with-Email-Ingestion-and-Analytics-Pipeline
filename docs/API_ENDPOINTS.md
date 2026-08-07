@@ -11,7 +11,7 @@ http://localhost:5000/api
 ```
 
 In production this is whatever host you deploy the server to (e.g.
-`https://job-application-tracker-portal-o1ls.onrender.com/api`).
+`https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-o1ls.onrender.com/api`).
 
 ---
 
@@ -48,6 +48,7 @@ directly; an error response is:
 **POST** `/api/auth/register`
 
 **Request Body:**
+
 ```json
 {
   "name": "John Doe",
@@ -57,11 +58,13 @@ directly; an error response is:
 ```
 
 **Response (200):**
+
 ```json
 { "message": "User Registered Successfully" }
 ```
 
 **Error (400):**
+
 ```json
 { "message": "User already exists" }
 ```
@@ -71,6 +74,7 @@ directly; an error response is:
 **POST** `/api/auth/login`
 
 **Request Body:**
+
 ```json
 {
   "email": "john@example.com",
@@ -79,6 +83,7 @@ directly; an error response is:
 ```
 
 **Response (200):**
+
 ```json
 {
   "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
@@ -91,10 +96,13 @@ directly; an error response is:
 ```
 
 **Error (400):**
+
 ```json
 { "message": "User not found" }
 ```
+
 or
+
 ```json
 { "message": "Invalid Password" }
 ```
@@ -114,6 +122,7 @@ owned by the authenticated user.
 **POST** `/api/jobs`
 
 **Request Body:**
+
 ```json
 {
   "company": "Tech Corp",
@@ -125,6 +134,7 @@ owned by the authenticated user.
 ```
 
 **Response (200):**
+
 ```json
 {
   "id": 12,
@@ -148,6 +158,7 @@ pagination, filtering, or search query params are supported — the frontend
 filters client-side.
 
 **Response (200):**
+
 ```json
 [
   {
@@ -169,6 +180,7 @@ filters client-side.
 **PUT** `/api/jobs/:id`
 
 **Request Body (any subset of):**
+
 ```json
 {
   "status": "Interview",
@@ -179,9 +191,11 @@ filters client-side.
 **Response (200):** the updated job (same shape as above).
 
 **Error (404):**
+
 ```json
 { "message": "Job not found" }
 ```
+
 (returned if the id doesn't exist, or belongs to a different user)
 
 ### 6. Delete Job
@@ -189,11 +203,13 @@ filters client-side.
 **DELETE** `/api/jobs/:id`
 
 **Response (200):**
+
 ```json
 { "message": "Job deleted" }
 ```
 
 **Error (404):**
+
 ```json
 { "message": "Job not found" }
 ```
@@ -210,6 +226,7 @@ All endpoints below require the `token` header unless noted.
 **GET** `/api/gmail/auth-url`
 
 **Response (200):**
+
 ```json
 { "url": "https://accounts.google.com/o/oauth2/v2/auth?..." }
 ```
@@ -228,6 +245,7 @@ browser redirect).
 **GET** `/api/gmail/status`
 
 **Response (200):**
+
 ```json
 { "connected": true }
 ```
@@ -237,6 +255,7 @@ browser redirect).
 **POST** `/api/gmail/disconnect`
 
 **Response (200):**
+
 ```json
 { "message": "Gmail disconnected" }
 ```
@@ -249,6 +268,7 @@ Scans the last 30 days for interview/application/offer/rejection-looking
 subject lines.
 
 **Response (200):**
+
 ```json
 {
   "messages": [
@@ -264,6 +284,7 @@ subject lines.
 ```
 
 **Error (400):**
+
 ```json
 { "message": "Gmail is not connected" }
 ```
@@ -287,6 +308,7 @@ Shared entrypoint used by both the Playwright scraper and the browser
 extension's manual capture.
 
 **Request Body:**
+
 ```json
 {
   "title": "Backend Engineer",
@@ -300,6 +322,7 @@ extension's manual capture.
   "postedAt": "2026-07-15T00:00:00.000Z"
 }
 ```
+
 `title`, `company`, `description`, `sourceName`, and `sourceUrl` are required.
 
 **Response (201):** result of normalization/dedup/insert (job id, whether it
@@ -310,6 +333,7 @@ was a duplicate, etc. — see `services/ingestionService.js`).
 **GET** `/api/engine/jobs?status=matched&minScore=70&page=1&pageSize=25`
 
 **Response (200):**
+
 ```json
 {
   "data": [
@@ -343,6 +367,7 @@ was a duplicate, etc. — see `services/ingestionService.js`).
 Enqueues the Playwright apply worker for this job (`apply:prepare`).
 
 **Response (202):**
+
 ```json
 { "status": "queued", "jobId": 101 }
 ```
@@ -352,6 +377,7 @@ Enqueues the Playwright apply worker for this job (`apply:prepare`).
 **GET** `/api/applications?status=pending_review`
 
 **Response (200):**
+
 ```json
 {
   "data": [
@@ -375,6 +401,7 @@ Called once the user has manually clicked submit in the Playwright-driven
 session.
 
 **Response (200):**
+
 ```json
 { "status": "applied" }
 ```
@@ -384,13 +411,16 @@ session.
 **POST** `/api/applications/:id/outcome`
 
 **Request Body:**
+
 ```json
 { "status": "interview" }
 ```
+
 `status` must be one of `interview`, `rejected`, `offer`. Also nudges the
 matching engine's per-skill weights via the learning loop.
 
 **Response (200):**
+
 ```json
 { "status": "updated" }
 ```
@@ -400,6 +430,7 @@ matching engine's per-skill weights via the learning loop.
 **GET** `/api/analytics/summary?range=30d`
 
 **Response (200):**
+
 ```json
 {
   "data": {
@@ -418,6 +449,7 @@ matching engine's per-skill weights via the learning loop.
 **GET** `/api/analytics/funnel`
 
 **Response (200):**
+
 ```json
 {
   "data": {
@@ -441,6 +473,7 @@ matching engine's per-skill weights via the learning loop.
 **POST** `/api/profile`
 
 **Request Body:**
+
 ```json
 {
   "fullName": "Jane Doe",
@@ -459,34 +492,38 @@ profile row.
 
 ## Status Codes Reference
 
-| Code | Meaning |
-|------|---------|
-| 200 | OK - Successful request |
-| 201 | Created - Resource created successfully |
-| 202 | Accepted - Work enqueued (apply engine) |
-| 400 | Bad Request - Invalid input |
-| 401 | Unauthorized - Missing/invalid token (tracker/auth/gmail routes) |
-| 404 | Not Found - Resource not found |
-| 500 | Server Error - Internal server error |
+| Code | Meaning                                                          |
+| ---- | ---------------------------------------------------------------- |
+| 200  | OK - Successful request                                          |
+| 201  | Created - Resource created successfully                          |
+| 202  | Accepted - Work enqueued (apply engine)                          |
+| 400  | Bad Request - Invalid input                                      |
+| 401  | Unauthorized - Missing/invalid token (tracker/auth/gmail routes) |
+| 404  | Not Found - Resource not found                                   |
+| 500  | Server Error - Internal server error                             |
 
 ---
 
 ## Common Errors
 
 ### Missing Token (tracker/gmail routes)
+
 ```json
 { "message": "No token, authorization denied" }
 ```
 
 ### Invalid Token
+
 ```json
 { "message": "Token is not valid" }
 ```
 
 ### CORS Rejection
+
 Requests from an origin not in `CLIENT_URL` (and not a `chrome-extension://`
 origin) are rejected by the CORS middleware and surfaced via the server's
 catch-all JSON error handler:
+
 ```json
 { "message": "Not allowed by CORS" }
 ```
@@ -496,6 +533,7 @@ catch-all JSON error handler:
 ## Example cURL Requests
 
 ### Register
+
 ```bash
 curl -X POST http://localhost:5000/api/auth/register \
   -H "Content-Type: application/json" \
@@ -507,6 +545,7 @@ curl -X POST http://localhost:5000/api/auth/register \
 ```
 
 ### Login
+
 ```bash
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
@@ -517,6 +556,7 @@ curl -X POST http://localhost:5000/api/auth/login \
 ```
 
 ### Create Job
+
 ```bash
 curl -X POST http://localhost:5000/api/jobs \
   -H "token: <your_token>" \
@@ -529,12 +569,14 @@ curl -X POST http://localhost:5000/api/jobs \
 ```
 
 ### Get All Jobs
+
 ```bash
 curl -X GET http://localhost:5000/api/jobs \
   -H "token: <your_token>"
 ```
 
 ### Seed an Engine Profile
+
 ```bash
 curl -X POST http://localhost:5000/api/profile \
   -H "Content-Type: application/json" \

@@ -16,6 +16,7 @@ Before you start, ensure you have:
 - A code editor (VSCode recommended)
 
 **Check your versions:**
+
 ```bash
 node --version
 npm --version
@@ -57,11 +58,12 @@ cp .env.example .env
 ```
 
 **Minimal `server/.env`:**
+
 ```env
-PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 JWT_SECRET=your-secret-key-here
 PORT=5000
-CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
+CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ten.vercel.app,http://localhost:5173
 ```
 
 ---
@@ -97,30 +99,35 @@ in `client/.env` (defaults to `http://localhost:5000` for local dev).
 **Open two terminals:**
 
 **Terminal 1 - Start Backend Server:**
+
 ```bash
 cd server
 npm start
 ```
 
 Expected output:
+
 ```
 Server Running on 5000
 Postgres connected
 ```
 
 **Terminal 2 - Start Frontend Client:**
+
 ```bash
 cd client
 npm run dev
 ```
 
 Expected output:
+
 ```
 ➜  Local:   http://localhost:5173/
 ```
 
-*(Optional)* If you want the matching/apply/analytics engine running in the
+_(Optional)_ If you want the matching/apply/analytics engine running in the
 background, open a third terminal:
+
 ```bash
 cd server
 npm run worker
@@ -131,6 +138,7 @@ npm run worker
 ## Step 7: Access the Application
 
 Open your browser and go to:
+
 ```
 http://localhost:5173
 ```
@@ -142,12 +150,15 @@ You should see the landing page. Register a new account and start tracking!
 ## Verify Everything Works
 
 ### Backend Health Check
+
 ```bash
 curl http://localhost:5000/
 ```
+
 Expected: `Backend Running`
 
 ### Frontend Loading
+
 - [ ] Login page loads
 - [ ] Can create a new account
 - [ ] Can log in
@@ -159,22 +170,29 @@ Expected: `Backend Running`
 ## Troubleshooting
 
 ### Postgres Connection Error
+
 ```
 Error: connect ECONNREFUSED
 ```
+
 or
+
 ```
 Postgres connection error ...
 ```
-**Solution**: Double-check `PG_CONNECTION_STRING` in `server/.env` — make sure it's
+
+**Solution**: Double-check `DATABASE_URL` in `server/.env` — make sure it's
 the full URL from your provider (including `?sslmode=require` if it's included),
 and that the database is actually reachable from wherever you're running the server.
 
 ### Port Already in Use
+
 ```
 Error: listen EADDRINUSE: address already in use :::5000
 ```
-**Solution**: 
+
+**Solution**:
+
 ```bash
 # Change PORT in .env
 PORT=5001
@@ -190,22 +208,28 @@ kill -9 <PID>
 ```
 
 ### Module Not Found
+
 ```
 Error: Cannot find module 'express'
 ```
-**Solution**: 
+
+**Solution**:
+
 ```bash
 cd server
 npm install
 ```
 
 ### CORS Error
+
 ```
 Access to XMLHttpRequest has been blocked by CORS policy
 ```
+
 **Solution**: Ensure `.env` has correct `CLIENT_URL`:
+
 ```env
-CLIENT_URL=https://job-application-tracker-portal-ten.vercel.app,http://localhost:5173
+CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ten.vercel.app,http://localhost:5173
 ```
 
 ---

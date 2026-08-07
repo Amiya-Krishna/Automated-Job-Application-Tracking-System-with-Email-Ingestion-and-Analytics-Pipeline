@@ -23,6 +23,7 @@ Complete guide to deploying the Job Application Tracker Portal to production.
 ### Option 1: Heroku (Recommended for Beginners)
 
 #### Prerequisites
+
 - Heroku account (free tier available)
 - Heroku CLI installed
 - Git installed
@@ -56,10 +57,10 @@ heroku create your-app-name
 #### Step 4: Set Environment Variables
 
 ```bash
-heroku config:set PG_CONNECTION_STRING=postgresql://user:pass@host/dbname?sslmode=require
+heroku config:set DATABASE_URL=postgresql://user:pass@host/dbname?sslmode=require
 heroku config:set JWT_SECRET=your_secret_key
 heroku config:set NODE_ENV=production
-heroku config:set CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+heroku config:set CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ao8n.vercel.app,http://localhost:5173
 ```
 
 #### Step 5: Deploy
@@ -69,6 +70,7 @@ git push heroku main
 ```
 
 Monitor deployment:
+
 ```bash
 heroku logs --tail
 ```
@@ -90,17 +92,20 @@ heroku run npm run seed
 4. Deploy
 
 **Environment Variables:**
+
 ```
-VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
+VITE_API_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-o1ls.onrender.com
 ```
 
 ### Option 3: Railway (Full Stack)
 
 #### Prerequisites
+
 - Railway account
 - GitHub repository
 
 #### Step 1: Connect Repository
+
 1. Go to [Railway](https://railway.app)
 2. Create new project
 3. Connect GitHub repository
@@ -108,18 +113,21 @@ VITE_API_URL=https://job-application-tracker-portal-o1ls.onrender.com
 #### Step 2: Configure Services
 
 **Backend Service:**
+
 - Start command: `npm install && npm start`
 - Port: 5000
 
 **Frontend Service:**
+
 - Start command: `npm install && npm run build`
 - Build output: `dist`
 
 #### Step 3: Set Environment Variables
 
 In Railway dashboard:
+
 ```
-PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 JWT_SECRET=your_secret_key
 NODE_ENV=production
 REDIS_URL=rediss://default:password@host:port
@@ -132,6 +140,7 @@ Railway auto-deploys on push to main branch.
 ### Option 4: DigitalOcean / AWS / Google Cloud
 
 #### Prerequisites
+
 - Cloud account
 - Droplet/Instance created
 - SSH access
@@ -180,20 +189,24 @@ nano .env
 #### Step 5: Setup PM2
 
 Create `ecosystem.config.js`:
+
 ```javascript
 module.exports = {
-  apps: [{
-    name: 'job-tracker',
-    script: './server/server.js',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 5000
-    }
-  }]
+  apps: [
+    {
+      name: "job-tracker",
+      script: "./server/server.js",
+      env: {
+        NODE_ENV: "production",
+        PORT: 5000,
+      },
+    },
+  ],
 };
 ```
 
 Start with PM2:
+
 ```bash
 pm2 start ecosystem.config.js
 pm2 save
@@ -203,6 +216,7 @@ pm2 startup
 #### Step 6: Configure Nginx
 
 Create `/etc/nginx/sites-available/job-tracker`:
+
 ```nginx
 server {
     listen 80;
@@ -222,6 +236,7 @@ server {
 ```
 
 Enable site:
+
 ```bash
 ln -s /etc/nginx/sites-available/job-tracker /etc/nginx/sites-enabled/
 nginx -t
@@ -243,7 +258,7 @@ certbot --nginx -d your_domain.com
 
 ```env
 # Database (hosted PostgreSQL — Neon, Supabase, Render, etc.)
-PG_CONNECTION_STRING=postgresql://user:password@host/dbname?sslmode=require
+DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
 
 # Queue backend for the matching/apply/analytics engine
 REDIS_URL=rediss://default:password@host:port
@@ -257,7 +272,7 @@ JWT_SECRET=generate-a-long-random-string-minimum-32-characters
 JWT_EXPIRE=7d
 
 # Frontend
-CLIENT_URL=https://job-application-tracker-portal-ao8n.vercel.app,http://localhost:5173
+CLIENT_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-ao8n.vercel.app,http://localhost:5173
 
 # CORS
 CORS_ORIGIN=https://yourdomain.com
@@ -272,7 +287,7 @@ CORS_ORIGIN=https://yourdomain.com
 
 2. **CORS Configuration**
    - Only allow your domain
-   - Never use "*" in production
+   - Never use "\*" in production
 
 3. **HTTPS/SSL**
    - Always use HTTPS
@@ -286,22 +301,24 @@ CORS_ORIGIN=https://yourdomain.com
    - Restrict network access where the provider supports it
 
 5. **Headers**
+
    ```javascript
    // Add to server.js
-   const helmet = require('helmet');
+   const helmet = require("helmet");
    app.use(helmet());
    ```
 
 6. **Rate Limiting**
+
    ```javascript
-   const rateLimit = require('express-rate-limit');
-   
+   const rateLimit = require("express-rate-limit");
+
    const limiter = rateLimit({
      windowMs: 15 * 60 * 1000,
-     max: 100
+     max: 100,
    });
-   
-   app.use('/api/', limiter);
+
+   app.use("/api/", limiter);
    ```
 
 ---
@@ -359,7 +376,7 @@ app.use(compression());
 
 5. **Monitoring**
    - Use your provider's built-in query/connection dashboard
-   - Watch for slow queries — `server/db/pg.js` already logs any query over 200ms
+   - Watch for slow queries — `server/@prisma/client.js` already logs any query over 200ms
 
 ---
 
@@ -409,12 +426,14 @@ pm2 logs job-tracker > logs/app.log
 
 ```javascript
 // Cache static assets
-app.use(express.static('public', {
-  maxAge: '1d'
-}));
+app.use(
+  express.static("public", {
+    maxAge: "1d",
+  }),
+);
 
 // Redis caching (advanced)
-const redis = require('redis');
+const redis = require("redis");
 const client = redis.createClient();
 ```
 
@@ -450,14 +469,14 @@ name: Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
-      
+
       - name: Deploy to Heroku
         run: |
           git push https://heroku:${{ secrets.HEROKU_API_KEY }}@git.heroku.com/${{ secrets.HEROKU_APP_NAME }}.git main
@@ -531,14 +550,16 @@ pm2 restart job-tracker
 ## Troubleshooting Deployment
 
 ### Issue: Postgres Connection Failed
+
 ```bash
-# Check PG_CONNECTION_STRING is the exact URL from your provider
+# Check DATABASE_URL is the exact URL from your provider
 # Verify ?sslmode=require is present if your provider needs it
 # Check the database isn't paused (common on free tiers)
 # Verify IP allowlist / firewall rules if your provider restricts access
 ```
 
 ### Issue: CORS Errors in Production
+
 ```bash
 # Verify CLIENT_URL in .env
 # Check Nginx headers
@@ -546,6 +567,7 @@ pm2 restart job-tracker
 ```
 
 ### Issue: High Response Times
+
 ```bash
 # Check database indexes
 # Enable compression
@@ -555,6 +577,7 @@ pm2 restart job-tracker
 ```
 
 ### Issue: Out of Memory
+
 ```bash
 # Check PM2 memory usage
 pm2 monit
