@@ -1,0 +1,117 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>TrackTrail Dashboard</title>
+    <link rel="stylesheet" href="dashboard.css" />
+  </head>
+  <body>
+    <div class="page">
+      <header class="dash-header">
+        <span class="logo">TT</span>
+        <span class="brand">TrackTrail Dashboard</span>
+        <span class="apiChip" id="apiChip"></span>
+      </header>
+
+      <nav class="dash-tabs" id="dashTabs">
+        <button class="dash-tab active" data-tab="matchedTab" type="button">Matched Jobs</button>
+        <button class="dash-tab" data-tab="applicationsTab" type="button">Applications</button>
+        <button class="dash-tab" data-tab="analyticsTab" type="button">Analytics</button>
+        <button class="dash-tab" data-tab="profileTab" type="button">Profile</button>
+      </nav>
+
+      <!-- ================= MATCHED JOBS ================= -->
+      <section id="matchedTab" class="dashPanel">
+        <div class="filterBar">
+          <select id="matchedStatus">
+            <option value="">All statuses</option>
+            <option value="new">New</option>
+            <option value="matched">Matched</option>
+            <option value="applied">Applied</option>
+            <option value="duplicate">Duplicate</option>
+          </select>
+          <label class="scoreLabel">Min score
+            <input type="number" id="matchedMinScore" min="0" max="100" placeholder="0" />
+          </label>
+          <button id="matchedRefresh" class="ghost-btn" type="button">Refresh</button>
+        </div>
+
+        <div id="matchedList" class="cardGrid"></div>
+        <p id="matchedEmpty" class="emptyState hidden">No jobs found for these filters.</p>
+        <p id="matchedError" class="error"></p>
+
+        <div class="pager">
+          <button id="matchedPrev" class="ghost-btn" type="button">← Prev</button>
+          <span id="matchedPageLabel" class="pageLabel">Page 1</span>
+          <button id="matchedNext" class="ghost-btn" type="button">Next →</button>
+        </div>
+      </section>
+
+      <!-- ================= APPLICATIONS ================= -->
+      <section id="applicationsTab" class="dashPanel hidden">
+        <div class="filterBar">
+          <div class="chips" id="appStatusChips">
+            <button class="chip active" data-status="" type="button">All</button>
+            <button class="chip" data-status="pending" type="button">Pending</button>
+            <button class="chip" data-status="applied" type="button">Applied</button>
+            <button class="chip" data-status="interview" type="button">Interview</button>
+            <button class="chip" data-status="offer" type="button">Offer</button>
+            <button class="chip" data-status="rejected" type="button">Rejected</button>
+          </div>
+          <button id="appsRefresh" class="ghost-btn" type="button">Refresh</button>
+        </div>
+
+        <div id="appsList" class="cardGrid"></div>
+        <p id="appsEmpty" class="emptyState hidden">No applications yet.</p>
+        <p id="appsError" class="error"></p>
+      </section>
+
+      <!-- ================= ANALYTICS ================= -->
+      <section id="analyticsTab" class="dashPanel hidden">
+        <div class="filterBar">
+          <select id="analyticsRange">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+          </select>
+          <button id="analyticsRefresh" class="ghost-btn" type="button">Refresh</button>
+        </div>
+
+        <div class="statsRow" id="analyticsSummary"></div>
+
+        <h3 class="sectionTitle">Conversion</h3>
+        <div class="statsRow" id="analyticsConversion"></div>
+
+        <h3 class="sectionTitle">Funnel</h3>
+        <div id="analyticsFunnel" class="funnel"></div>
+
+        <p id="analyticsError" class="error"></p>
+      </section>
+
+      <!-- ================= PROFILE ================= -->
+      <section id="profileTab" class="dashPanel hidden">
+        <form id="profileForm" class="profileForm">
+          <label>Full name</label>
+          <input type="text" id="profFullName" placeholder="Your name" />
+
+          <label>Email</label>
+          <input type="email" id="profEmail" placeholder="you@example.com" />
+
+          <label>Experience (years)</label>
+          <input type="number" id="profExperience" min="0" step="0.5" placeholder="e.g. 1.5" />
+
+          <label>Skills (comma separated)</label>
+          <input type="text" id="profSkills" placeholder="React, Node.js, SQL" />
+
+          <label>Resume text</label>
+          <textarea id="profResume" rows="8" placeholder="Paste your resume text — used for matching."></textarea>
+
+          <button type="submit" id="profSaveBtn">Save profile</button>
+          <p id="profMsg" class="success"></p>
+        </form>
+      </section>
+    </div>
+
+    <script src="dashboard.js" type="module"></script>
+  </body>
+</html>

@@ -81,6 +81,59 @@ async function getJobs() {
   return data;
 }
 
+async function updateJob(id, updates) {
+  const base = await getApiBaseUrl();
+  const token = await getToken();
+
+  if (!token) {
+    throw new Error("Not logged in. Open the extension and sign in first.");
+  }
+  if (!id) {
+    throw new Error("Missing job id.");
+  }
+
+  const res = await fetch(`${base}/jobs/${id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      token,
+    },
+    body: JSON.stringify(updates),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.message || "Failed to update job");
+  }
+
+  return data;
+}
+
+async function deleteJob(id) {
+  const base = await getApiBaseUrl();
+  const token = await getToken();
+
+  if (!token) {
+    throw new Error("Not logged in. Open the extension and sign in first.");
+  }
+  if (!id) {
+    throw new Error("Missing job id.");
+  }
+
+  const res = await fetch(`${base}/jobs/${id}`, {
+    method: "DELETE",
+    headers: { token },
+  });
+
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || "Failed to delete job");
+  }
+
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
@@ -111,6 +164,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "GET_JOBS": {
           const jobs = await getJobs();
           sendResponse({ ok: true, jobs });
+          break;
+        }
+        case "UPDATE_JOB": {
+          const job = await updateJob(message.id, message.updates);
+          sendResponse({ ok: true, job });
+          break;
+        }
+        case "DELETE_JOB": {
+          await deleteJob(message.id);
+          sendResponse({ ok: true });
+          break;
+        }
+        case "GET_DEFAULT_API_URL": {
+          sendResponse({ ok: true, defaultUrl: DEFAULT_API_BASE_URL });
           break;
         }
         default:

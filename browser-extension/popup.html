@@ -7,39 +7,116 @@
   </head>
   <body>
     <div class="wrap">
-      <header>
-        <span class="logo">TT</span>
-        <span class="brand">TrackTrail</span>
-      </header>
-
+      <!-- ===================== LOGGED OUT ===================== -->
       <div id="loggedOutView">
-        <p class="hint">Sign in to save jobs from LinkedIn and Indeed with one click.</p>
+        <header class="app-header">
+          <span class="logo">TT</span>
+          <span class="brand">TrackTrail</span>
+        </header>
+
+        <p class="hint">Sign in to manage your job applications right from your browser.</p>
 
         <form id="loginForm">
           <label>Email</label>
-          <input type="email" id="email" required placeholder="you@example.com" />
+          <input type="email" id="email" required placeholder="you@example.com" autocomplete="email" />
 
           <label>Password</label>
-          <input type="password" id="password" required placeholder="Password" />
+          <input type="password" id="password" required placeholder="Password" autocomplete="current-password" />
 
           <button type="submit" id="loginBtn">Log in</button>
           <p id="loginError" class="error"></p>
         </form>
+
+        <button id="showSettingsFromLogin" class="link-btn settings-link" type="button">API settings</button>
       </div>
 
+      <!-- ===================== LOGGED IN (FULL APP) ===================== -->
       <div id="loggedInView" class="hidden">
-        <p class="hint">Signed in as <span id="userName"></span></p>
-        <p class="hint">Visit a LinkedIn or Indeed job posting — a "Save to TrackTrail" button will appear on the page.</p>
+        <header class="app-header">
+          <span class="logo">TT</span>
+          <span class="brand">TrackTrail</span>
+          <span class="userchip" id="userChip" title=""></span>
+          <button id="settingsBtn" class="icon-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
+        </header>
 
-        <div class="jobsHeader">
-          <span>Your saved jobs</span>
-          <button id="refreshJobsBtn" class="link-btn" type="button">Refresh</button>
-        </div>
-        <ul id="jobsList" class="jobsList"></ul>
-        <p id="jobsEmpty" class="hint hidden">No jobs saved yet.</p>
-        <p id="jobsError" class="error"></p>
+        <nav class="tabs" id="tabs">
+          <button class="tab active" data-tab="jobsTab" type="button">Jobs</button>
+          <button class="tab" data-tab="addTab" type="button">Add</button>
+          <button class="tab" data-tab="statsTab" type="button">Stats</button>
+        </nav>
+
+        <button id="openDashboardBtn" class="secondary dashboard-cta" type="button">Open full dashboard ↗</button>
+
+        <!-- ---- JOBS TAB ---- -->
+        <section id="jobsTab" class="tabPanel">
+          <div class="toolbar">
+            <input type="search" id="searchInput" placeholder="Search company or role..." />
+            <button id="refreshJobsBtn" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">⟳</button>
+          </div>
+
+          <div class="chips" id="statusChips">
+            <button class="chip active" data-status="all" type="button">All</button>
+            <button class="chip" data-status="Applied" type="button">Applied</button>
+            <button class="chip" data-status="Interviewing" type="button">Interviewing</button>
+            <button class="chip" data-status="Offer" type="button">Offer</button>
+            <button class="chip" data-status="Rejected" type="button">Rejected</button>
+          </div>
+
+          <ul id="jobsList" class="jobsList"></ul>
+          <div id="jobsEmpty" class="emptyState hidden">
+            <p>No jobs match here yet.</p>
+          </div>
+          <p id="jobsError" class="error"></p>
+        </section>
+
+        <!-- ---- ADD TAB ---- -->
+        <section id="addTab" class="tabPanel hidden">
+          <form id="addJobForm">
+            <label>Company</label>
+            <input type="text" id="addCompany" required placeholder="e.g. Acme Corp" />
+
+            <label>Role</label>
+            <input type="text" id="addRole" required placeholder="e.g. SDE Intern" />
+
+            <label>Status</label>
+            <select id="addStatus">
+              <option>Applied</option>
+              <option>Interviewing</option>
+              <option>Offer</option>
+              <option>Rejected</option>
+              <option>Wishlist</option>
+            </select>
+
+            <label>Interview date (optional)</label>
+            <input type="date" id="addInterviewDate" />
+
+            <label>Notes (optional)</label>
+            <textarea id="addNotes" rows="3" placeholder="Anything you want to remember..."></textarea>
+
+            <button type="submit" id="addJobBtn">Add job</button>
+            <p id="addJobMsg" class="error"></p>
+          </form>
+        </section>
+
+        <!-- ---- STATS TAB ---- -->
+        <section id="statsTab" class="tabPanel hidden">
+          <div class="statsGrid" id="statsGrid"></div>
+        </section>
 
         <button id="logoutBtn" class="secondary">Log out</button>
+      </div>
+
+      <!-- ===================== SETTINGS PANEL (overlay) ===================== -->
+      <div id="settingsPanel" class="settingsPanel hidden">
+        <div class="settingsHeader">
+          <span>API settings</span>
+          <button id="closeSettingsBtn" class="icon-btn" type="button" aria-label="Close">✕</button>
+        </div>
+        <label>Backend API URL</label>
+        <input type="text" id="apiUrlInput" placeholder="https://your-backend.onrender.com/api" />
+        <button id="saveSettingsBtn" type="button">Save</button>
+        <p id="settingsMsg" class="success"></p>
+      </div>
     </div>
 
     <script src="popup.js" type="module"></script>
