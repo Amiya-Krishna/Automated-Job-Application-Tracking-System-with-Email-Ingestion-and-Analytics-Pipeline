@@ -14,7 +14,7 @@
           <span class="brand">TrackTrail</span>
         </header>
 
-        <p class="hint">Sign in to manage your job applications right from your browser.</p>
+        <p class="hint" id="authHint">Sign in to manage your job applications right from your browser.</p>
 
         <form id="loginForm">
           <label>Email</label>
@@ -27,7 +27,23 @@
           <p id="loginError" class="error"></p>
         </form>
 
-        <button id="showSettingsFromLogin" class="link-btn settings-link" type="button">API settings</button>
+        <form id="registerForm" class="hidden">
+          <label>Name</label>
+          <input type="text" id="regName" required placeholder="Your name" autocomplete="name" />
+
+          <label>Email</label>
+          <input type="email" id="regEmail" required placeholder="you@example.com" autocomplete="email" />
+
+          <label>Password</label>
+          <input type="password" id="regPassword" required placeholder="Password" autocomplete="new-password" />
+
+          <button type="submit" id="registerBtn">Create account</button>
+          <p id="registerError" class="error"></p>
+        </form>
+
+        <button id="toggleAuthMode" class="link-btn settings-link" type="button">
+          Don't have an account? Sign up
+        </button>
       </div>
 
       <!-- ===================== LOGGED IN (FULL APP) ===================== -->
@@ -36,7 +52,6 @@
           <span class="logo">TT</span>
           <span class="brand">TrackTrail</span>
           <span class="userchip" id="userChip" title=""></span>
-          <button id="settingsBtn" class="icon-btn" type="button" title="Settings" aria-label="Settings">⚙</button>
         </header>
 
         <nav class="tabs" id="tabs">
@@ -57,7 +72,7 @@
           <div class="chips" id="statusChips">
             <button class="chip active" data-status="all" type="button">All</button>
             <button class="chip" data-status="Applied" type="button">Applied</button>
-            <button class="chip" data-status="Interviewing" type="button">Interviewing</button>
+            <button class="chip" data-status="Interview" type="button">Interview</button>
             <button class="chip" data-status="Offer" type="button">Offer</button>
             <button class="chip" data-status="Rejected" type="button">Rejected</button>
           </div>
@@ -81,7 +96,7 @@
             <label>Status</label>
             <select id="addStatus">
               <option>Applied</option>
-              <option>Interviewing</option>
+              <option>Interview</option>
               <option>Offer</option>
               <option>Rejected</option>
               <option>Wishlist</option>
@@ -104,18 +119,6 @@
         </section>
 
         <button id="logoutBtn" class="secondary">Log out</button>
-      </div>
-
-      <!-- ===================== SETTINGS PANEL (overlay) ===================== -->
-      <div id="settingsPanel" class="settingsPanel hidden">
-        <div class="settingsHeader">
-          <span>API settings</span>
-          <button id="closeSettingsBtn" class="icon-btn" type="button" aria-label="Close">✕</button>
-        </div>
-        <label>Backend API URL</label>
-        <input type="text" id="apiUrlInput" placeholder="https://your-backend.onrender.com/api" />
-        <button id="saveSettingsBtn" type="button">Save</button>
-        <p id="settingsMsg" class="success"></p>
       </div>
     </div>
 

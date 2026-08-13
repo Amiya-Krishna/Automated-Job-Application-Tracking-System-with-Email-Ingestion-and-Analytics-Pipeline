@@ -18,6 +18,18 @@ async function api(path, options = {}) {
   return data;
 }
 
+// Gmail routes require the same auth token the popup uses for /api/jobs.
+async function apiAuth(path, options = {}) {
+  const { token } = await chrome.storage.local.get("token");
+  if (!token) {
+    throw new Error("Not logged in. Open the extension popup and sign in first.");
+  }
+  return api(path, {
+    ...options,
+    headers: { token, ...(options.headers || {}) },
+  });
+}
+
 const apiChip = document.getElementById("apiChip");
 
 // ---------- tabs ----------
@@ -35,6 +47,7 @@ dashTabs.addEventListener("click", (e) => {
   if (targetId === "applicationsTab") loadApplications();
   if (targetId === "analyticsTab") loadAnalytics();
   if (targetId === "profileTab") loadProfile();
+  if (targetId === "emailTab") loadGmailStatus();
 });
 
 // ============================================================
@@ -462,6 +475,157 @@ profileForm.addEventListener("submit", async (e) => {
     profMsg.textContent = err.message;
   } finally {
     profSaveBtn.disabled = false;
+  }
+});
+
+// ============================================================
+// EMAIL (GMAIL)
+// ============================================================
+const gmailStatusBadge = document.getElementById("gmailStatusBadge");
+const gmailConnectBtn = document.getElementById("gmailConnectBtn");
+const gmailDisconnectBtn = document.getElementById("gmailDisconnectBtn");
+const gmailRefreshStatusBtn = document.getElementById("gmailRefreshStatusBtn");
+const gmailScanBtn = document.getElementById("gmailScanBtn");
+const emailList = document.getElementById("emailList");
+const emailEmpty = document.getElementById("emailEmpty");
+const emailError = document.getElementById("emailError");
+
+async function loadGmailStatus() {
+  emailError.textContent = "";
+  gmailStatusBadge.textContent = "Checking...";
+  gmailStatusBadge.className = "badge badge-new";
+  gmailConnectBtn.classList.add("hidden");
+  gmailDisconnectBtn.classList.add("hidden");
+
+  try {
+    const result = await apiAuth("/gmail/status");
+    if (result.connected) {
+      gmailStatusBadge.textContent = "Connected";
+      gmailStatusBadge.className = "badge badge-connected";
+      gmailDisconnectBtn.classList.remove("hidden");
+    } else {
+      gmailStatusBadge.textContent = "Not connected";
+      gmailStatusBadge.className = "badge badge-disconnected";
+      gmailConnectBtn.classList.remove("hidden");
+    }
+  } catch (err) {
+    gmailStatusBadge.textContent = "Unknown";
+    emailError.textContent = err.message;
+  }
+}
+
+gmailConnectBtn.addEventListener("click", async () => {
+  emailError.textContent = "";
+  gmailConnectBtn.disabled = true;
+  try {
+    const result = await apiAuth("/gmail/auth-url");
+    chrome.tabs.create({ url: result.url });
+  } catch (err) {
+    emailError.textContent = err.message;
+  } finally {
+    gmailConnectBtn.disabled = false;
+  }
+});
+
+gmailDisconnectBtn.addEventListener("click", async () => {
+  emailError.textContent = "";
+  gmailDisconnectBtn.disabled = true;
+  try {
+    await apiAuth("/gmail/disconnect", { method: "POST" });
+    await loadGmailStatus();
+    emailList.innerHTML = "";
+    emailEmpty.classList.add("hidden");
+  } catch (err) {
+    emailError.textContent = err.message;
+  } finally {
+    gmailDisconnectBtn.disabled = false;
+  }
+});
+
+gmailRefreshStatusBtn.addEventListener("click", loadGmailStatus);
+
+gmailScanBtn.addEventListener("click", async () => {
+  emailError.textContent = "";
+  emailList.innerHTML = "";
+  emailEmpty.classList.add("hidden");
+  gmailScanBtn.disabled = true;
+  gmailScanBtn.textContent = "Scanning...";
+
+  try {
+    const result = await apiAuth("/gmail/scan");
+    const messages = result.messages || [];
+
+    if (messages.length === 0) {
+      emailEmpty.classList.remove("hidden");
+      return;
+    }
+
+    for (const msg of messages) {
+      const card = document.createElement("div");
+      card.className = "dcard";
+
+      const title = document.createElement("div");
+      title.className = "dcard-title";
+      title.textContent = msg.subject || "(no subject)";
+
+      const meta = document.createElement("div");
+      meta.className = "emailCard-meta";
+      meta.textContent = [msg.from, msg.date].filter(Boolean).join(" · ");
+
+      const snippet = document.createElement("div");
+      snippet.className = "emailCard-snippet";
+      snippet.textContent = msg.snippet || "";
+
+      const importRow = document.createElement("div");
+      importRow.className = "emailCard-import";
+
+      const companyInput = document.createElement("input");
+      companyInput.type = "text";
+      companyInput.placeholder = "Company name to save as...";
+
+      const importBtn = document.createElement("button");
+      importBtn.type = "button";
+      importBtn.textContent = "Save as job";
+      importBtn.addEventListener("click", async () => {
+        const company = companyInput.value.trim();
+        if (!company) {
+          companyInput.focus();
+          return;
+        }
+        importBtn.disabled = true;
+        importBtn.textContent = "Saving...";
+        try {
+          await apiAuth("/gmail/import", {
+            method: "POST",
+            body: JSON.stringify({
+              company,
+              role: msg.subject || "Untitled role",
+              status: "Applied",
+              notes: msg.snippet || "",
+            }),
+          });
+          importBtn.textContent = "Saved ✓";
+        } catch (err) {
+          importBtn.disabled = false;
+          importBtn.textContent = "Save as job";
+          emailError.textContent = err.message;
+        }
+      });
+
+      importRow.appendChild(companyInput);
+      importRow.appendChild(importBtn);
+
+      card.appendChild(title);
+      card.appendChild(meta);
+      if (msg.snippet) card.appendChild(snippet);
+      card.appendChild(importRow);
+      emailList.appendChild(card);
+    }
+  } catch (err) {
+    emailError.textContent = err.message;
+  } finally {
+    gmailScanBtn.disabled = false;
+    gmailScanBtn.textContent = "Scan inbox";
   }
 });
 

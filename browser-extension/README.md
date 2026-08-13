@@ -113,3 +113,44 @@ If you want a shareable install link instead of "load unpacked": zip this
 folder's contents (not the folder itself) and submit it through the
 [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
 (one-time $5 developer fee). Not required for a portfolio/demo.
+
+## Sign up (new)
+
+The login screen now has a "Don't have an account? Sign up" link that
+switches to a registration form (name, email, password). It calls
+`POST /api/auth/register`, then automatically logs in with the same
+credentials so there's no extra step.
+
+## Gmail integration (new)
+
+The dashboard's **Email** tab mirrors the Gmail integration already on the
+website (`routes/gmailRoutes.js`):
+
+- **Connect Gmail** — calls `GET /api/gmail/auth-url` and opens the Google
+  consent screen in a new tab. The server's OAuth callback redirects to
+  your website's `/integrations` page (not back to the extension) — after
+  finishing consent, come back to this tab and click "Refresh status".
+- **Scan inbox** — calls `GET /api/gmail/scan` (last 30 days,
+  interview/application/offer keywords) and lists matching emails. Each
+  one has a company field + "Save as job" button that calls
+  `POST /api/gmail/import` to add it to your tracker.
+- **Disconnect** — calls `POST /api/gmail/disconnect`.
+
+These routes require the same auth token as the Jobs tab, so you need to
+be logged in via the popup first. Gmail also needs `GOOGLE_CLIENT_ID`,
+`GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` set in `server/.env` —
+see `config/google.js`.
+
+## API settings — removed
+
+The earlier "API settings" panel (editable backend URL) has been removed.
+The extension now always uses `DEFAULT_API_BASE_URL` from `config.js`. If
+you redeploy the backend to a different URL, update that constant instead.
+
+## "Interviewing" renamed to "Interview"
+
+The manual tracker's status option/filter/badge that used to say
+"Interviewing" is now "Interview" everywhere (Add form, status dropdown,
+filter chip, stats). Status matching in the popup is now case-insensitive
+too, so a job saved with any casing of a known status still filters and
+displays correctly.

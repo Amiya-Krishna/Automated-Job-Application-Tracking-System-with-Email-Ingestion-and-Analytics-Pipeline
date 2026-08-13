@@ -18,6 +18,7 @@
         <button class="dash-tab" data-tab="applicationsTab" type="button">Applications</button>
         <button class="dash-tab" data-tab="analyticsTab" type="button">Analytics</button>
         <button class="dash-tab" data-tab="profileTab" type="button">Profile</button>
+        <button class="dash-tab" data-tab="emailTab" type="button">Email</button>
       </nav>
 
       <!-- ================= MATCHED JOBS ================= -->
@@ -109,6 +110,30 @@
           <button type="submit" id="profSaveBtn">Save profile</button>
           <p id="profMsg" class="success"></p>
         </form>
+      </section>
+
+      <!-- ================= EMAIL (GMAIL) ================= -->
+      <section id="emailTab" class="dashPanel hidden">
+        <div class="emailStatusRow">
+          <span id="gmailStatusBadge" class="badge badge-new">Checking...</span>
+          <button id="gmailConnectBtn" class="ghost-btn hidden" type="button">Connect Gmail</button>
+          <button id="gmailDisconnectBtn" class="ghost-btn hidden" type="button">Disconnect</button>
+          <button id="gmailRefreshStatusBtn" class="ghost-btn" type="button">Refresh status</button>
+        </div>
+        <p class="hint">
+          Read-only access — TrackTrail only scans subject lines for interview/application/offer
+          keywords, it never sends or deletes anything in your inbox. After connecting, the
+          Google consent screen opens in a new tab; come back here and hit "Refresh status" once
+          you're done.
+        </p>
+
+        <div class="filterBar">
+          <button id="gmailScanBtn" class="ghost-btn" type="button">Scan inbox</button>
+        </div>
+
+        <div id="emailList" class="cardGrid"></div>
+        <p id="emailEmpty" class="emptyState hidden">No matching emails found in the last 30 days.</p>
+        <p id="emailError" class="error"></p>
       </section>
     </div>
 

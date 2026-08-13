@@ -29,14 +29,13 @@ const statsGrid = document.getElementById("statsGrid");
 const tabs = document.getElementById("tabs");
 const tabPanels = document.querySelectorAll(".tabPanel");
 
-const settingsBtn = document.getElementById("settingsBtn");
-const showSettingsFromLogin = document.getElementById("showSettingsFromLogin");
-const closeSettingsBtn = document.getElementById("closeSettingsBtn");
-const settingsPanel = document.getElementById("settingsPanel");
-const apiUrlInput = document.getElementById("apiUrlInput");
-const saveSettingsBtn = document.getElementById("saveSettingsBtn");
-const settingsMsg = document.getElementById("settingsMsg");
 const openDashboardBtn = document.getElementById("openDashboardBtn");
+
+const registerForm = document.getElementById("registerForm");
+const registerBtn = document.getElementById("registerBtn");
+const registerError = document.getElementById("registerError");
+const toggleAuthMode = document.getElementById("toggleAuthMode");
+const authHint = document.getElementById("authHint");
 
 // ---------- state ----------
 let allJobs = [];
@@ -52,7 +51,10 @@ function formatDate(value) {
 }
 
 function statusClass(status) {
-  return `status-${(status || "Applied").replace(/\s+/g, "")}`;
+  const known = ["Applied", "Interview", "Offer", "Rejected", "Wishlist"];
+  const normalized = (status || "Applied").trim();
+  const match = known.find((k) => k.toLowerCase() === normalized.toLowerCase());
+  return `status-${match || "Applied"}`;
 }
 
 // ---------- tabs ----------
@@ -71,40 +73,67 @@ tabs.addEventListener("click", (e) => {
   if (targetId === "statsTab") renderStats();
 });
 
-// ---------- settings panel ----------
-async function openSettings() {
-  const { apiBaseUrl } = await chrome.storage.local.get("apiBaseUrl");
-  const result = await sendMessage({ type: "GET_DEFAULT_API_URL" });
-  apiUrlInput.value = apiBaseUrl || result?.defaultUrl || "";
-  settingsMsg.textContent = "";
-  settingsPanel.classList.remove("hidden");
-}
+// ---------- login / register toggle ----------
+let authMode = "login";
 
-function closeSettings() {
-  settingsPanel.classList.add("hidden");
-}
+toggleAuthMode.addEventListener("click", () => {
+  if (authMode === "login") {
+    authMode = "register";
+    loginForm.classList.add("hidden");
+    registerForm.classList.remove("hidden");
+    authHint.textContent = "Create an account to start tracking your applications.";
+    toggleAuthMode.textContent = "Already have an account? Log in";
+  } else {
+    authMode = "login";
+    registerForm.classList.add("hidden");
+    loginForm.classList.remove("hidden");
+    authHint.textContent = "Sign in to manage your job applications right from your browser.";
+    toggleAuthMode.textContent = "Don't have an account? Sign up";
+  }
+});
 
-settingsBtn?.addEventListener("click", openSettings);
-showSettingsFromLogin?.addEventListener("click", openSettings);
-closeSettingsBtn.addEventListener("click", closeSettings);
+registerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  registerError.textContent = "";
+  registerBtn.disabled = true;
+  registerBtn.textContent = "Creating account...";
 
-saveSettingsBtn.addEventListener("click", async () => {
-  const url = apiUrlInput.value.trim();
-  if (!url) {
-    settingsMsg.className = "error";
-    settingsMsg.textContent = "Enter a URL first.";
+  const name = document.getElementById("regName").value.trim();
+  const email = document.getElementById("regEmail").value.trim();
+  const password = document.getElementById("regPassword").value;
+
+  const result = await sendMessage({ type: "REGISTER", name, email, password });
+
+  if (!result.ok) {
+    registerBtn.disabled = false;
+    registerBtn.textContent = "Create account";
+    registerError.textContent = result.error || "Registration failed";
     return;
   }
-  await chrome.storage.local.set({ apiBaseUrl: url });
-  settingsMsg.className = "success";
-  settingsMsg.textContent = "Saved. Log in again to apply.";
-  setTimeout(closeSettings, 900);
+
+  // Auto-login with the same credentials right after signup.
+  const loginResult = await sendMessage({ type: "LOGIN", email, password });
+
+  registerBtn.disabled = false;
+  registerBtn.textContent = "Create account";
+
+  if (loginResult.ok) {
+    registerForm.reset();
+    render();
+  } else {
+    registerError.textContent = "Account created — please log in.";
+    authMode = "login";
+    registerForm.classList.add("hidden");
+    loginForm.classList.remove("hidden");
+    toggleAuthMode.textContent = "Don't have an account? Sign up";
+  }
 });
 
 // ---------- jobs rendering ----------
 function applyFilters() {
   return allJobs.filter((job) => {
-    const matchesStatus = activeStatus === "all" || (job.status || "Applied") === activeStatus;
+    const jobStatus = (job.status || "Applied").trim().toLowerCase();
+    const matchesStatus = activeStatus === "all" || jobStatus === activeStatus.trim().toLowerCase();
     const haystack = `${job.company || ""} ${job.role || ""}`.toLowerCase();
     const matchesSearch = !searchTerm || haystack.includes(searchTerm);
     return matchesStatus && matchesSearch;
@@ -123,7 +152,7 @@ function renderJobs() {
   }
   jobsEmpty.classList.add("hidden");
 
-  const statusOptions = ["Applied", "Interviewing", "Offer", "Rejected", "Wishlist"];
+  const statusOptions = ["Applied", "Interview", "Offer", "Rejected", "Wishlist"];
 
   for (const job of filtered) {
     const li = document.createElement("li");
@@ -286,10 +315,13 @@ addJobForm.addEventListener("submit", async (e) => {
 
 // ---------- stats ----------
 function renderStats() {
-  const counts = { Applied: 0, Interviewing: 0, Offer: 0, Rejected: 0, Wishlist: 0 };
+  const counts = { Applied: 0, Interview: 0, Offer: 0, Rejected: 0, Wishlist: 0 };
+  const knownKeys = Object.keys(counts);
   for (const job of allJobs) {
-    const s = job.status || "Applied";
-    counts[s] = (counts[s] || 0) + 1;
+    const raw = (job.status || "Applied").trim();
+    const match = knownKeys.find((k) => k.toLowerCase() === raw.toLowerCase());
+    const key = match || "Applied";
+    counts[key] = (counts[key] || 0) + 1;
   }
 
   statsGrid.innerHTML = "";

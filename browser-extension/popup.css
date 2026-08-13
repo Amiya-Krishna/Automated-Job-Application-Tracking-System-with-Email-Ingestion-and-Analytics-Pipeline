@@ -411,7 +411,7 @@ button.secondary:hover {
 }
 
 .status-Applied { color: #0369a1; background: #e0f2fe; }
-.status-Interviewing { color: #92400e; background: #fef3c7; }
+.status-Interview { color: #92400e; background: #fef3c7; }
 .status-Offer { color: #166534; background: #dcfce7; }
 .status-Rejected { color: #991b1b; background: #fee2e2; }
 .status-Wishlist { color: #6d28d9; background: #ede9fe; }
@@ -462,26 +462,4 @@ button.secondary:hover {
 .statCard.total .num,
 .statCard.total .label {
   color: #fff;
-}
-
-/* ---------- settings overlay ---------- */
-.settingsPanel {
-  position: absolute;
-  inset: 0;
-  background: var(--bg);
-  padding: 14px 16px 16px;
-  border-radius: var(--radius);
-}
-
-.settingsHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: 700;
-  font-size: 14px;
-  margin-bottom: 10px;
-}
-
-.settingsHeader .icon-btn {
-  margin: 0;
 }

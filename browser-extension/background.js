@@ -10,6 +10,24 @@ async function getToken() {
   return token || null;
 }
 
+async function register(name, email, password) {
+  const base = await getApiBaseUrl();
+
+  const res = await fetch(`${base}/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    throw new Error(data.message || "Registration failed");
+  }
+
+  return data;
+}
+
 async function login(email, password) {
   const base = await getApiBaseUrl();
 
@@ -138,6 +156,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
       switch (message.type) {
+        case "REGISTER": {
+          const result = await register(message.name, message.email, message.password);
+          sendResponse({ ok: true, result });
+          break;
+        }
         case "LOGIN": {
           const user = await login(message.email, message.password);
           sendResponse({ ok: true, user });
@@ -174,10 +197,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "DELETE_JOB": {
           await deleteJob(message.id);
           sendResponse({ ok: true });
-          break;
-        }
-        case "GET_DEFAULT_API_URL": {
-          sendResponse({ ok: true, defaultUrl: DEFAULT_API_BASE_URL });
           break;
         }
         default:
