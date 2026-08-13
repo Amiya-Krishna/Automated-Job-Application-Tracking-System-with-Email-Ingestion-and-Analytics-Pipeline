@@ -4,6 +4,15 @@ const dotenv = require("dotenv");
 
 dotenv.config();
 
+// jobs.id, applications.id, and applications.job_id are Postgres BigInt in
+// prisma/schema.prisma. JSON.stringify (used by res.json()) throws on raw
+// BigInt values, so any route returning those columns — e.g. GET
+// /api/engine/jobs, GET /api/applications — would crash with
+// "TypeError: Do not know how to serialize a BigInt" without this.
+BigInt.prototype.toJSON = function () {
+  return this.toString();
+};
+
 const prisma = require('./lib/prisma');
 
 // Fail fast if Postgres isn't reachable, instead of discovering it on
