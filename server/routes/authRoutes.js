@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { sendPasswordResetEmail } = require("../services/emailService");
 
 const { PrismaClient, Prisma } = require("@prisma/client");
 const prisma = new PrismaClient();
@@ -117,6 +118,81 @@ router.post("/login", async (req, res) => {
     res.status(500).json({
       message: error.message,
     });
+  }
+});
+
+// FORGOT PASSWORD — sends a time-limited reset link to the user's email.
+router.post("/forgot-password", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Always respond with the same message whether or not the account
+    // exists, so this endpoint can't be used to find out which emails
+    // are registered.
+    const genericMessage =
+      "If an account exists for that email, a reset link has been sent.";
+
+    if (!user) {
+      return res.json({ message: genericMessage });
+    }
+
+    const resetToken = jwt.sign(
+      { id: user.id, purpose: "password_reset" },
+      process.env.JWT_SECRET,
+      { expiresIn: "30m" }
+    );
+
+    const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "";
+    const resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
+
+    await sendPasswordResetEmail({ to: user.email, resetUrl });
+
+    res.json({ message: genericMessage });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// RESET PASSWORD — verifies the token from the email link and sets a new password.
+router.post("/reset-password", async (req, res) => {
+  try {
+    const { token, password } = req.body;
+
+    if (!token || !password) {
+      return res.status(400).json({ message: "Token and new password are required" });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({ message: "Reset link is invalid or has expired" });
+    }
+
+    if (decoded.purpose !== "password_reset") {
+      return res.status(400).json({ message: "Reset link is invalid or has expired" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: { id: decoded.id },
+      data: { password: hashedPassword },
+    });
+
+    res.json({ message: "Password has been reset. You can now log in." });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
