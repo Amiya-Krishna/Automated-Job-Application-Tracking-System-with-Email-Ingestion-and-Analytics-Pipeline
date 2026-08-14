@@ -33,6 +33,26 @@ router.post("/register", async (req, res) => {
       },
     });
 
+    // ✅ Pre-fill the candidate profile (used by the extension's Profile tab
+    // and the client's Profile page) with the name/email from registration,
+    // so it doesn't show up blank the first time it's opened. This never
+    // overwrites an existing profile someone has already filled in — it
+    // only seeds a fresh one.
+    try {
+      const existingProfile = await prisma.user_profile.findFirst({
+        orderBy: { id: "asc" },
+      });
+
+      if (!existingProfile) {
+        await prisma.user_profile.create({
+          data: { full_name: name, email },
+        });
+      }
+    } catch (profileErr) {
+      // Never fail registration because of the profile pre-fill step.
+      console.error("Profile pre-fill failed:", profileErr.message);
+    }
+
     res.status(201).json({
       message: "User Registered Successfully",
     });
