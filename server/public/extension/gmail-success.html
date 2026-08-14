@@ -1,0 +1,43 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gmail connected — TrackTrail</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        margin: 0;
+      }
+      .card {
+        background: #1e293b;
+        padding: 40px;
+        border-radius: 20px;
+        max-width: 380px;
+        text-align: center;
+      }
+      h1 { font-size: 20px; margin-bottom: 8px; }
+      p { color: #cbd5e1; font-size: 14px; line-height: 1.6; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Gmail connected ✅</h1>
+      <p>
+        You can close this tab and go back to the TrackTrail extension —
+        open the extension icon, go to the Email tab, and hit
+        "Refresh status".
+      </p>
+      <p>
+        Set <code>EXTENSION_REDIRECT_URL</code> in <code>server/.env</code>
+        to your extension's dashboard URL to skip this page and land there
+        directly next time.
+      </p>
+    </div>
+  </body>
+</html>

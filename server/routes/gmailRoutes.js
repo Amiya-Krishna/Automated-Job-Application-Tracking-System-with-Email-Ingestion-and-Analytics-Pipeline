@@ -8,13 +8,20 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 // STEP 1 — Get Google auth URL
+// The browser extension calls this as /gmail/auth-url?source=extension so
+// the callback below knows to send the browser back to the extension's own
+// dashboard instead of the Vercel-hosted web client.
 router.get("/auth-url", auth, (req, res) => {
   try {
     const oauth2Client = getOAuthClient();
 
-    const state = jwt.sign({ id: req.user.id }, process.env.JWT_SECRET, {
-      expiresIn: "10m",
-    });
+    const source = req.query.source === "extension" ? "extension" : "web";
+
+    const state = jwt.sign(
+      { id: req.user.id, source },
+      process.env.JWT_SECRET,
+      { expiresIn: "10m" }
+    );
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
@@ -30,23 +37,45 @@ router.get("/auth-url", auth, (req, res) => {
 });
 
 // STEP 2 — Callback
+// EXTENSION_REDIRECT_URL is a separate redirect target (set in server/.env)
+// used only when the OAuth flow was started from the browser extension
+// (source=extension). It should point at the extension's own dashboard
+// page, e.g. chrome-extension://<your-extension-id>/dashboard.html — open
+// chrome://extensions with Developer mode on to find your extension's ID.
+// If it isn't set, we fall back to a small page served by this same
+// server (see /extension/gmail-success.html below) so the flow still
+// completes instead of dumping the user on the web client by mistake.
 router.get("/callback", async (req, res) => {
   const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "/";
+  const extensionRedirectUrl =
+    process.env.EXTENSION_REDIRECT_URL ||
+    `${(process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "")}/extension/gmail-success.html`;
+
+  function redirectTarget(status, source) {
+    if (source === "extension") {
+      const sep = extensionRedirectUrl.includes("?") ? "&" : "?";
+      return `${extensionRedirectUrl}${sep}gmail=${status}`;
+    }
+    return `${clientUrl}/integrations?gmail=${status}`;
+  }
+
+  let source = "web";
 
   try {
     const { code, state } = req.query;
 
     if (!code || !state) {
-      return res.redirect(`${clientUrl}/integrations?gmail=error`);
+      return res.redirect(redirectTarget("error", source));
     }
 
     const decoded = jwt.verify(state, process.env.JWT_SECRET);
+    source = decoded.source === "extension" ? "extension" : "web";
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
-      return res.redirect(`${clientUrl}/integrations?gmail=no_refresh_token`);
+      return res.redirect(redirectTarget("no_refresh_token", source));
     }
 
     // ✅ Save refresh token in DB
@@ -55,10 +84,10 @@ router.get("/callback", async (req, res) => {
       data: { gmailRefreshToken: tokens.refresh_token },
     });
 
-    res.redirect(`${clientUrl}/integrations?gmail=connected`);
+    res.redirect(redirectTarget("connected", source));
   } catch (err) {
     console.error(err);
-    res.redirect(`${clientUrl}/integrations?gmail=error`);
+    res.redirect(redirectTarget("error", source));
   }
 });
 
