@@ -55,17 +55,6 @@ body {
   font-size: 19px;
 }
 
-.apiChip {
-  margin-left: auto;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent-dark);
-  background: #ecfeff;
-  border: 1px solid #a5f3fc;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-
 .dash-tabs {
   display: flex;
   gap: 6px;

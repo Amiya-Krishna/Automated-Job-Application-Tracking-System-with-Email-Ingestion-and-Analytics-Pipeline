@@ -30,8 +30,6 @@ async function apiAuth(path, options = {}) {
   });
 }
 
-const apiChip = document.getElementById("apiChip");
-
 // ---------- tabs ----------
 const dashTabs = document.getElementById("dashTabs");
 const dashPanels = document.querySelectorAll(".dashPanel");
@@ -518,7 +516,7 @@ gmailConnectBtn.addEventListener("click", async () => {
   emailError.textContent = "";
   gmailConnectBtn.disabled = true;
   try {
-    const result = await apiAuth("/gmail/auth-url");
+    const result = await apiAuth("/gmail/auth-url?source=extension");
     chrome.tabs.create({ url: result.url });
   } catch (err) {
     emailError.textContent = err.message;
@@ -631,6 +629,5 @@ gmailScanBtn.addEventListener("click", async () => {
 
 // ---------- init ----------
 (async () => {
-  apiChip.textContent = await getApiBaseUrl();
   loadMatchedJobs();
 })();
