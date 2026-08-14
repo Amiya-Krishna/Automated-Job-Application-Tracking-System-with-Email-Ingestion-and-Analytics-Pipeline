@@ -1,4 +1,4 @@
-const { query } = require("@prisma/client");
+const { query } = require("../lib/prisma");
 
 const ANALYTICS_SQL = `
 WITH submitted AS (
