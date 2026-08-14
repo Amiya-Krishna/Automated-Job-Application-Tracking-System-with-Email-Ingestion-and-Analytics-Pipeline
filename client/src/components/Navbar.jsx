@@ -18,6 +18,7 @@ function Navbar() {
     { to: "/dashboard", label: "Dashboard" },
     { to: "/add-job", label: "Add Job" },
     { to: "/integrations", label: "Integrations" },
+    { to: "/profile", label: "Profile" },
   ];
 
   const isActive = (to) => location.pathname === to;
