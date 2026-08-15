@@ -121,20 +121,23 @@ router.post("/disconnect", auth, async (req, res) => {
 // IMPORT JOB FROM EMAIL
 router.post("/import", auth, async (req, res) => {
   try {
+    const body = req.body || {};
+
+    if (!body.company || !body.role) {
+      return res.status(400).json({ message: "company and role are required" });
+    }
+
     const job = await prisma.trackedJob.create({
       data: {
         userId: req.user.id,
-        company: req.body.company,
-        role: req.body.role,
-        status: req.body.status,
-        interviewDate: req.body.interviewDate
-          ? new Date(req.body.interviewDate)
-          : null,
-        notes: req.body.notes,
-        applicationDate: req.body.applicationDate
-          ? new Date(req.body.applicationDate)
+        company: body.company,
+        role: body.role,
+        status: body.status,
+        interviewDate: body.interviewDate ? new Date(body.interviewDate) : null,
+        notes: body.notes,
+        applicationDate: body.applicationDate
+          ? new Date(body.applicationDate)
           : new Date(),
-        duplicateStrategy: req.body.duplicateStrategy,
       },
     });
 
