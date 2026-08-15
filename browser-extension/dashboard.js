@@ -216,117 +216,95 @@ const appsRefresh = document.getElementById("appsRefresh");
 let activeAppStatus = "";
 
 function appStatusClass(status) {
-  const known = ["pending", "applied", "interview", "offer", "rejected"];
-  return known.includes(status) ? `badge-${status}` : "badge-pending";
+  const known = ["applied", "interview", "offer", "rejected", "wishlist"];
+  const key = (status || "applied").toLowerCase();
+  return known.includes(key) ? `badge-${key}` : "badge-applied";
 }
+
+const STATUS_OPTIONS = ["Applied", "Interview", "Offer", "Rejected", "Wishlist"];
 
 async function loadApplications() {
   appsError.textContent = "";
   appsList.innerHTML = "";
   appsEmpty.classList.add("hidden");
 
-  const params = new URLSearchParams();
-  if (activeAppStatus) params.set("status", activeAppStatus);
-
   try {
-    const result = await api(`/applications?${params.toString()}`);
-    const apps = result.data || [];
+    // Applications tracked from this dashboard (manual adds + jobs saved
+    // from the Email tab's "Save as job") live in /api/jobs, not
+    // /api/applications (that one belongs to the separate matched-jobs
+    // pipeline, so it stays empty for anything added here or via Gmail).
+    const allJobs = await apiAuth("/jobs");
+    const apps = activeAppStatus
+      ? allJobs.filter((j) => (j.status || "Applied") === activeAppStatus)
+      : allJobs;
 
     if (apps.length === 0) {
       appsEmpty.classList.remove("hidden");
       return;
     }
 
-    for (const app of apps) {
-      const job = app.jobs || {};
+    for (const job of apps) {
       const card = document.createElement("div");
       card.className = "dcard";
 
       const title = document.createElement("div");
       title.className = "dcard-title";
-      title.textContent = job.title || `Job #${app.job_id}`;
+      title.textContent = job.role || "Untitled role";
 
       const sub = document.createElement("div");
       sub.className = "dcard-sub";
-      sub.textContent = [job.companies?.name, job.location].filter(Boolean).join(" · ");
+      sub.textContent = job.company || "";
 
       const meta = document.createElement("div");
       meta.className = "dcard-meta";
       const statusBadge = document.createElement("span");
-      statusBadge.className = `badge ${appStatusClass(app.status)}`;
-      statusBadge.textContent = app.status;
+      statusBadge.className = `badge ${appStatusClass(job.status)}`;
+      statusBadge.textContent = job.status || "Applied";
       meta.appendChild(statusBadge);
 
       card.appendChild(title);
       card.appendChild(sub);
       card.appendChild(meta);
 
-      if (app.applied_at) {
+      if (job.applicationDate) {
         const dateEl = document.createElement("div");
         dateEl.className = "dcard-sub";
-        dateEl.textContent = `Applied ${formatDate(app.applied_at)}`;
+        dateEl.textContent = `Applied ${formatDate(job.applicationDate)}`;
         card.appendChild(dateEl);
       }
 
-      if (app.failure_reason) {
-        const fail = document.createElement("div");
-        fail.className = "dcard-fail";
-        fail.textContent = `Failed: ${app.failure_reason} (retries: ${app.retry_count ?? 0})`;
-        card.appendChild(fail);
+      if (job.notes) {
+        const notesEl = document.createElement("div");
+        notesEl.className = "dcard-sub";
+        notesEl.textContent = job.notes;
+        card.appendChild(notesEl);
       }
 
       const actions = document.createElement("div");
       actions.className = "dcard-actions";
 
-      if (app.status === "pending") {
-        const submitBtn = document.createElement("button");
-        submitBtn.className = "primary";
-        submitBtn.type = "button";
-        submitBtn.textContent = "Mark as applied";
-        submitBtn.addEventListener("click", async () => {
-          submitBtn.disabled = true;
-          try {
-            await api(`/applications/${app.id}/submit`, { method: "POST" });
-            loadApplications();
-          } catch (err) {
-            submitBtn.disabled = false;
-            appsError.textContent = err.message;
-          }
-        });
-        actions.appendChild(submitBtn);
+      const statusSelect = document.createElement("select");
+      for (const opt of STATUS_OPTIONS) {
+        const optionEl = document.createElement("option");
+        optionEl.value = opt;
+        optionEl.textContent = opt;
+        if ((job.status || "Applied") === opt) optionEl.selected = true;
+        statusSelect.appendChild(optionEl);
       }
-
-      if (app.status === "applied") {
-        for (const outcome of ["interview", "offer", "rejected"]) {
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.textContent = outcome[0].toUpperCase() + outcome.slice(1);
-          btn.addEventListener("click", async () => {
-            btn.disabled = true;
-            try {
-              await api(`/applications/${app.id}/outcome`, {
-                method: "POST",
-                body: JSON.stringify({ status: outcome }),
-              });
-              loadApplications();
-            } catch (err) {
-              btn.disabled = false;
-              appsError.textContent = err.message;
-            }
+      statusSelect.addEventListener("change", async () => {
+        statusSelect.disabled = true;
+        try {
+          await apiAuth(`/jobs/${job.id}`, {
+            method: "PUT",
+            body: JSON.stringify({ status: statusSelect.value }),
           });
-          actions.appendChild(btn);
+          loadApplications();
+        } catch (err) {
+          statusSelect.disabled = false;
+          appsError.textContent = err.message;
         }
-      }
-
-      if (job.source_url) {
-        const link = document.createElement("a");
-        link.href = job.source_url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.className = "dcard-link";
-        link.textContent = "View posting ↗";
-        actions.appendChild(link);
-      }
+      });
+      actions.appendChild(statusSelect);
 
       card.appendChild(actions);
       appsList.appendChild(card);
@@ -542,6 +520,46 @@ gmailDisconnectBtn.addEventListener("click", async () => {
 
 gmailRefreshStatusBtn.addEventListener("click", loadGmailStatus);
 
+// Common ATS/job-board senders whose display name isn't the actual
+// hiring company — for these we fall back to the sender's domain instead.
+const GENERIC_SENDER_NAMES = [
+  "linkedin", "indeed", "glassdoor", "greenhouse", "lever", "workday",
+  "myworkday", "smartrecruiters", "icims", "ashby", "notifications",
+  "no-reply", "noreply", "careers", "recruiting", "talent",
+];
+
+function titleCase(str) {
+  return str
+    .split(/[\s._-]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+// Best-effort guess of the hiring company from a Gmail "From" header, e.g.
+// `"Acme Careers" <no-reply@acme.com>` -> "Acme Careers" (or "Acme" from
+// the domain if the display name is a generic ATS/platform name).
+function guessCompanyFromEmail(fromHeader) {
+  if (!fromHeader) return "";
+
+  const match = fromHeader.match(/^\s*"?([^"<]*?)"?\s*<([^>]+)>\s*$/);
+  const displayName = (match ? match[1] : "").trim();
+  const email = (match ? match[2] : fromHeader).trim();
+
+  const isGeneric =
+    !displayName ||
+    GENERIC_SENDER_NAMES.some((g) => displayName.toLowerCase().includes(g));
+
+  if (!isGeneric) return displayName;
+
+  const domain = email.split("@")[1] || "";
+  const domainRoot = domain
+    .replace(/^(mail|careers|jobs|hr|talent|notifications|no-?reply)\./i, "")
+    .split(".")[0];
+
+  return domainRoot ? titleCase(domainRoot) : displayName;
+}
+
 gmailScanBtn.addEventListener("click", async () => {
   emailError.textContent = "";
   emailList.innerHTML = "";
@@ -580,6 +598,7 @@ gmailScanBtn.addEventListener("click", async () => {
       const companyInput = document.createElement("input");
       companyInput.type = "text";
       companyInput.placeholder = "Company name to save as...";
+      companyInput.value = guessCompanyFromEmail(msg.from);
 
       const importBtn = document.createElement("button");
       importBtn.type = "button";
