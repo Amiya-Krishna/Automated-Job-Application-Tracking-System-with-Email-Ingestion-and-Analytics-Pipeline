@@ -30,20 +30,35 @@ async function apiAuth(path, options = {}) {
   });
 }
 
-// ---------- tabs ----------
+function formatDate(value) {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ---------- sidebar nav ----------
 const dashTabs = document.getElementById("dashTabs");
 const dashPanels = document.querySelectorAll(".dashPanel");
+const pageTitle = document.getElementById("pageTitle");
+const pageDesc = document.getElementById("pageDesc");
 
 dashTabs.addEventListener("click", (e) => {
-  const btn = e.target.closest(".dash-tab");
+  const btn = e.target.closest(".nav-item");
   if (!btn) return;
-  for (const t of dashTabs.querySelectorAll(".dash-tab")) t.classList.remove("active");
+  for (const t of dashTabs.querySelectorAll(".nav-item")) t.classList.remove("active");
   btn.classList.add("active");
+
   const targetId = btn.dataset.tab;
   for (const panel of dashPanels) panel.classList.toggle("hidden", panel.id !== targetId);
 
+  pageTitle.textContent = btn.dataset.title || "";
+  pageDesc.textContent = btn.dataset.desc || "";
+
   if (targetId === "applicationsTab") loadApplications();
   if (targetId === "analyticsTab") loadAnalytics();
+  if (targetId === "companiesTab") loadCompanies();
+  if (targetId === "sourcesTab") loadSources();
   if (targetId === "profileTab") loadProfile();
   if (targetId === "emailTab") loadGmailStatus();
 });
@@ -73,13 +88,6 @@ function scoreBadgeClass(score) {
 function statusBadgeClass(status) {
   const known = ["new", "matched", "applied", "duplicate"];
   return known.includes(status) ? `badge-${status}` : "badge-new";
-}
-
-function formatDate(value) {
-  if (!value) return "";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 async function loadMatchedJobs() {
@@ -394,6 +402,101 @@ async function loadAnalytics() {
 
 analyticsRefresh.addEventListener("click", loadAnalytics);
 analyticsRange.addEventListener("change", loadAnalytics);
+
+// ============================================================
+// COMPANIES  (prisma `companies` table)
+// ============================================================
+const companiesBody = document.getElementById("companiesBody");
+const companiesEmpty = document.getElementById("companiesEmpty");
+const companiesError = document.getElementById("companiesError");
+const companiesSearch = document.getElementById("companiesSearch");
+const companiesRefresh = document.getElementById("companiesRefresh");
+
+let companiesDebounce;
+
+async function loadCompanies() {
+  companiesError.textContent = "";
+  companiesBody.innerHTML = "";
+  companiesEmpty.classList.add("hidden");
+
+  try {
+    const params = new URLSearchParams({ pageSize: "50" });
+    if (companiesSearch.value.trim()) params.set("search", companiesSearch.value.trim());
+
+    const result = await api(`/companies?${params.toString()}`);
+    const companies = result.data || [];
+
+    if (companies.length === 0) {
+      companiesEmpty.classList.remove("hidden");
+      return;
+    }
+
+    for (const c of companies) {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td class="cellStrong">${c.name}</td>
+        <td class="cellMuted">${c.domain || "—"}</td>
+        <td class="num"><span class="pill">${c.jobCount}</span></td>
+      `;
+      companiesBody.appendChild(row);
+    }
+  } catch (err) {
+    companiesError.textContent = err.message;
+  }
+}
+
+companiesRefresh.addEventListener("click", loadCompanies);
+companiesSearch.addEventListener("input", () => {
+  clearTimeout(companiesDebounce);
+  companiesDebounce = setTimeout(loadCompanies, 300);
+});
+
+// ============================================================
+// SOURCES  (prisma `job_sources` table)
+// ============================================================
+const sourcesList = document.getElementById("sourcesList");
+const sourcesEmpty = document.getElementById("sourcesEmpty");
+const sourcesError = document.getElementById("sourcesError");
+const sourcesRefresh = document.getElementById("sourcesRefresh");
+
+async function loadSources() {
+  sourcesError.textContent = "";
+  sourcesList.innerHTML = "";
+  sourcesEmpty.classList.add("hidden");
+
+  try {
+    const result = await api("/sources");
+    const sources = result.data || [];
+
+    if (sources.length === 0) {
+      sourcesEmpty.classList.remove("hidden");
+      return;
+    }
+
+    const maxJobs = Math.max(1, ...sources.map((s) => s.jobCount || 0));
+
+    for (const s of sources) {
+      const pct = Math.round(((s.jobCount || 0) / maxJobs) * 100);
+      const row = document.createElement("div");
+      row.className = "sourceRow";
+      row.innerHTML = `
+        <div class="sourceHead">
+          <div>
+            <div class="sourceName">${s.name}</div>
+            ${s.baseUrl ? `<a class="sourceLink" href="${s.baseUrl}" target="_blank" rel="noopener noreferrer">${s.baseUrl}</a>` : ""}
+          </div>
+          <span class="pill">${s.jobCount} jobs</span>
+        </div>
+        <div class="funnelBarTrack"><div class="funnelBarFill" style="width:${pct}%"></div></div>
+      `;
+      sourcesList.appendChild(row);
+    }
+  } catch (err) {
+    sourcesError.textContent = err.message;
+  }
+}
+
+sourcesRefresh.addEventListener("click", loadSources);
 
 // ============================================================
 // PROFILE
