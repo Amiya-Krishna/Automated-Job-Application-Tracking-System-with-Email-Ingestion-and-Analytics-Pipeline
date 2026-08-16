@@ -19,37 +19,65 @@ async function scrapeLinkedIn(searchQuery, context) {
   //
   // LinkedIn separately serves search results to signed-out visitors (and
   // search engines) through its "guest" endpoint, which renders plain
-  // server-side HTML instead of the SPA shell. That's what the selectors
-  // below (base-search-card__*, base-card__full-link) actually match.
+  // server-side HTML instead of the SPA shell.
   await page.goto(
     `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(searchQuery)}&start=0`,
     { waitUntil: "domcontentloaded" }
   );
 
+  // Card-level wrapper classes on this endpoint drift a lot (li.base-card,
+  // li.base-search-card, or sometimes no class on the <li> at all — only
+  // the inner <div> carries "base-card"). Waiting on that wrapper is what
+  // used to make this silently return 0 even when the fragment clearly has
+  // job data in it. The title/link elements are far more stable, so wait
+  // on those instead and walk up to find each card's container.
   const foundCards = await page
-    .waitForSelector("li.base-search-card, li.base-card", { timeout: 15000 })
+    .waitForSelector("h3.base-search-card__title, a.base-card__full-link", { timeout: 15000 })
     .then(() => true)
     .catch(() => false);
 
   if (!foundCards) {
     const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 300) || "");
+    const isCheckpoint = /sign in|join now|authwall|security verification/i.test(bodyText);
     console.warn(
-      "[scraper] LinkedIn returned no job cards — likely rate-limited, showing a " +
-        "captcha/checkpoint, or the guest endpoint's markup changed again. " +
-        `Page text preview: ${JSON.stringify(bodyText)}`
+      `[scraper] LinkedIn returned no job cards — ${
+        isCheckpoint
+          ? "looks like a login/checkpoint wall, not a markup change"
+          : "likely rate-limited, a captcha, or the guest endpoint's markup changed again"
+      }. Page text preview: ${JSON.stringify(bodyText)}`
     );
     await page.close();
     return [];
   }
 
-  const cards = await page.$$eval("li.base-search-card, li.base-card", (nodes) =>
-    nodes.slice(0, 25).map((n) => ({
-      title: n.querySelector(".base-search-card__title")?.innerText?.trim(),
-      company: n.querySelector(".base-search-card__subtitle")?.innerText?.trim(),
-      location: n.querySelector(".job-search-card__location")?.innerText?.trim(),
-      sourceUrl: n.querySelector("a.base-card__full-link")?.href?.split("?")[0],
-    }))
-  );
+  const cards = await page.$$eval("h3.base-search-card__title, a.base-card__full-link", (nodes) => {
+    // Multiple anchors/titles can belong to the same card, so dedupe by
+    // walking each match up to its nearest <li> (falling back a few
+    // parentElement hops if the <li> wrapper is missing) and keying by
+    // that container.
+    const seen = new Set();
+    const results = [];
+
+    for (const node of nodes) {
+      let container = node.closest("li") || node.parentElement?.parentElement || node.parentElement;
+      if (!container || seen.has(container)) continue;
+      seen.add(container);
+
+      const link = container.querySelector("a.base-card__full-link");
+      const title =
+        container.querySelector(".base-search-card__title")?.innerText?.trim() ||
+        (link?.getAttribute("aria-label") || "").trim();
+
+      results.push({
+        title,
+        company: container.querySelector(".base-search-card__subtitle")?.innerText?.trim(),
+        location: container.querySelector(".job-search-card__location")?.innerText?.trim(),
+        sourceUrl: link?.href?.split("?")[0],
+      });
+    }
+
+    return results.slice(0, 25);
+  });
 
   const results = [];
   for (const card of cards) {
@@ -118,7 +146,19 @@ async function scrapeIndeed(searchQuery, context) {
 async function runScrapePass(searchQuery = "software engineer intern") {
   const context = await chromium.launchPersistentContext(
     process.env.PLAYWRIGHT_PROFILE_DIR || "./playwright-profile",
-    { headless: process.env.PLAYWRIGHT_HEADLESS !== "false" }
+    {
+      headless: process.env.PLAYWRIGHT_HEADLESS !== "false",
+      // Default Playwright Chromium sends a UA/viewport combo that's easy
+      // to fingerprint as automation. This doesn't get past Indeed's
+      // Cloudflare challenge (that needs a real browsing session, not just
+      // header tweaks), but it does help avoid tripping LinkedIn's softer
+      // rate-limiting on the guest endpoint.
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      viewport: { width: 1366, height: 850 },
+      locale: "en-US",
+    }
   );
 
   const [linkedinJobs, indeedJobs] = await Promise.all([

@@ -1,6 +1,5 @@
 const router = require("express").Router();
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 // GET /api/sources -> browses the `job_sources` table (LinkedIn, Indeed,
 // etc — everywhere the scraper/ingestion pipeline pulls jobs from), with a

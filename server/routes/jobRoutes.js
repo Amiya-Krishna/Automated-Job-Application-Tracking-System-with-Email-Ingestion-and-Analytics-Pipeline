@@ -1,8 +1,6 @@
 const router = require("express").Router();
 const auth = require("../middleware/authMiddleware");
-const { PrismaClient } = require("@prisma/client");
-
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 // CREATE JOB
 router.post("/", auth, async (req, res) => {

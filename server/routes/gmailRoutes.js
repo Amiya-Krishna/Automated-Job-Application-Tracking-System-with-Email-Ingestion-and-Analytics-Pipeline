@@ -4,8 +4,7 @@ const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
 const auth = require("../middleware/authMiddleware");
 
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 // STEP 1 — Get Google auth URL
 // The browser extension calls this as /gmail/auth-url?source=extension so

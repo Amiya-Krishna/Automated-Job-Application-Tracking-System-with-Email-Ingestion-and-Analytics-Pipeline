@@ -1,6 +1,5 @@
 const router = require("express").Router();
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma");
 
 // GET /api/companies?search=acme&page=1&pageSize=25
 // Browses the `companies` table (deduped employers discovered by the

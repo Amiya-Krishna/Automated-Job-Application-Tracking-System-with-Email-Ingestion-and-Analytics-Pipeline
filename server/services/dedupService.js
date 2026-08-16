@@ -51,8 +51,8 @@ async function findDuplicate(newJob) {
   const candidates = await query(
     `SELECT id, normalized_title, description FROM jobs
      WHERE company_id = $1
-       AND ($2::timestamptz IS NULL OR posted_at BETWEEN $2::timestamptz - make_interval(days => $3)
-                                                       AND $2::timestamptz + make_interval(days => $3))`,
+       AND ($2::timestamptz IS NULL OR posted_at BETWEEN $2::timestamptz - make_interval(days => $3::int)
+                                                       AND $2::timestamptz + make_interval(days => $3::int))`,
     [newJob.companyId, newJob.postedAt || null, DATE_WINDOW_DAYS],
   );
 
