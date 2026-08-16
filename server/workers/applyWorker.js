@@ -1,7 +1,7 @@
 const { Worker } = require("bullmq");
 const { chromium } = require("playwright");
 const { connection } = require("../queue");
-const { query } = require("..@prisma/client");
+const { query } = require("../lib/prisma");
 const { prepareApplication } = require("../services/applyEngine");
 
 // A persistent, "warmed" context (real cookies/session) rather than a fresh

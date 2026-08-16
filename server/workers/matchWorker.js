@@ -1,6 +1,6 @@
 const { Worker } = require("bullmq");
 const { connection } = require("../queue");
-const { query } = require("..@prisma/client");
+const { query } = require("../lib/prisma");
 const { scoreTfIdf } = require("../services/matchingService");
 
 const MATCH_THRESHOLD = 70;

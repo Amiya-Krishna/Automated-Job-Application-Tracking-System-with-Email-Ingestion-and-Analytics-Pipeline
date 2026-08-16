@@ -1,4 +1,4 @@
-const { query } = require("..@prisma/client");
+const { query } = require("../lib/prisma");
 const { normalize, contentHash } = require("./textUtils");
 const { findDuplicate } = require("./dedupService");
 const { matchQueue } = require("../queue");

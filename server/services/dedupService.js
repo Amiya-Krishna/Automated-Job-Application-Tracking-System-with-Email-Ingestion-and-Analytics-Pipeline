@@ -1,4 +1,4 @@
-const { query } = require("..@prisma/client");
+const { query } = require("../lib/prisma");
 const { normalize, contentHash, titleSimilarity } = require("./textUtils");
 const { TfIdf } = require("natural");
 

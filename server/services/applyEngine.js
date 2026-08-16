@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { selectAdapter } = require("../adapters");
 const { allowApply, humanDelay } = require("./rateLimiter");
-const { query } = require("..@prisma/client");
+const { query } = require("../lib/prisma");
 
 const SCREENSHOT_DIR = path.join(__dirname, "..", "screenshots");
 if (!fs.existsSync(SCREENSHOT_DIR))
