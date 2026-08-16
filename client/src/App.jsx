@@ -9,6 +9,11 @@ import Dashboard from "./pages/Dashboard";
 import JobForm from "./pages/JobForm";
 import Integrations from "./pages/Integrations";
 import Profile from "./pages/Profile";
+import Analytics from "./pages/Analytics";
+import MatchedJobs from "./pages/MatchedJobs";
+import EngineApplications from "./pages/EngineApplications";
+import Companies from "./pages/Companies";
+import Sources from "./pages/Sources";
 import NotFound from "./pages/NotFound";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -59,6 +64,46 @@ function App() {
           element={
             <ProtectedRoute>
               <Profile />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Analytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/matched-jobs"
+          element={
+            <ProtectedRoute>
+              <MatchedJobs />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/engine-applications"
+          element={
+            <ProtectedRoute>
+              <EngineApplications />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/companies"
+          element={
+            <ProtectedRoute>
+              <Companies />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sources"
+          element={
+            <ProtectedRoute>
+              <Sources />
             </ProtectedRoute>
           }
         />

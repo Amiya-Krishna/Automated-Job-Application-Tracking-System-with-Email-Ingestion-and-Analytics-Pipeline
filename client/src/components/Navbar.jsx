@@ -1,12 +1,32 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { clearStoredToken } from "../utils/auth";
 import toast from "react-hot-toast";
+
+const primaryLinks = [
+  { to: "/dashboard", label: "Dashboard" },
+  { to: "/add-job", label: "Add Job" },
+  { to: "/analytics", label: "Analytics" },
+];
+
+const engineLinks = [
+  { to: "/matched-jobs", label: "Matched Jobs", hint: "jobs · match_scores" },
+  { to: "/engine-applications", label: "Applications", hint: "applications" },
+  { to: "/companies", label: "Companies", hint: "companies" },
+  { to: "/sources", label: "Sources", hint: "job_sources" },
+];
+
+const trailingLinks = [
+  { to: "/integrations", label: "Integrations" },
+  { to: "/profile", label: "Profile" },
+];
 
 function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [engineOpen, setEngineOpen] = useState(false);
+  const engineRef = useRef(null);
 
   const logout = () => {
     clearStoredToken();
@@ -14,14 +34,18 @@ function Navbar() {
     navigate("/login");
   };
 
-  const links = [
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/add-job", label: "Add Job" },
-    { to: "/integrations", label: "Integrations" },
-    { to: "/profile", label: "Profile" },
-  ];
-
   const isActive = (to) => location.pathname === to;
+  const isEngineActive = engineLinks.some((link) => isActive(link.to));
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (engineRef.current && !engineRef.current.contains(e.target)) {
+        setEngineOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/80 backdrop-blur">
@@ -36,7 +60,69 @@ function Navbar() {
         </Link>
 
         <nav className="hidden items-center gap-1 sm:flex">
-          {links.map((link) => (
+          {primaryLinks.map((link) => (
+            <Link
+              key={link.to}
+              to={link.to}
+              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                isActive(link.to)
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+
+          {/* Engine pages (jobs, match_scores, applications, companies, job_sources) */}
+          <div className="relative" ref={engineRef}>
+            <button
+              type="button"
+              onClick={() => setEngineOpen((prev) => !prev)}
+              className={`flex items-center gap-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                isEngineActive
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              Engine
+              <svg
+                className={`h-3.5 w-3.5 transition ${engineOpen ? "rotate-180" : ""}`}
+                viewBox="0 0 12 12"
+                fill="none"
+              >
+                <path d="M2.5 4.5 6 8l3.5-3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+
+            {engineOpen && (
+              <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                {engineLinks.map((link) => (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={() => setEngineOpen(false)}
+                    className={`block rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      isActive(link.to)
+                        ? "bg-slate-950 text-white"
+                        : "text-slate-700 hover:bg-slate-100"
+                    }`}
+                  >
+                    {link.label}
+                    <span
+                      className={`ml-2 text-[10px] font-medium ${
+                        isActive(link.to) ? "text-slate-300" : "text-slate-400"
+                      }`}
+                    >
+                      {link.hint}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {trailingLinks.map((link) => (
             <Link
               key={link.to}
               to={link.to}
@@ -70,7 +156,7 @@ function Navbar() {
       {menuOpen && (
         <div className="border-t border-slate-200 bg-white px-4 py-3 sm:hidden">
           <div className="flex flex-col gap-1">
-            {links.map((link) => (
+            {[...primaryLinks, ...engineLinks, ...trailingLinks].map((link) => (
               <Link
                 key={link.to}
                 to={link.to}
