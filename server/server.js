@@ -66,6 +66,8 @@ app.use("/api/engine/jobs", require("./routes/engineJobsRoutes"));
 app.use("/api/applications", require("./routes/applyRoutes"));
 app.use("/api/analytics", require("./routes/analyticsRoutes"));
 app.use("/api/profile", require("./routes/profileRoutes"));
+app.use("/api/companies", require("./routes/companiesRoutes"));
+app.use("/api/sources", require("./routes/sourcesRoutes"));
 
 app.get("/", (req, res) => {
   res.send("Backend Running");
