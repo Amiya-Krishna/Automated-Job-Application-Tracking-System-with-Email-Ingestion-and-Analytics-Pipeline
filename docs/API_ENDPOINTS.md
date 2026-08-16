@@ -295,10 +295,10 @@ subject lines.
 
 These endpoints back the scraping/matching/apply/analytics engine described
 in [intelligent-job-application-engine-design.md](intelligent-job-application-engine-design.md).
-They read/write the Postgres `jobs`, `companies`, `applications`,
-`match_scores`, `user_profile`, and `analytics_daily` tables — separate from
-the `tracked_jobs` table used by `/api/jobs` above. None of these currently
-require the `token` auth header.
+They read/write the Postgres `jobs`, `companies`, `job_sources`,
+`applications`, `match_scores`, `user_profile`, and `analytics_daily` tables
+— separate from the `tracked_jobs` table used by `/api/jobs` above. None of
+these currently require the `token` auth header.
 
 ### 12. Ingest a Job
 
@@ -487,6 +487,63 @@ matching engine's per-skill weights via the learning loop.
 **Response:** `201 { "status": "created" }` on first save, or
 `200 { "status": "updated" }` on subsequent saves — there's only ever one
 profile row.
+
+### 23. List Companies
+
+**GET** `/api/companies?search=acme&page=1&pageSize=25`
+
+Browses the `companies` table (deduped employers discovered by the
+ingestion pipeline), with a job count per company. `search` matches
+against name or domain (case-insensitive).
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "name": "Acme Inc",
+      "normalizedName": "acme-inc",
+      "domain": "acme.com",
+      "createdAt": "2026-06-01T00:00:00.000Z",
+      "jobCount": 12
+    }
+  ],
+  "meta": { "page": 1, "pageSize": 25, "total": 40 }
+}
+```
+
+### 24. Get a Single Company
+
+**GET** `/api/companies/:id`
+
+**Response (200):** `{ "data": { ...company row, "jobs": [ ...up to 25 recent jobs ] } }`
+**Error (404):** `{ "message": "Company not found" }`
+
+### 25. List Job Sources
+
+**GET** `/api/sources`
+
+Browses the `job_sources` table (LinkedIn, Indeed, etc — everywhere the
+scraper pulls listings from), with a job count per source.
+
+**Response (200):**
+
+```json
+{
+  "data": [
+    { "id": 1, "name": "linkedin", "baseUrl": "https://www.linkedin.com", "createdAt": "2026-05-01T00:00:00.000Z", "jobCount": 84 }
+  ]
+}
+```
+
+### 26. Get a Single Source
+
+**GET** `/api/sources/:id`
+
+**Response (200):** `{ "data": { ...source row, "jobs": [ ...up to 25 recent jobs ] } }`
+**Error (404):** `{ "message": "Source not found" }`
 
 ---
 

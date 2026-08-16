@@ -38,7 +38,9 @@ Job Application Tracker Portal/
 │   │   ├── engineJobsRoutes.js           # /api/engine/jobs — engine: browse scraped/matched jobs
 │   │   ├── applyRoutes.js                # /api/applications — engine: apply + outcome tracking
 │   │   ├── analyticsRoutes.js            # /api/analytics — engine: summary + funnel stats
-│   │   └── profileRoutes.js              # /api/profile — engine: resume/skills profile
+│   │   ├── profileRoutes.js              # /api/profile — engine: resume/skills profile
+│   │   ├── companiesRoutes.js            # /api/companies — engine: browse the companies table
+│   │   └── sourcesRoutes.js              # /api/sources — engine: browse the job_sources table
 │   │
 │   ├── 📁 middleware/
 │   │   └── authMiddleware.js             # JWT verification (reads the `token` header)
@@ -94,10 +96,18 @@ Job Application Tracker Portal/
 │   │   │   ├── Landing.jsx               # Public marketing/landing page (`/`)
 │   │   │   ├── Login.jsx                 # `/login`
 │   │   │   ├── Register.jsx              # `/register`
-│   │   │   ├── Dashboard.jsx             # `/dashboard`
+│   │   │   ├── ForgotPassword.jsx        # `/forgot-password`
+│   │   │   ├── ResetPassword.jsx         # `/reset-password`
+│   │   │   ├── Dashboard.jsx             # `/dashboard` — tracked_jobs (manual tracker)
 │   │   │   ├── AddJob.jsx                # Add-job entry point
 │   │   │   ├── JobForm.jsx               # `/add-job`, `/edit-job/:id`
 │   │   │   ├── Integrations.jsx          # `/integrations` — Gmail connect/scan
+│   │   │   ├── Profile.jsx               # `/profile` — user_profile table
+│   │   │   ├── Analytics.jsx             # `/analytics` — analytics_daily/applications summary + funnel
+│   │   │   ├── MatchedJobs.jsx           # `/matched-jobs` — jobs + match_scores tables
+│   │   │   ├── EngineApplications.jsx    # `/engine-applications` — applications table
+│   │   │   ├── Companies.jsx             # `/companies` — companies table
+│   │   │   ├── Sources.jsx               # `/sources` — job_sources table
 │   │   │   └── NotFound.jsx              # `*`
 │   │   │
 │   │   └── 📁 utils/
@@ -106,11 +116,18 @@ Job Application Tracker Portal/
 │   │
 │   └── 📁 public/                        # Static assets (favicon, icons.svg)
 │
-├── 📁 browser-extension/                 # Chrome extension — manual job capture (posts to /api/ingest)
+├── 📁 browser-extension/                 # Chrome extension — manual capture + full engine dashboard
 │   ├── manifest.json
-│   ├── content.js / content.css
+│   ├── content.js / content.css          # Injects a "Save to TrackTrail" button on job postings
 │   ├── background.js
-│   ├── popup.html / popup.js / popup.css
+│   ├── popup.html / popup.js / popup.css # Toolbar popup — quick login, tracked_jobs list, add job
+│   ├── dashboard.html / dashboard.js / dashboard.css
+│   │                                      # Full-page dashboard (chrome-extension://<id>/dashboard.html),
+│   │                                      # sidebar-nav layout with one tab per engine table:
+│   │                                      #   Matched Jobs (jobs + match_scores), Applications
+│   │                                      #   (applications), Analytics (analytics_daily/applications),
+│   │                                      #   Companies (companies), Sources (job_sources), Profile
+│   │                                      #   (user_profile), Email (Gmail scan/import)
 │   └── config.js
 │
 └── 📁 docs/                              # Documentation (this folder)
