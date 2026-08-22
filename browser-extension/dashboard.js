@@ -102,7 +102,7 @@ async function loadMatchedJobs() {
   params.set("pageSize", matchedPageSize);
 
   try {
-    const result = await api(`/engine/jobs?${params.toString()}`);
+    const result = await apiAuth(`/engine/jobs?${params.toString()}`);
     const jobs = result.data || [];
     matchedPageLabel.textContent = `Page ${matchedPage}`;
 
@@ -171,7 +171,7 @@ async function loadMatchedJobs() {
         applyBtn.disabled = true;
         applyBtn.textContent = "Queuing...";
         try {
-          await api(`/applications/${job.id}`, { method: "POST" });
+          await apiAuth(`/applications/${job.id}`, { method: "POST" });
           applyBtn.textContent = "Queued ✓";
         } catch (err) {
           applyBtn.disabled = false;
@@ -358,8 +358,8 @@ async function loadAnalytics() {
 
   try {
     const [summaryRes, funnelRes] = await Promise.all([
-      api(`/analytics?range=${analyticsRange.value}`),
-      api(`/analytics/funnel`),
+      apiAuth(`/analytics?range=${analyticsRange.value}`),
+      apiAuth(`/analytics/funnel`),
     ]);
 
     const d = summaryRes.data || {};
@@ -423,7 +423,7 @@ async function loadCompanies() {
     const params = new URLSearchParams({ pageSize: "50" });
     if (companiesSearch.value.trim()) params.set("search", companiesSearch.value.trim());
 
-    const result = await api(`/companies?${params.toString()}`);
+    const result = await apiAuth(`/companies?${params.toString()}`);
     const companies = result.data || [];
 
     if (companies.length === 0) {
@@ -465,7 +465,7 @@ async function loadSources() {
   sourcesEmpty.classList.add("hidden");
 
   try {
-    const result = await api("/sources");
+    const result = await apiAuth("/sources");
     const sources = result.data || [];
 
     if (sources.length === 0) {
@@ -516,7 +516,7 @@ async function loadProfile() {
   if (profileLoaded) return;
   profMsg.textContent = "";
   try {
-    const result = await api("/profile");
+    const result = await apiAuth("/profile");
     const p = result.data;
     if (p) {
       profFullName.value = p.full_name || "";
@@ -546,7 +546,7 @@ profileForm.addEventListener("submit", async (e) => {
   };
 
   try {
-    await api("/profile", { method: "POST", body: JSON.stringify(payload) });
+    await apiAuth("/profile", { method: "POST", body: JSON.stringify(payload) });
     profMsg.className = "success";
     profMsg.textContent = "Profile saved.";
   } catch (err) {

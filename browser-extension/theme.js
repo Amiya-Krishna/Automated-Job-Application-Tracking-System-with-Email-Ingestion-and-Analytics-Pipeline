@@ -78,3 +78,16 @@ function wireThemeToggle(buttonId = "themeToggleBtn") {
 // (before other scripts) in both popup.html and dashboard.html, same
 // pattern the extension already uses for config.js.
 window.TrackTrailTheme = { initTheme, toggleTheme, wireThemeToggle, applyTheme };
+
+// Run immediately, as soon as this script itself loads (blocking, in
+// <head>, before the body paints) to avoid a light/dark flash.
+//
+// This replaces the previous `<script>window.TrackTrailTheme.initTheme()</script>`
+// inline block that used to sit right after this file's <script src="theme.js">
+// tag in popup.html/dashboard.html. Manifest V3's default CSP is
+// `script-src 'self'`, which blocks all inline scripts — including tiny
+// one-line ones — so the call has to live here instead, in an external,
+// CSP-compliant file. Behavior/timing is unchanged: theme.js is still
+// loaded as a plain (non-module, non-deferred) <script> ahead of the
+// deferred `type="module"` scripts, so this still runs first.
+initTheme();

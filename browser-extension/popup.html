@@ -4,13 +4,12 @@
     <meta charset="UTF-8" />
     <title>TrackTrail</title>
     <link rel="stylesheet" href="popup.css" />
+    <!-- theme.js calls TrackTrailTheme.initTheme() itself, immediately on
+         load (see the bottom of theme.js) — applied synchronously before
+         body paints, to avoid a light-mode flash. It's a plain
+         (non-module) script so it still runs ahead of the deferred
+         `type="module"` scripts below. -->
     <script src="theme.js"></script>
-    <script>
-      // Applied synchronously before body paints, to avoid a light-mode
-      // flash — theme.js is a plain (non-module) script so it runs
-      // immediately here, ahead of the deferred module scripts below.
-      window.TrackTrailTheme.initTheme();
-    </script>
   </head>
   <body>
     <div class="wrap">

@@ -94,8 +94,13 @@ heroku run npm run seed
 **Environment Variables:**
 
 ```
-VITE_API_URL=https://Automated-Job-Application-Tracking-System-with-Email-Ingestion-and-Analytics-Pipeline-o1ls.onrender.com
+VITE_API_BASE_URL=https://job-application-tracker-portal-o1ls.onrender.com
 ```
+
+(Must be `VITE_API_BASE_URL` — that's the exact name `client/src/api.js` reads via
+`import.meta.env.VITE_API_BASE_URL`. If it's set under any other name, Vite won't
+expose it to the client build and the app silently falls back to
+`http://localhost:5000`.)
 
 ### Option 3: Railway (Full Stack)
 
