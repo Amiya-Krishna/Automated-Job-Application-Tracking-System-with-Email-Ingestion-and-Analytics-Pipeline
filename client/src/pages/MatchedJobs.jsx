@@ -4,16 +4,16 @@ import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 
 const STATUS_STYLES = {
-  new: "bg-slate-100 text-slate-700",
-  matched: "bg-sky-100 text-sky-800",
-  applied: "bg-cyan-100 text-cyan-800",
-  duplicate: "bg-slate-100 text-slate-500",
+  new: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  matched: "bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300",
+  applied: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300",
+  duplicate: "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400",
 };
 
 function scoreStyle(score) {
-  if (score >= 70) return "bg-emerald-100 text-emerald-800";
-  if (score >= 40) return "bg-amber-100 text-amber-800";
-  return "bg-slate-100 text-slate-600";
+  if (score >= 70) return "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
+  if (score >= 40) return "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300";
+  return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300";
 }
 
 function formatDate(value) {
@@ -74,17 +74,17 @@ function MatchedJobs() {
   const totalPages = Math.max(1, Math.ceil((meta.total || 0) / meta.pageSize));
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
           Engine
         </span>
-        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Matched jobs
         </h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
           Jobs discovered by the scraper and scored against your profile.
           Queue an application straight from here — it hands off to the
           Playwright apply engine.
@@ -94,7 +94,7 @@ function MatchedJobs() {
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
           >
             <option value="">All statuses</option>
             <option value="new">New</option>
@@ -110,12 +110,12 @@ function MatchedJobs() {
             placeholder="Min match score"
             value={minScore}
             onChange={(e) => setMinScore(e.target.value)}
-            className="w-44 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+            className="w-44 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
           />
 
           <button
             onClick={() => load(1)}
-            className="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
           >
             Refresh
           </button>
@@ -124,13 +124,13 @@ function MatchedJobs() {
         {isLoading ? (
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-40 animate-pulse rounded-[24px] bg-slate-100" />
+              <div key={i} className="h-40 animate-pulse rounded-[24px] bg-slate-100 dark:bg-slate-800" />
             ))}
           </div>
         ) : jobs.length === 0 ? (
-          <div className="mt-10 flex flex-col items-center justify-center rounded-[28px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-            <p className="text-sm font-semibold text-slate-700">No jobs found</p>
-            <p className="mt-1 max-w-xs text-sm text-slate-500">
+          <div className="mt-10 flex flex-col items-center justify-center rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-16 text-center shadow-sm">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">No jobs found</p>
+            <p className="mt-1 max-w-xs text-sm text-slate-500 dark:text-slate-400">
               Try loosening your filters, or check back once the scraper has
               run.
             </p>
@@ -142,10 +142,10 @@ function MatchedJobs() {
               return (
                 <div
                   key={job.id}
-                  className="flex flex-col rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm"
+                  className="flex flex-col rounded-[24px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm"
                 >
-                  <p className="font-bold text-slate-900">{job.title || "Untitled role"}</p>
-                  <p className="mt-0.5 text-sm text-slate-500">
+                  <p className="font-bold text-slate-900 dark:text-slate-100">{job.title || "Untitled role"}</p>
+                  <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
                     {[job.companies?.name, job.location, job.remote_type]
                       .filter(Boolean)
                       .join(" · ")}
@@ -169,7 +169,7 @@ function MatchedJobs() {
                   </div>
 
                   {job.posted_at && (
-                    <p className="mt-2 text-xs text-slate-400">
+                    <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
                       Posted {formatDate(job.posted_at)}
                     </p>
                   )}
@@ -208,17 +208,17 @@ function MatchedJobs() {
             <button
               onClick={() => load(meta.page - 1)}
               disabled={meta.page <= 1}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 disabled:opacity-40"
             >
               ← Prev
             </button>
-            <span className="text-sm font-semibold text-slate-500">
+            <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
               Page {meta.page} of {totalPages}
             </span>
             <button
               onClick={() => load(meta.page + 1)}
               disabled={meta.page >= totalPages}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
+              className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 disabled:opacity-40"
             >
               Next →
             </button>

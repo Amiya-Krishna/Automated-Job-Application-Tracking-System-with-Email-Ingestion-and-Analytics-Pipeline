@@ -19,6 +19,8 @@ model User {
   createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
   trackedJobs        TrackedJob[]
+  scrapeRuns         ScrapeRun[]
+  userProfile        user_profile?
 
   @@map("users")
 }
@@ -35,6 +37,19 @@ model TrackedJob {
   status           String?   @default("Applied") @db.VarChar(50)
   interviewDate    String?   @map("interview_date") @db.VarChar(50)
   notes            String?
+  // Source attribution so the Applied Jobs UI (and the engine bridge) can
+  // tell a hand-typed row apart from one captured by the extension. Kept
+  // optional/string (not an FK to job_sources) so existing rows and the
+  // manual-add flow keep working with zero migration risk.
+  sourceName       String?   @default("manual") @map("source_name") @db.VarChar(50)
+  sourceUrl        String?   @map("source_url") @db.VarChar(1000)
+  externalJobId    String?   @map("external_job_id") @db.VarChar(255)
+  description      String?   @map("description")
+  location         String?   @map("location") @db.VarChar(255)
+  // Points at the row this manual job was bridged into in the engine
+  // `jobs` table (see server/services/engineBridge.js), once enough data
+  // exists to enqueue it for matching. Null until that happens.
+  engineJobId      BigInt?   @map("engine_job_id")
   createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
 
@@ -44,6 +59,31 @@ model TrackedJob {
   @@index([userId], map: "idx_tracked_jobs_user_id")
 
   @@map("tracked_jobs")
+}
+
+/// ----------------------
+/// NEW: ScrapeRun — tracks dashboard-triggered discovery runs so the UI
+/// can show honest queued/running/succeeded/failed/blocked status instead
+/// of a fire-and-forget button with no feedback.
+/// ----------------------
+model ScrapeRun {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  query         String    @db.VarChar(255)
+  location      String?   @db.VarChar(255)
+  sources       String[]  @default([])
+  limitPerSource Int      @default(25) @map("limit_per_source")
+  status        String    @default("queued") @db.VarChar(20) // queued | running | succeeded | failed | blocked
+  bullJobId     String?   @map("bull_job_id") @db.VarChar(100)
+  results       Json?     @default("{}") // per-source: { found, ingested, status, message }
+  startedAt     DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt    DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_scrape_runs_user_created")
+  @@map("scrape_runs")
 }
 
 /// ----------------------
@@ -137,12 +177,30 @@ model match_scores {
   jobs         jobs?         @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   user_profile user_profile? @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
-  @@unique([job_id, method])
+  // SECURITY FIX (multi-user audit, phase 12/13): was @@unique([job_id,
+  // method]) — one score per job PERIOD, regardless of whose profile it
+  // was scored against. With one shared global profile that was invisible;
+  // once profiles are per-user (see user_profile.user_id above), the same
+  // job legitimately needs one score per (job, profile, method) so two
+  // users' match scores for the same job don't collide/overwrite each
+  // other.
+  @@unique([job_id, profile_id, method])
   @@index([score(sort: Desc)], map: "idx_match_scores_score")
 }
 
 model user_profile {
   id               Int            @id @default(autoincrement())
+  // SECURITY FIX (multi-user audit, phase 12/13): this table used to have
+  // no owner at all — every request read/wrote whichever single row
+  // existed (`findFirst({ orderBy: { id: "asc" } })`), so every logged-in
+  // user shared one resume/skill-weights and every job's match score was
+  // computed against that one shared profile. `user_id` makes this
+  // properly per-user. Nullable rather than required so the pre-existing
+  // singleton row (if one already exists in a deployed database) isn't
+  // dropped by the migration — it becomes an orphaned, unused row instead
+  // of a destructive delete. Every new profile created by the app from
+  // here on always sets user_id.
+  user_id          Int?           @unique @map("user_id")
   full_name        String?        @db.VarChar(255)
   email            String?        @db.VarChar(255)
   resume_text      String?
@@ -151,4 +209,7 @@ model user_profile {
   skill_weights    Json?          @default("{}")
   updated_at       DateTime?      @default(now()) @db.Timestamptz(6)
   match_scores     match_scores[]
+  user             User?          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_user_profile_user_id")
 }

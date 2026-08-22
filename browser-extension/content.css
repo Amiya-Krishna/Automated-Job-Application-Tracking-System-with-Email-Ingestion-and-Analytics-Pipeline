@@ -30,3 +30,24 @@
 .tracktrail-fab--success {
   background: #059669;
 }
+
+.tracktrail-fab--error {
+  background: #dc2626;
+}
+
+/* The button is an overlay floating on top of a third-party page (whose
+   own light/dark theme we don't control and shouldn't try to match), so
+   it intentionally stays a fixed high-contrast dark pill by default —
+   that's what makes it legible over both light and dark host pages.
+   `--dark` here instead reflects TrackTrail's OWN extension theme
+   preference (read from chrome.storage.local in content.js), for visual
+   consistency with the popup/dashboard rather than for host-page
+   contrast reasons. */
+.tracktrail-fab--dark {
+  background: #0891b2;
+  box-shadow: 0 12px 32px rgba(8, 145, 178, 0.35);
+}
+
+.tracktrail-fab--dark:hover {
+  background: #06b6d4;
+}

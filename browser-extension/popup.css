@@ -463,3 +463,119 @@ button.secondary:hover {
 .statCard.total .label {
   color: #fff;
 }
+
+/* ================= DARK MODE ================= */
+/* Same approach as dashboard.css — re-point the semantic tokens, then
+   override the handful of hardcoded light-only colors (tab pill, chips,
+   badges, delete button) that weren't already on a variable. */
+[data-theme="dark"] {
+  --bg: #020617;
+  --card: #0f172a;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --dark: #0891b2;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .icon-btn,
+[data-theme="dark"] .chip,
+[data-theme="dark"] .delete-btn,
+[data-theme="dark"] button.secondary {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .icon-btn:hover,
+[data-theme="dark"] .chip:hover,
+[data-theme="dark"] button.secondary:hover {
+  background: #1e293b;
+}
+
+[data-theme="dark"] .delete-btn:hover {
+  background: #450a0a;
+}
+
+[data-theme="dark"] .chip.active,
+[data-theme="dark"] button:not(.secondary):not(.link-btn):not(.icon-btn):not(.delete-btn),
+[data-theme="dark"] .statCard.total {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04222b;
+}
+
+[data-theme="dark"] .statCard.total .num,
+[data-theme="dark"] .statCard.total .label {
+  color: #04222b;
+}
+
+[data-theme="dark"] .tabs {
+  background: #1e293b;
+}
+
+[data-theme="dark"] .tab.active {
+  background: var(--card);
+  color: var(--text);
+}
+
+[data-theme="dark"] .userchip {
+  background: #0c2b3d;
+  border-color: #0e7490;
+}
+
+[data-theme="dark"] label {
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .jobItem {
+  border-bottom-color: #1e293b;
+}
+
+[data-theme="dark"] .jobItem-date {
+  color: #64748b;
+}
+
+[data-theme="dark"] .status-Applied { color: #7dd3fc; background: #0c2b3d; }
+[data-theme="dark"] .status-Interview { color: #fcd34d; background: #451a03; }
+[data-theme="dark"] .status-Offer { color: #86efac; background: #052e16; }
+[data-theme="dark"] .status-Rejected { color: #fca5a5; background: #450a0a; }
+[data-theme="dark"] .status-Wishlist { color: #c4b5fd; background: #2e1a47; }
+
+/* ---------- theme toggle button ---------- */
+.theme-toggle {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  margin: 0 0 0 6px;
+  border-radius: 8px;
+  background: #fff;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .theme-toggle {
+  background: var(--card);
+}
+
+.theme-toggle:hover {
+  background: #f1f5f9;
+  color: var(--text);
+}
+
+[data-theme="dark"] .theme-toggle:hover {
+  background: #1e293b;
+}
+
+.theme-toggle svg {
+  width: 14px;
+  height: 14px;
+}

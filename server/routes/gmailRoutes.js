@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
 const auth = require("../middleware/authMiddleware");
+const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
 
 const prisma = require("../lib/prisma");
 
@@ -118,6 +119,20 @@ router.post("/disconnect", auth, async (req, res) => {
 });
 
 // IMPORT JOB FROM EMAIL
+//
+// Previously wrote straight to tracked_jobs and stopped there — the job
+// never reached the engine (engineBridge/ingestQueue/matching), so
+// Gmail-imported jobs never got a match score and never showed up in
+// Matched Jobs. Fixed to go through the same bridge every other source
+// uses, tagged with sourceName "gmail" so it's attributable in the
+// unified Applied Jobs / Sources views.
+//
+// Emails rarely carry a real job description or posting URL, so most
+// Gmail imports will legitimately fail hasEnoughDataToBridge() and stay
+// tracked-only until the user fills in a description by hand (the same
+// re-bridge-on-update path jobRoutes.js already uses covers that case).
+// That's intentional — see the audit note in engineBridge.js about not
+// polluting the corpus with empty-description rows.
 router.post("/import", auth, async (req, res) => {
   try {
     const body = req.body || {};
@@ -137,8 +152,19 @@ router.post("/import", auth, async (req, res) => {
         applicationDate: body.applicationDate
           ? new Date(body.applicationDate)
           : new Date(),
+        sourceName: "gmail",
+        sourceUrl: body.sourceUrl || null,
+        externalJobId: body.messageId || null,
+        description: body.description || null,
+        location: body.location || null,
       },
     });
+
+    try {
+      await bridgeTrackedJobToEngine(job);
+    } catch (bridgeErr) {
+      console.warn("[gmailRoutes] engine bridge failed for imported job:", bridgeErr.message);
+    }
 
     res.status(201).json(job);
   } catch (err) {

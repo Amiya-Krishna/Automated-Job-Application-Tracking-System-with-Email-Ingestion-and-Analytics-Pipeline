@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <title>TrackTrail</title>
     <link rel="stylesheet" href="popup.css" />
+    <script src="theme.js"></script>
+    <script>
+      // Applied synchronously before body paints, to avoid a light-mode
+      // flash — theme.js is a plain (non-module) script so it runs
+      // immediately here, ahead of the deferred module scripts below.
+      window.TrackTrailTheme.initTheme();
+    </script>
   </head>
   <body>
     <div class="wrap">
@@ -12,6 +19,7 @@
         <header class="app-header">
           <span class="logo">TT</span>
           <span class="brand">TrackTrail</span>
+          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Toggle theme"></button>
         </header>
 
         <p class="hint" id="authHint">Sign in to manage your job applications right from your browser.</p>
@@ -52,6 +60,7 @@
           <span class="logo">TT</span>
           <span class="brand">TrackTrail</span>
           <span class="userchip" id="userChip" title=""></span>
+          <button type="button" id="themeToggleBtnIn" class="theme-toggle" aria-label="Toggle theme"></button>
         </header>
 
         <nav class="tabs" id="tabs">

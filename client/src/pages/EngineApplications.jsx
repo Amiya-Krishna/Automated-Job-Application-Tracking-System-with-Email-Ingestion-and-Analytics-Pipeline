@@ -4,11 +4,11 @@ import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 
 const STATUS_STYLES = {
-  pending: "bg-amber-100 text-amber-800",
-  applied: "bg-cyan-100 text-cyan-800",
-  interview: "bg-blue-100 text-blue-800",
-  offer: "bg-emerald-100 text-emerald-800",
-  rejected: "bg-rose-100 text-rose-800",
+  pending: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  applied: "bg-cyan-100 text-cyan-800 dark:bg-cyan-950 dark:text-cyan-300",
+  interview: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+  offer: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+  rejected: "bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300",
 };
 
 const STATUS_FILTERS = ["", "pending", "applied", "interview", "offer", "rejected"];
@@ -77,17 +77,17 @@ function EngineApplications() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
           Engine
         </span>
-        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="mt-3 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Applications
         </h1>
-        <p className="mt-1 max-w-2xl text-sm text-slate-600">
+        <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
           Applications queued or submitted by the apply engine, with their
           outcomes — separate from the jobs you add manually on the
           dashboard.
@@ -101,7 +101,7 @@ function EngineApplications() {
               className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition ${
                 statusFilter === s
                   ? "bg-slate-950 text-white"
-                  : "border border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  : "border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:border-slate-300"
               }`}
             >
               {s || "All"}
@@ -112,13 +112,13 @@ function EngineApplications() {
         {isLoading ? (
           <div className="mt-6 space-y-3">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-100" />
+              <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
             ))}
           </div>
         ) : applications.length === 0 ? (
-          <div className="mt-10 flex flex-col items-center justify-center rounded-[28px] border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
-            <p className="text-sm font-semibold text-slate-700">No applications yet</p>
-            <p className="mt-1 max-w-xs text-sm text-slate-500">
+          <div className="mt-10 flex flex-col items-center justify-center rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-16 text-center shadow-sm">
+            <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">No applications yet</p>
+            <p className="mt-1 max-w-xs text-sm text-slate-500 dark:text-slate-400">
               Queue one from the Matched Jobs page and it'll show up here.
             </p>
           </div>
@@ -127,25 +127,25 @@ function EngineApplications() {
             {applications.map((app) => (
               <div
                 key={app.id}
-                className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                className="flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between"
               >
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900">
+                  <p className="font-bold text-slate-900 dark:text-slate-100">
                     {app.jobs?.title || `Job #${app.job_id}`}
                   </p>
-                  <p className="text-sm text-slate-500">
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
                     {app.jobs?.companies?.name || "Unknown company"}
                   </p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-bold capitalize ${
-                        STATUS_STYLES[app.status] || "bg-slate-100 text-slate-600"
+                        STATUS_STYLES[app.status] || "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
                       }`}
                     >
                       {app.status}
                     </span>
                     {app.applied_at && (
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-slate-400 dark:text-slate-500">
                         Applied {formatDateTime(app.applied_at)}
                       </span>
                     )}

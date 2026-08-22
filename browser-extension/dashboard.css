@@ -738,3 +738,113 @@ textarea:focus {
     padding: 22px 18px 50px;
   }
 }
+
+/* ================= DARK MODE ================= */
+/* Overrides the semantic tokens declared in :root — nothing below this
+   point duplicates a rule, it just re-points existing variables plus a
+   short, bounded list of hardcoded surface/badge colors that weren't
+   already using a variable (badges, table row hover/divider, ghost
+   button borders, input borders). The sidebar's own near-black gradient
+   is intentionally left as-is in both themes — it's a fixed brand
+   surface, not a light/dark-dependent one, matching the client's Navbar
+   brand mark treatment. */
+[data-theme="dark"] {
+  --bg: #020617;
+  --card: #0f172a;
+  --border: #1e293b;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --dark: #0891b2; /* "primary button" surface in dark mode: near-black
+                        reads as invisible on a near-black page, so this
+                        reuses the accent instead */
+}
+
+[data-theme="dark"] select,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] .ghost-btn,
+[data-theme="dark"] .chip,
+[data-theme="dark"] .dcard-actions button {
+  background: var(--card);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+[data-theme="dark"] .ghost-btn:hover,
+[data-theme="dark"] .dcard-actions button:hover {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+[data-theme="dark"] .dcard-actions button.primary,
+[data-theme="dark"] .dcard-actions button.primary:hover,
+[data-theme="dark"] #profSaveBtn,
+[data-theme="dark"] #profSaveBtn:hover,
+[data-theme="dark"] .emailCard-import button,
+[data-theme="dark"] .emailCard-import button:hover,
+[data-theme="dark"] .chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04222b;
+}
+
+[data-theme="dark"] .dataTable tbody tr {
+  border-bottom-color: #1e293b;
+}
+
+[data-theme="dark"] .dataTable tbody tr:hover {
+  background: #0b1526;
+}
+
+[data-theme="dark"] .funnelBarTrack {
+  background: #1e293b;
+}
+
+[data-theme="dark"] .pill {
+  background: #1e293b;
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .profileForm label {
+  color: #cbd5e1;
+}
+
+[data-theme="dark"] .badge-score-high,
+[data-theme="dark"] .badge-offer { color: #86efac; background: #052e16; }
+[data-theme="dark"] .badge-score-mid,
+[data-theme="dark"] .badge-pending { color: #fcd34d; background: #451a03; }
+[data-theme="dark"] .badge-score-low,
+[data-theme="dark"] .badge-new,
+[data-theme="dark"] .badge-duplicate,
+[data-theme="dark"] .badge-disconnected { color: #94a3b8; background: #1e293b; }
+[data-theme="dark"] .badge-applied,
+[data-theme="dark"] .badge-matched,
+[data-theme="dark"] .badge-connected { color: #7dd3fc; background: #0c2b3d; }
+[data-theme="dark"] .badge-interview { color: #c4b5fd; background: #2e1a47; }
+[data-theme="dark"] .badge-rejected { color: #fca5a5; background: #450a0a; }
+[data-theme="dark"] .badge-wishlist { color: #cbd5e1; background: #1e293b; }
+
+/* ---------- theme toggle button ---------- */
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.theme-toggle:hover {
+  background: rgba(148, 163, 184, 0.14);
+  color: var(--text);
+}
+
+.theme-toggle svg {
+  width: 16px;
+  height: 16px;
+}

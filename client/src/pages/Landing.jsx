@@ -34,7 +34,7 @@ function Landing() {
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">
               TT
             </span>
-            <span className="text-lg font-bold tracking-tight text-slate-900">
+            <span className="text-lg font-bold tracking-tight text-slate-900 dark:text-slate-100">
               TrackTrail
             </span>
           </div>
@@ -42,7 +42,7 @@ function Landing() {
           <div className="flex items-center gap-2">
             <Link
               to="/login"
-              className="rounded-full px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-white/60"
+              className="rounded-full px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-white/60"
             >
               Log in
             </Link>
@@ -61,11 +61,11 @@ function Landing() {
               Career Command Center
             </span>
 
-            <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">
+            <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-5xl">
               Every application, interview, and offer — in one focused dashboard.
             </h1>
 
-            <p className="mt-4 max-w-xl text-base leading-7 text-slate-600">
+            <p className="mt-4 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300">
               TrackTrail replaces scattered spreadsheets and sticky notes with a
               single pipeline view of your job search, so you always know
               what to follow up on next.
@@ -80,28 +80,28 @@ function Landing() {
               </Link>
               <Link
                 to="/login"
-                className="rounded-2xl border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
               >
                 I already have an account
               </Link>
             </div>
 
             <div className="mt-10 grid grid-cols-3 gap-4 max-w-md">
-              <div className="rounded-2xl border border-white/70 bg-white/70 p-4 backdrop-blur">
-                <p className="text-2xl font-bold text-slate-900">4</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">4</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Status Views
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/70 p-4 backdrop-blur">
-                <p className="text-2xl font-bold text-slate-900">24/7</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">24/7</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Access
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/70 bg-white/70 p-4 backdrop-blur">
-                <p className="text-2xl font-bold text-slate-900">1 Tap</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+                <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">1 Tap</p>
+                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Status Updates
                 </p>
               </div>
@@ -133,7 +133,7 @@ function Landing() {
           </div>
         </main>
 
-        <footer className="mt-20 border-t border-slate-200/70 pt-6 text-center text-xs text-slate-500">
+        <footer className="mt-20 border-t border-slate-200/70 dark:border-slate-700/70 pt-6 text-center text-xs text-slate-500 dark:text-slate-400">
           Built with the MERN stack — MongoDB, Express, React, and Node.
         </footer>
       </div>

@@ -141,26 +141,26 @@ function JobForm() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
         <button
           onClick={() => navigate("/dashboard")}
-          className="mb-6 text-sm font-semibold text-slate-500 transition hover:text-slate-800"
+          className="mb-6 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:text-slate-800"
         >
           ← Back to dashboard
         </button>
 
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm sm:p-8">
           <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
             {isEditMode ? "Edit Application" : "New Application"}
           </span>
 
-          <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+          <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
             {isEditMode ? "Update this application" : "Log a new application"}
           </h1>
-          <p className="mt-2 text-sm text-slate-600">
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
             Keep the details current so your dashboard stays a true picture
             of your search.
           </p>
@@ -195,7 +195,7 @@ function JobForm() {
                   </p>
                   <textarea
                     rows={5}
-                    className="mt-3 w-full resize-none rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                    className="mt-3 w-full resize-none rounded-xl border border-cyan-200 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                     placeholder="Paste the full email text here (subject + body)..."
                     value={emailText}
                     onChange={(e) => setEmailText(e.target.value)}
@@ -218,7 +218,7 @@ function JobForm() {
               {[...Array(4)].map((_, i) => (
                 <div
                   key={i}
-                  className="h-12 animate-pulse rounded-2xl bg-slate-100"
+                  className="h-12 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800"
                 />
               ))}
             </div>
@@ -226,14 +226,14 @@ function JobForm() {
             <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Company
                   </label>
                   <input
-                    className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${
+                    className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${
                       errors.company
                         ? "border-red-400 bg-red-50"
-                        : "border-slate-200 bg-white"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     }`}
                     placeholder="e.g. Google"
                     value={form.company}
@@ -247,14 +247,14 @@ function JobForm() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Role
                   </label>
                   <input
-                    className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${
+                    className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${
                       errors.role
                         ? "border-red-400 bg-red-50"
-                        : "border-slate-200 bg-white"
+                        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"
                     }`}
                     placeholder="e.g. Frontend Developer"
                     value={form.role}
@@ -268,11 +268,11 @@ function JobForm() {
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Status
                   </label>
                   <select
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                    className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                     value={form.status}
                     onChange={handleChange("status")}
                   >
@@ -285,15 +285,15 @@ function JobForm() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-slate-700">
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                     Interview date{" "}
-                    <span className="font-normal text-slate-400">
+                    <span className="font-normal text-slate-400 dark:text-slate-500">
                       (optional)
                     </span>
                   </label>
                   <input
                     type="date"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                    className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                     value={form.interviewDate}
                     onChange={handleChange("interviewDate")}
                   />
@@ -301,15 +301,15 @@ function JobForm() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700">
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
                   Notes{" "}
-                  <span className="font-normal text-slate-400">
+                  <span className="font-normal text-slate-400 dark:text-slate-500">
                     (optional)
                   </span>
                 </label>
                 <textarea
                   rows={4}
-                  className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                  className="w-full resize-none rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                   placeholder="Recruiter contact, referral, salary range, next steps..."
                   value={form.notes}
                   onChange={handleChange("notes")}
@@ -331,7 +331,7 @@ function JobForm() {
                 <button
                   type="button"
                   onClick={() => navigate("/dashboard")}
-                  className="rounded-2xl border border-slate-200 px-5 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                  className="rounded-2xl border border-slate-200 dark:border-slate-700 px-5 py-3.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
                 >
                   Cancel
                 </button>

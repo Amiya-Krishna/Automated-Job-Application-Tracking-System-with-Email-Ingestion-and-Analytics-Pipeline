@@ -387,3 +387,10 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 render();
+
+// Theme toggle — wired for both the logged-out and logged-in headers
+// (two separate buttons since they're in different, mutually-exclusive
+// views). window.TrackTrailTheme comes from theme.js, loaded as a plain
+// script ahead of this module script in popup.html.
+window.TrackTrailTheme.wireThemeToggle("themeToggleBtn");
+window.TrackTrailTheme.wireThemeToggle("themeToggleBtnIn");

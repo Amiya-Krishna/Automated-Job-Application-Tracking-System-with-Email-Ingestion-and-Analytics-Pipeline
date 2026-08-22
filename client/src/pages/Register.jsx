@@ -122,11 +122,11 @@ function Register() {
       >
         <div className="grid gap-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Full name
             </label>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.name ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.name ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="Type your full name"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -137,11 +137,11 @@ function Register() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Email address
             </label>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.email ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.email ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -153,7 +153,7 @@ function Register() {
 
           <div className="sm:col-span-2">
             <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Password
               </label>
               <button
@@ -165,7 +165,7 @@ function Register() {
               </button>
             </div>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               type={showPassword ? "text" : "password"}
               placeholder="Create a password"
               value={password}
@@ -175,7 +175,7 @@ function Register() {
               {errors.password ? (
                 <p className="text-red-600">{errors.password}</p>
               ) : (
-                <p className="text-slate-500">Use at least 6 characters.</p>
+                <p className="text-slate-500 dark:text-slate-400">Use at least 6 characters.</p>
               )}
               <span className={`font-semibold ${strengthClass}`}>
                 {passwordStrength}
@@ -185,7 +185,7 @@ function Register() {
 
           <div className="sm:col-span-2">
             <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Confirm password
               </label>
               <button
@@ -197,7 +197,7 @@ function Register() {
               </button>
             </div>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.confirmPassword ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 ${errors.confirmPassword ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               type={showConfirmPassword ? "text" : "password"}
               placeholder="Re-enter your password"
               value={confirmPassword}
@@ -221,7 +221,7 @@ function Register() {
           {isSubmitting ? "Creating account..." : "Create Account"}
         </button>
 
-        <p className="text-center text-sm text-slate-600">
+        <p className="text-center text-sm text-slate-600 dark:text-slate-300">
           Already registered?{" "}
           <Link className="font-semibold text-emerald-700 transition hover:text-emerald-900" to="/login">
             Sign in here

@@ -59,6 +59,10 @@ async function saveJob(job) {
     throw new Error("Not logged in. Open the extension and sign in first.");
   }
 
+  // `job` is passed through as-is from content.js (company, role, status,
+  // notes, location, description, sourceName, sourceUrl, externalJobId) —
+  // the backend's POST /api/jobs is the single source of truth for which
+  // fields matter and how dedup works, so we don't reshape it here.
   const res = await fetch(`${base}/jobs`, {
     method: "POST",
     headers: {
@@ -75,6 +79,14 @@ async function saveJob(job) {
   }
 
   return data;
+}
+
+// Marks an already-saved job (by TrackedJob id) as Applied. Reuses the
+// existing PUT /api/jobs/:id update path — no separate "applications"
+// concept in the extension, since TrackedJob.status is the field the
+// unified Applied Jobs page already reads.
+async function markApplied(id) {
+  return updateJob(id, { status: "Applied" });
 }
 
 async function getJobs() {
@@ -181,6 +193,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         case "SAVE_JOB": {
           const job = await saveJob(message.job);
+          sendResponse({ ok: true, job, duplicate: Boolean(job.duplicate) });
+          break;
+        }
+        case "MARK_APPLIED": {
+          const job = await markApplied(message.id);
           sendResponse({ ok: true, job });
           break;
         }

@@ -4,6 +4,10 @@
     <meta charset="UTF-8" />
     <title>TrackTrail Dashboard</title>
     <link rel="stylesheet" href="dashboard.css" />
+    <script src="theme.js"></script>
+    <script>
+      window.TrackTrailTheme.initTheme();
+    </script>
   </head>
   <body>
     <div class="shell">
@@ -103,11 +107,12 @@
 
       <!-- ================= MAIN CONTENT ================= -->
       <main class="content">
-        <header class="content-header">
+        <header class="content-header" style="display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
           <div>
             <h1 id="pageTitle">Matched jobs</h1>
             <p id="pageDesc">Jobs discovered by the scraper and scored against your profile.</p>
           </div>
+          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Toggle theme"></button>
         </header>
 
         <!-- ================= MATCHED JOBS ================= -->

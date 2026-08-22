@@ -87,12 +87,12 @@ function ResetPassword() {
       ) : (
         <form className="max-w-xl space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               New password
             </label>
             <input
               type="password"
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="Create a new password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -101,12 +101,12 @@ function ResetPassword() {
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Confirm new password
             </label>
             <input
               type="password"
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${errors.confirmPassword ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${errors.confirmPassword ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="Re-enter your new password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

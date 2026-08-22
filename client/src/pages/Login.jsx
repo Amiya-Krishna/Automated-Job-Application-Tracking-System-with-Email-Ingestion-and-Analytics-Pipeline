@@ -100,11 +100,11 @@ function Login() {
       >
         <div className="grid gap-5">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Email address
             </label>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.email ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.email ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -116,7 +116,7 @@ function Login() {
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-700">
+              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Password
               </label>
               <button
@@ -128,7 +128,7 @@ function Login() {
               </button>
             </div>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.password ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
               value={password}
@@ -148,18 +148,18 @@ function Login() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-3 text-sm text-slate-600 dark:text-slate-300 sm:flex-row sm:items-center sm:justify-between">
           <label className="flex cursor-pointer items-center gap-3">
             <input
               type="checkbox"
-              className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+              className="h-4 w-4 rounded border-slate-300 dark:border-slate-600 text-cyan-600 focus:ring-cyan-500"
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
             />
             Keep me signed in on this device
           </label>
 
-          <span className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500">
+          <span className="text-xs font-medium uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400">
             Protected Access
           </span>
         </div>
@@ -172,7 +172,7 @@ function Login() {
           {isSubmitting ? "Signing in..." : "Login to Dashboard"}
         </button>
 
-        <p className="text-center text-sm text-slate-600">
+        <p className="text-center text-sm text-slate-600 dark:text-slate-300">
           Need an account?{" "}
           <Link className="font-semibold text-cyan-700 transition hover:text-cyan-900" to="/register">
             Create one now

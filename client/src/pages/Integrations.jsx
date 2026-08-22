@@ -68,7 +68,7 @@ function Integrations() {
       setConnected(false);
       setResults(null);
       toast.success("Gmail disconnected");
-    } catch (err) {
+    } catch {
       toast.error("Failed to disconnect");
     }
   };
@@ -98,16 +98,27 @@ function Integrations() {
   const addToPipeline = async (item) => {
     try {
       setSavingId(item.id);
+      // BUG FIX (integration audit): this call went straight to
+      // POST /api/jobs without ever setting sourceName, so every job
+      // added from a Gmail scan was silently misattributed as "manual"
+      // in the Applied Jobs / Sources views (the /api/gmail/import route
+      // this app also has was never actually reached by the web client —
+      // only the browser extension's dashboard uses it). Tagging
+      // sourceName: "gmail" and the Gmail message id as externalJobId
+      // here fixes the attribution and lets the same dedup-by-
+      // externalJobId logic in POST /api/jobs work for repeat imports.
       await api.post("/jobs", {
         company: item.parsed.company || "Unknown company",
         role: item.parsed.role || "Unknown role",
         status: item.parsed.status,
         interviewDate: item.parsed.interviewDate,
         notes: `From email: "${item.subject}"`,
+        sourceName: "gmail",
+        externalJobId: item.id || null,
       });
       toast.success("Added to your pipeline");
       setResults((prev) => prev.filter((r) => r.id !== item.id));
-    } catch (err) {
+    } catch {
       toast.error("Failed to save");
     } finally {
       setSavingId(null);
@@ -115,13 +126,13 @@ function Integrations() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
       <Navbar />
 
       <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
         <button
           onClick={() => navigate("/dashboard")}
-          className="mb-6 text-sm font-semibold text-slate-500 transition hover:text-slate-800"
+          className="mb-6 text-sm font-semibold text-slate-500 dark:text-slate-400 transition hover:text-slate-800"
         >
           ← Back to dashboard
         </button>
@@ -129,23 +140,23 @@ function Integrations() {
         <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
           Integrations
         </span>
-        <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+        <h1 className="mt-4 text-2xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-3xl">
           Connect Gmail
         </h1>
-        <p className="mt-2 max-w-xl text-sm text-slate-600">
+        <p className="mt-2 max-w-xl text-sm text-slate-600 dark:text-slate-300">
           Scan your inbox for interview invites, offers, and rejections, and
           add them to your pipeline in one click. TrackTrail only requests
           read-only access and never stores your email content.
         </p>
 
-        <div className="mt-8 rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div className="mt-8 rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm sm:p-8">
           {isChecking ? (
-            <div className="h-10 w-48 animate-pulse rounded-xl bg-slate-100" />
+            <div className="h-10 w-48 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
           ) : connected ? (
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                <span className="text-sm font-semibold text-slate-800">
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">
                   Gmail connected
                 </span>
               </div>
@@ -159,7 +170,7 @@ function Integrations() {
                 </button>
                 <button
                   onClick={disconnectGmail}
-                  className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300"
+                  className="rounded-2xl border border-slate-200 dark:border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
                 >
                   Disconnect
                 </button>
@@ -167,7 +178,7 @@ function Integrations() {
             </div>
           ) : (
             <div className="flex flex-col items-start gap-3">
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-slate-600 dark:text-slate-300">
                 Not connected yet. You'll be asked to sign in with Google and
                 approve read-only inbox access.
               </p>
@@ -183,24 +194,24 @@ function Integrations() {
 
         {results && results.length > 0 && (
           <div className="mt-6 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Found {results.length} matching email{results.length === 1 ? "" : "s"}
             </h2>
 
             {results.map((item) => (
               <div
                 key={item.id}
-                className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm"
               >
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-900">
+                    <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
                       {item.subject || "(no subject)"}
                     </p>
-                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                    <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
                       {item.from}
                     </p>
-                    <p className="mt-2 text-xs text-slate-600">
+                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-300">
                       Detected:{" "}
                       <span className="font-semibold">
                         {item.parsed.company || "—"}

@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+/* Tailwind v4 defaults to media-query dark mode. We toggle a `.dark` class
+   on <html> instead (see src/context/ThemeContext.jsx) so the user's
+   choice can override the OS setting and persist across visits — this
+   custom variant is what makes `dark:` utility classes respond to that
+   class instead of prefers-color-scheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100;
+}

@@ -14,11 +14,15 @@ BigInt.prototype.toJSON = function () {
 };
 
 const prisma = require('./lib/prisma');
+const { seedJobSources } = require('./services/seedSources');
+const auth = require('./middleware/authMiddleware');
 
 // Fail fast if Postgres isn't reachable, instead of discovering it on
 // the first request.
 prisma.$connect()
   .then(() => console.log("Postgres connected"))
+  .then(() => seedJobSources())
+  .then(() => console.log("job_sources seeded (manual/linkedin/indeed/gmail/extension)"))
   .catch((err) => console.error("Postgres connection error", err));
 
 const app = express();
@@ -60,14 +64,29 @@ app.use("/api/gmail", require("./routes/gmailRoutes"));
 // --- Intelligent Job Application Engine ---
 // Everything in this app is now Postgres-backed — the manual tracker
 // (auth/jobs above) and the engine below share the same database.
-// See db/schema.sql.
-app.use("/api/ingest", require("./routes/ingestRoutes"));
-app.use("/api/engine/jobs", require("./routes/engineJobsRoutes"));
-app.use("/api/applications", require("./routes/applyRoutes"));
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/profile", require("./routes/profileRoutes"));
-app.use("/api/companies", require("./routes/companiesRoutes"));
-app.use("/api/sources", require("./routes/sourcesRoutes"));
+//
+// NOTE on auth/multi-user here: `jobs`, `companies`, `applications`, and
+// `job_sources` are genuinely shared/global catalog data — every user
+// legitimately sees the same job postings and sources, so no user_id was
+// added to those (see the multi-user audit report for the reasoning).
+// `user_profile` and `match_scores`, however, WERE private-data leaks —
+// every user shared one profile and one set of match scores — and have
+// been fixed to be per-user (user_profile.user_id, match_scores unique on
+// job_id+profile_id+method; see prisma/schema.prisma and the
+// engineJobsRoutes/profileRoutes/matchWorker changes). `applications`
+// (the automated apply-engine's own record) remains unscoped to a user —
+// it's a 1:1-with-job automation record, not evidently a per-user table —
+// and is intentionally NOT surfaced by user in the unified Applied Jobs
+// view; see appliedJobsService.js for how it's safely merged in only when
+// tied to a job this specific user actually tracked.
+app.use("/api/ingest", auth, require("./routes/ingestRoutes"));
+app.use("/api/scrape", require("./routes/scrapeRoutes")); // routes apply `auth` per-handler
+app.use("/api/engine/jobs", auth, require("./routes/engineJobsRoutes"));
+app.use("/api/applications", auth, require("./routes/applyRoutes"));
+app.use("/api/analytics", auth, require("./routes/analyticsRoutes"));
+app.use("/api/profile", auth, require("./routes/profileRoutes"));
+app.use("/api/companies", auth, require("./routes/companiesRoutes"));
+app.use("/api/sources", auth, require("./routes/sourcesRoutes"));
 
 app.get("/", (req, res) => {
   res.send("Backend Running");

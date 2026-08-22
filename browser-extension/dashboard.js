@@ -722,6 +722,11 @@ gmailScanBtn.addEventListener("click", async () => {
               role: msg.subject || "Untitled role",
               status: "Applied",
               notes: msg.snippet || "",
+              // Lets the backend attribute this row to the source email
+              // (externalJobId) — never enough alone to bridge into the
+              // engine (no description/URL from a metadata-only Gmail
+              // scan), but useful for de-duplicating repeat imports.
+              messageId: msg.id || null,
             }),
           });
           importBtn.textContent = "Saved ✓";
@@ -753,3 +758,7 @@ gmailScanBtn.addEventListener("click", async () => {
 (async () => {
   loadMatchedJobs();
 })();
+
+// window.TrackTrailTheme comes from theme.js, loaded as a plain script
+// ahead of this module script in dashboard.html.
+window.TrackTrailTheme.wireThemeToggle("themeToggleBtn");

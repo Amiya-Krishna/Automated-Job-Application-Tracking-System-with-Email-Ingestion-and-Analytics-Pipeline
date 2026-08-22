@@ -27,7 +27,7 @@ function DashboardCards() {
 
         <div
           key={index}
-          className="bg-white p-6 rounded-xl shadow"
+          className="bg-white dark:bg-slate-900 p-6 rounded-xl shadow"
         >
 
           <h2 className="text-gray-500">

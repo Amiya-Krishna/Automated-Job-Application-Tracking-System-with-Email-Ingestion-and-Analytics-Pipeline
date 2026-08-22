@@ -3,9 +3,65 @@
 // fallbacks to <title>/meta tags), then injects a floating "Save to
 // TrackTrail" button that posts the detected job straight to the backend
 // via the background service worker.
+//
+// Captures everything legitimately visible on the page — title, company,
+// location, description, a canonical source URL, and (where present) the
+// site's own job id — so the saved job carries enough metadata to be
+// bridged into the matching engine server-side (see engineBridge.js /
+// hasEnoughDataToBridge()). Nothing here is invented: any field that
+// can't be found on the page is sent as null/empty and the backend
+// decides whether that's "enough".
 
 function text(el) {
   return el ? el.textContent.trim().replace(/\s+/g, " ") : "";
+}
+
+function firstMatch(selectors) {
+  for (const sel of selectors) {
+    const found = text(document.querySelector(sel));
+    if (found) return found;
+  }
+  return "";
+}
+
+// LinkedIn job ids live in the URL as ?currentJobId=NNNN or /jobs/view/NNNN
+function extractLinkedInJobId(url) {
+  try {
+    const u = new URL(url);
+    const fromQuery = u.searchParams.get("currentJobId");
+    if (fromQuery) return fromQuery;
+    const viewMatch = u.pathname.match(/\/jobs\/view\/(\d+)/);
+    if (viewMatch) return viewMatch[1];
+  } catch {
+    // ignore malformed URL
+  }
+  return "";
+}
+
+// Indeed job ids live in the URL as ?jk=xxxxxxxxxxxxxxxx
+function extractIndeedJobId(url) {
+  try {
+    const u = new URL(url);
+    return u.searchParams.get("jk") || "";
+  } catch {
+    return "";
+  }
+}
+
+// Builds a canonical, shareable job URL rather than always using
+// window.location.href verbatim — LinkedIn/Indeed URLs carry a lot of
+// session/tracking query params that make otherwise-identical postings
+// look like different URLs to the backend's dedup logic.
+function canonicalLinkedInUrl(jobId) {
+  return jobId
+    ? `https://www.linkedin.com/jobs/view/${jobId}/`
+    : window.location.href.split("?")[0];
+}
+
+function canonicalIndeedUrl(jobId) {
+  return jobId
+    ? `https://www.indeed.com/viewjob?jk=${jobId}`
+    : window.location.href.split("?")[0];
 }
 
 function detectLinkedIn() {
@@ -20,18 +76,22 @@ function detectLinkedIn() {
     ".job-details-jobs-unified-top-card__company-name",
     ".top-card-layout__second-subline a",
   ];
+  const locationSelectors = [
+    ".job-details-jobs-unified-top-card__primary-description-container .tvm__text",
+    ".job-details-jobs-unified-top-card__bullet",
+    ".top-card-layout__second-subline .topcard__flavor--bullet",
+  ];
+  const descriptionSelectors = [
+    "#job-details",
+    ".jobs-description__content",
+    ".jobs-box__html-content",
+    ".description__text",
+  ];
 
-  let role = "";
-  for (const sel of titleSelectors) {
-    role = text(document.querySelector(sel));
-    if (role) break;
-  }
-
-  let company = "";
-  for (const sel of companySelectors) {
-    company = text(document.querySelector(sel));
-    if (company) break;
-  }
+  let role = firstMatch(titleSelectors);
+  let company = firstMatch(companySelectors);
+  const location = firstMatch(locationSelectors);
+  const description = firstMatch(descriptionSelectors);
 
   // DOM selectors above rely on LinkedIn's CSS classnames, which are
   // increasingly hashed/randomized (e.g. "bed7a945") and change often.
@@ -59,7 +119,17 @@ function detectLinkedIn() {
     if (ogSiteName && !role) role = ogSiteName.content;
   }
 
-  return { company, role };
+  const externalJobId = extractLinkedInJobId(window.location.href);
+
+  return {
+    role,
+    company,
+    location,
+    description,
+    externalJobId,
+    sourceUrl: canonicalLinkedInUrl(externalJobId),
+    sourceName: "linkedin",
+  };
 }
 
 function detectIndeed() {
@@ -72,18 +142,16 @@ function detectIndeed() {
     '[data-testid="inlineHeader-companyName"]',
     ".jobsearch-InlineCompanyRating div",
   ];
+  const locationSelectors = [
+    '[data-testid="inlineHeader-companyLocation"]',
+    ".jobsearch-JobInfoHeader-subtitle .jobsearch-JobInfoHeader-locationText",
+  ];
+  const descriptionSelectors = ["#jobDescriptionText"];
 
-  let role = "";
-  for (const sel of titleSelectors) {
-    role = text(document.querySelector(sel));
-    if (role) break;
-  }
-
-  let company = "";
-  for (const sel of companySelectors) {
-    company = text(document.querySelector(sel));
-    if (company) break;
-  }
+  let role = firstMatch(titleSelectors);
+  let company = firstMatch(companySelectors);
+  const location = firstMatch(locationSelectors);
+  const description = firstMatch(descriptionSelectors);
 
   if (!role || !company) {
     // Fallback: Indeed <title> is usually "Role - Company - Location"
@@ -94,20 +162,40 @@ function detectIndeed() {
     }
   }
 
-  return { company, role };
+  const externalJobId = extractIndeedJobId(window.location.href);
+
+  return {
+    role,
+    company,
+    location,
+    description,
+    externalJobId,
+    sourceUrl: canonicalIndeedUrl(externalJobId),
+    sourceName: "indeed",
+  };
 }
 
 function detectJob() {
   if (window.location.hostname.includes("linkedin.com")) return detectLinkedIn();
   if (window.location.hostname.includes("indeed.com")) return detectIndeed();
-  return { company: "", role: "" };
+  // Generic fallback for any other host the manifest might someday allow —
+  // never invent a source, just report what's genuinely on the page.
+  return {
+    role: "",
+    company: "",
+    location: "",
+    description: "",
+    externalJobId: "",
+    sourceUrl: window.location.href,
+    sourceName: "extension",
+  };
 }
 
 function injectButton() {
   if (document.getElementById("tracktrail-save-btn")) return;
 
-  const { company, role } = detectJob();
-  if (!company && !role) return;
+  const detected = detectJob();
+  if (!detected.company && !detected.role) return;
 
   const button = document.createElement("button");
   button.id = "tracktrail-save-btn";
@@ -115,13 +203,25 @@ function injectButton() {
   button.textContent = "+ Save to TrackTrail";
   document.body.appendChild(button);
 
+  // Match the extension's own light/dark preference (set in the popup/
+  // dashboard, persisted to chrome.storage.local) — not the host page's
+  // theme, which this button intentionally ignores for contrast reasons
+  // (see content.css).
+  chrome.storage?.local?.get(["tracktrail_theme"], (result) => {
+    if (result.tracktrail_theme === "dark") {
+      button.classList.add("tracktrail-fab--dark");
+    }
+  });
+
   button.addEventListener("click", async () => {
     if (!chrome.runtime?.id) {
       button.textContent = "Reload this page";
       return;
     }
 
-    const { company: liveCompany, role: liveRole } = detectJob();
+    // Re-detect at click time (not at inject time) — SPA nav on these
+    // sites can change the visible posting without a full page reload.
+    const live = detectJob();
 
     button.disabled = true;
     button.textContent = "Saving...";
@@ -130,17 +230,25 @@ function injectButton() {
       {
         type: "SAVE_JOB",
         job: {
-          company: liveCompany || "Unknown company",
-          role: liveRole || "Unknown role",
+          company: live.company || "Unknown company",
+          role: live.role || "Unknown role",
           status: "Applied",
           notes: `Saved from ${window.location.hostname}`,
+          // Full capture for the engine bridge — never fabricated, only
+          // what was actually found on the page (empty string/undefined
+          // where nothing was detected).
+          location: live.location || null,
+          description: live.description || null,
+          sourceName: live.sourceName,
+          sourceUrl: live.sourceUrl,
+          externalJobId: live.externalJobId || null,
         },
       },
       (response) => {
         button.disabled = false;
 
         if (response?.ok) {
-          button.textContent = "✓ Saved";
+          button.textContent = response.duplicate ? "Already saved" : "✓ Saved";
           button.classList.add("tracktrail-fab--success");
           setTimeout(() => {
             button.textContent = "+ Save to TrackTrail";
@@ -150,8 +258,10 @@ function injectButton() {
           button.textContent = response?.error?.includes("logged in")
             ? "Log in via extension icon"
             : "Failed — try again";
+          button.classList.add("tracktrail-fab--error");
           setTimeout(() => {
             button.textContent = "+ Save to TrackTrail";
+            button.classList.remove("tracktrail-fab--error");
           }, 2500);
         }
       }
@@ -160,17 +270,18 @@ function injectButton() {
 }
 
 // Job sites are single-page apps — the URL changes without a full reload,
-// so re-check periodically for a new posting being viewed.
-//
-// If the extension gets reloaded/updated while this script is still
-// running on an old tab, `chrome.runtime.id` becomes undefined and any
-// further chrome.* calls throw "Extension context invalidated" — which
-// can spam the console forever since we're on a setInterval. Detect that
-// and stop cleanly instead of retrying forever.
+// so re-check periodically for a new posting being viewed. If the URL
+// changes, remove the old button so injectButton() re-evaluates against
+// the newly-visible job instead of leaving a stale one in place.
+let lastHref = window.location.href;
 const pollId = setInterval(() => {
   if (!chrome.runtime?.id) {
     clearInterval(pollId);
     return;
+  }
+  if (window.location.href !== lastHref) {
+    lastHref = window.location.href;
+    document.getElementById("tracktrail-save-btn")?.remove();
   }
   injectButton();
 }, 1500);

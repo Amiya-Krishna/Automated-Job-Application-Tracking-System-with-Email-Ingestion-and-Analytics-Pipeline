@@ -11,6 +11,7 @@ const dedupQueue = new Queue("dedup", { connection });
 const matchQueue = new Queue("match", { connection });
 const applyQueue = new Queue("apply", { connection });
 const analyticsQueue = new Queue("analytics", { connection });
+const scrapeQueue = new Queue("scrape", { connection });
 
 module.exports = {
   connection,
@@ -19,4 +20,5 @@ module.exports = {
   matchQueue,
   applyQueue,
   analyticsQueue,
+  scrapeQueue,
 };

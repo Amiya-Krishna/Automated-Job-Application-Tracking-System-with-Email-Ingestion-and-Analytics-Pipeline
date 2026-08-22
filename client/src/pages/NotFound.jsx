@@ -6,10 +6,10 @@ function NotFound() {
       <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
         404
       </span>
-      <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-900">
+      <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100">
         This page went off the grid.
       </h1>
-      <p className="mt-3 max-w-md text-sm leading-6 text-slate-600">
+      <p className="mt-3 max-w-md text-sm leading-6 text-slate-600 dark:text-slate-300">
         The page you're looking for doesn't exist or may have moved. Let's
         get you back on track.
       </p>

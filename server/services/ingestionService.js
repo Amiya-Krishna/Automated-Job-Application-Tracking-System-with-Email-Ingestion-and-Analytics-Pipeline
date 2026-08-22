@@ -73,6 +73,26 @@ async function ingestJob(payload) {
         hash,
       ],
     );
+
+    // BUG FIX (integration audit): this branch used to return here without
+    // ever touching matchQueue. That meant whoever submitted this
+    // duplicate (their tracked_jobs.engine_job_id still correctly points
+    // at the canonical job below) would never get a match_scores row for
+    // it — the canonical job had only ever been queued for whichever user
+    // submitted it FIRST. Every submitter of the same job needs to be
+    // scored against it, not just the first one, so this queues the
+    // canonical job for the current submitter's profile too. Same
+    // ownerUserId semantics as the non-duplicate path: undefined for
+    // ownerless scrape/discovery submissions, which matchWorker already
+    // fans out to every profile for.
+    if (payload.ownerUserId) {
+      await matchQueue.add(
+        "score",
+        { jobId: duplicate.id, ownerUserId: payload.ownerUserId },
+        { attempts: 3, backoff: { type: "exponential", delay: 3000 } },
+      );
+    }
+
     return {
       status: "duplicate",
       canonicalJobId: duplicate.id,
@@ -108,7 +128,12 @@ async function ingestJob(payload) {
 
   await matchQueue.add(
     "score",
-    { jobId },
+    // ownerUserId (set by engineBridge.js for manual/extension/gmail
+    // sources) tells matchWorker to score only that user's profile.
+    // Left undefined for scrape/discovery jobs, which have no single
+    // owner — matchWorker fans out over every user's profile for those,
+    // since the job is genuinely shared catalog data.
+    { jobId, ownerUserId: payload.ownerUserId },
     { attempts: 3, backoff: { type: "exponential", delay: 3000 } },
   );
 

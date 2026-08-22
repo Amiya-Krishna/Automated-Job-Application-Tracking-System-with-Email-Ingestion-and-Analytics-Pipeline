@@ -66,11 +66,11 @@ function ForgotPassword() {
       ) : (
         <form className="max-w-xl space-y-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700">
+            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Email address
             </label>
             <input
-              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${error ? "border-red-400 bg-red-50" : "border-slate-200 bg-white"}`}
+              className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-amber-500 focus:ring-4 focus:ring-amber-100 ${error ? "border-red-400 bg-red-50" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -86,7 +86,7 @@ function ForgotPassword() {
             {isSubmitting ? "Sending..." : "Send reset link"}
           </button>
 
-          <p className="text-center text-sm text-slate-600">
+          <p className="text-center text-sm text-slate-600 dark:text-slate-300">
             Remembered it after all?{" "}
             <Link className="font-semibold text-amber-700 transition hover:text-amber-900" to="/login">
               Back to login
