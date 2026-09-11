@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import * as authService from '@/services/auth';
@@ -28,6 +29,10 @@ export interface AuthContextValue {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Requires AuthProvider to render inside QueryProvider (see
+  // app/_layout.tsx) — it is, and always must be.
+  const queryClient = useQueryClient();
+
   // 'hydrating' until the SecureStore read finishes — see the effect
   // below. Nothing that depends on auth state (protected routes,
   // authenticated requests) should run while this is 'hydrating'.
@@ -62,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       handlingUnauthorizedRef.current = true;
       setUser(null);
       setStatus('unauthenticated');
+      queryClient.clear();
       // Reset once state has settled, so a genuinely new 401 later in
       // the session (e.g. after logging back in) is handled again.
       setTimeout(() => {
@@ -69,7 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }, 0);
     });
     return unsubscribe;
-  }, []);
+  }, [queryClient]);
 
   const login = async (credentials: LoginRequest) => {
     const { token, user: loggedInUser } = await authService.login(credentials);
@@ -89,9 +95,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearToken();
     setUser(null);
     setStatus('unauthenticated');
-    // TanStack Query cache clearing (queryClient.clear()) will be added
-    // here once TanStack Query is introduced — no query cache exists yet
-    // in this phase.
+    // Every screen's fetched data (applications, jobs, analytics,
+    // profile) belongs to the user who just logged out — clear it so
+    // the next person to log in on this device never sees a flash of
+    // the previous user's cached data before their own requests land.
+    queryClient.clear();
   };
 
   const value = useMemo<AuthContextValue>(
