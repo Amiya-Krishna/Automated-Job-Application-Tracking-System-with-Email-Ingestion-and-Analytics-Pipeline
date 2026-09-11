@@ -14,6 +14,11 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    // Matches the web client's primary accent (blue-600) and error color
+    // (red-600) — client/src/components, client/src/pages/*.jsx.
+    tint: '#2563eb',
+    danger: '#dc2626',
+    border: '#E0E1E6',
   },
   dark: {
     text: '#ffffff',
@@ -21,6 +26,9 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    tint: '#60a5fa',
+    danger: '#f87171',
+    border: '#2E3135',
   },
 } as const;
 
