@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { StatusBadge } from '@/components/status-badge';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -8,7 +9,15 @@ import { useTheme } from '@/hooks/use-theme';
 import type { EngineJob } from '@/types/jobs';
 import { formatPercent } from '@/utils/format';
 
-export function JobCard({ item }: { item: EngineJob }) {
+interface JobCardProps {
+  item: EngineJob;
+  /** Display name for item.source_id, if resolved via useSourceNameById(). */
+  sourceName?: string;
+  /** This job's tracked application status (e.g. "Applied"), if the user has already applied — see app/(tabs)/jobs.tsx's appliedStatusByJobId. */
+  appliedStatus?: string;
+}
+
+export function JobCard({ item, sourceName, appliedStatus }: JobCardProps) {
   const theme = useTheme();
   const score = item.match_scores[0]?.score ?? null;
 
@@ -35,10 +44,17 @@ export function JobCard({ item }: { item: EngineJob }) {
             </View>
           ) : null}
         </View>
-        {item.remote_type ? (
+
+        {item.remote_type || sourceName ? (
           <ThemedText type="small" themeColor="textSecondary">
-            {item.remote_type}
+            {[item.remote_type, sourceName].filter(Boolean).join(' · ')}
           </ThemedText>
+        ) : null}
+
+        {appliedStatus ? (
+          <View style={styles.appliedRow}>
+            <StatusBadge status={appliedStatus} />
+          </View>
         ) : null}
       </ThemedView>
     </Pressable>
@@ -72,5 +88,8 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '700',
     fontSize: 12,
+  },
+  appliedRow: {
+    flexDirection: 'row',
   },
 });

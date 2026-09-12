@@ -1,7 +1,7 @@
 import * as WebBrowser from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ErrorState } from '@/components/error-state';
@@ -11,9 +11,37 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useApplications, useApplyToEngineJob } from '@/hooks/use-applications';
 import { useJob } from '@/hooks/use-jobs';
+import { useSourceNameById } from '@/hooks/use-sources';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
-import { formatPercent } from '@/utils/format';
+import { formatDate, formatPercent } from '@/utils/format';
+
+function SkillChips({ label, skills, tone }: { label: string; skills: string[]; tone: 'tint' | 'textSecondary' }) {
+  const theme = useTheme();
+  if (skills.length === 0) return null;
+
+  return (
+    <ThemedView style={styles.skillGroup}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {label}
+      </ThemedText>
+      <ThemedView style={styles.skillRow}>
+        {skills.map((skill) => (
+          <View
+            key={skill}
+            style={[
+              styles.skillChip,
+              { borderColor: tone === 'tint' ? theme.tint : theme.border },
+            ]}>
+            <ThemedText type="small" themeColor={tone === 'tint' ? 'tint' : 'textSecondary'}>
+              {skill}
+            </ThemedText>
+          </View>
+        ))}
+      </ThemedView>
+    </ThemedView>
+  );
+}
 
 export default function JobDetailScreen() {
   const theme = useTheme();
@@ -22,6 +50,7 @@ export default function JobDetailScreen() {
 
   const { data: job, isLoading, isError, error, refetch } = useJob(jobId);
   const applications = useApplications();
+  const sourceNameById = useSourceNameById();
   const applyMutation = useApplyToEngineJob();
   const [applyError, setApplyError] = useState<string | null>(null);
 
@@ -49,6 +78,11 @@ export default function JobDetailScreen() {
   }
 
   const score = job.match_scores[0]?.score ?? null;
+  const explanation = job.match_scores[0]?.explanation;
+  const matchedSkills = Array.isArray(explanation?.matched_skills) ? explanation.matched_skills : [];
+  const missingSkills = Array.isArray(explanation?.missing_skills) ? explanation.missing_skills : [];
+  const sourceName = job.source_id ? sourceNameById.get(job.source_id) : undefined;
+  const postedDate = job.posted_at ? formatDate(job.posted_at) : null;
 
   const runApply = () => {
     setApplyError(null);
@@ -91,9 +125,11 @@ export default function JobDetailScreen() {
             ) : null}
           </ThemedView>
 
-          {job.remote_type ? (
+          {job.remote_type || sourceName || postedDate ? (
             <ThemedText type="small" themeColor="textSecondary">
-              {job.remote_type}
+              {[job.remote_type, sourceName, postedDate ? `Posted ${postedDate}` : null]
+                .filter(Boolean)
+                .join(' · ')}
             </ThemedText>
           ) : null}
 
@@ -116,7 +152,7 @@ export default function JobDetailScreen() {
               }
               style={[styles.primaryButton, { backgroundColor: theme.tint }]}>
               <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                View your application
+                Applied · View your application
               </ThemedText>
             </Pressable>
           ) : (
@@ -137,6 +173,14 @@ export default function JobDetailScreen() {
             style={styles.linkRow}>
             <ThemedText type="linkPrimary">View original posting ↗</ThemedText>
           </Pressable>
+
+          {matchedSkills.length > 0 || missingSkills.length > 0 ? (
+            <ThemedView type="backgroundElement" style={styles.matchSection}>
+              <ThemedText type="smallBold">Why this match</ThemedText>
+              <SkillChips label="Skills you have" skills={matchedSkills} tone="tint" />
+              <SkillChips label="Skills in the posting you don't list" skills={missingSkills} tone="textSecondary" />
+            </ThemedView>
+          ) : null}
 
           <ThemedView style={styles.descriptionBlock}>
             <ThemedText type="smallBold">Description</ThemedText>
@@ -211,6 +255,27 @@ const styles = StyleSheet.create({
   linkRow: {
     minHeight: 44,
     justifyContent: 'center',
+  },
+  matchSection: {
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.three,
+  },
+  skillGroup: {
+    gap: Spacing.two,
+    backgroundColor: 'transparent',
+  },
+  skillRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+    backgroundColor: 'transparent',
+  },
+  skillChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.half,
   },
   descriptionBlock: {
     gap: Spacing.two,
