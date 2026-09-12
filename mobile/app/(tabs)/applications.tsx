@@ -1,4 +1,5 @@
-import { FlatList, RefreshControl, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { FlatList, Pressable, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApplicationRow } from '@/components/application-row';
@@ -19,9 +20,20 @@ export default function ApplicationsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ThemedText type="title" style={styles.title}>
-          Applications
-        </ThemedText>
+        <ThemedView style={styles.titleRow}>
+          <ThemedText type="title" style={styles.title}>
+            Applications
+          </ThemedText>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => router.push('/application/add')}
+            hitSlop={Spacing.two}
+            style={styles.addButton}>
+            <ThemedText type="smallBold" themeColor="tint">
+              + Add
+            </ThemedText>
+          </Pressable>
+        </ThemedView>
 
         {isLoading ? (
           <LoadingState label="Loading your applications…" />
@@ -41,6 +53,8 @@ export default function ApplicationsScreen() {
               <EmptyState
                 title="No applications yet"
                 subtitle="Applications you add, import from Gmail, or apply to will show up here."
+                actionLabel="Add your first application"
+                onActionPress={() => router.push('/application/add')}
               />
             }
           />
@@ -58,10 +72,22 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.three,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.four,
+    backgroundColor: 'transparent',
+  },
   title: {
     fontSize: 28,
     lineHeight: 34,
-    paddingHorizontal: Spacing.four,
+  },
+  addButton: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   listContent: {
     flexGrow: 1,

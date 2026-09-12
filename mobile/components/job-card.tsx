@@ -1,4 +1,5 @@
-import { StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -12,31 +13,35 @@ export function JobCard({ item }: { item: EngineJob }) {
   const score = item.match_scores[0]?.score ?? null;
 
   return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <View style={styles.header}>
-        <ThemedView style={styles.titleBlock}>
-          <ThemedText type="smallBold" numberOfLines={2}>
-            {item.title}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {item.companies?.name ?? 'Unknown company'}
-            {item.location ? ` · ${item.location}` : ''}
-          </ThemedText>
-        </ThemedView>
-        {score !== null ? (
-          <View style={[styles.scorePill, { backgroundColor: theme.tint }]}>
-            <ThemedText type="small" style={styles.scoreText}>
-              {formatPercent(score)}
+    <Pressable
+      accessibilityRole="button"
+      onPress={() => router.push({ pathname: '/job/[id]', params: { id: String(item.id) } })}>
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <View style={styles.header}>
+          <ThemedView style={styles.titleBlock}>
+            <ThemedText type="smallBold" numberOfLines={2}>
+              {item.title}
             </ThemedText>
-          </View>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              {item.companies?.name ?? 'Unknown company'}
+              {item.location ? ` · ${item.location}` : ''}
+            </ThemedText>
+          </ThemedView>
+          {score !== null ? (
+            <View style={[styles.scorePill, { backgroundColor: theme.tint }]}>
+              <ThemedText type="small" style={styles.scoreText}>
+                {formatPercent(score)}
+              </ThemedText>
+            </View>
+          ) : null}
+        </View>
+        {item.remote_type ? (
+          <ThemedText type="small" themeColor="textSecondary">
+            {item.remote_type}
+          </ThemedText>
         ) : null}
-      </View>
-      {item.remote_type ? (
-        <ThemedText type="small" themeColor="textSecondary">
-          {item.remote_type}
-        </ThemedText>
-      ) : null}
-    </ThemedView>
+      </ThemedView>
+    </Pressable>
   );
 }
 
@@ -45,6 +50,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
+    minHeight: 44,
   },
   header: {
     flexDirection: 'row',

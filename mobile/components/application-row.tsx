@@ -1,4 +1,5 @@
-import { StyleSheet } from 'react-native';
+import { router } from 'expo-router';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { StatusBadge } from '@/components/status-badge';
 import { ThemedText } from '@/components/themed-text';
@@ -9,23 +10,29 @@ import { formatDate } from '@/utils/format';
 
 export function ApplicationRow({ item }: { item: AppliedJob }) {
   return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedView style={styles.header}>
-        <ThemedView style={styles.titleBlock}>
-          <ThemedText type="smallBold" numberOfLines={1}>
-            {item.title}
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {item.company}
-            {item.location ? ` · ${item.location}` : ''}
-          </ThemedText>
+    <Pressable
+      accessibilityRole="button"
+      onPress={() =>
+        router.push({ pathname: '/application/[id]', params: { id: String(item.trackedJobId) } })
+      }>
+      <ThemedView type="backgroundElement" style={styles.card}>
+        <ThemedView style={styles.header}>
+          <ThemedView style={styles.titleBlock}>
+            <ThemedText type="smallBold" numberOfLines={1}>
+              {item.title}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+              {item.company}
+              {item.location ? ` · ${item.location}` : ''}
+            </ThemedText>
+          </ThemedView>
+          <StatusBadge status={item.status} />
         </ThemedView>
-        <StatusBadge status={item.status} />
+        <ThemedText type="small" themeColor="textSecondary">
+          Applied {formatDate(item.appliedDate)}
+        </ThemedText>
       </ThemedView>
-      <ThemedText type="small" themeColor="textSecondary">
-        Applied {formatDate(item.appliedDate)}
-      </ThemedText>
-    </ThemedView>
+    </Pressable>
   );
 }
 
@@ -34,6 +41,7 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.two,
+    minHeight: 44,
   },
   header: {
     flexDirection: 'row',

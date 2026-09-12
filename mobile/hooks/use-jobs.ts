@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 
 import { useAuth } from '@/hooks/use-auth';
-import { getEngineJobs } from '@/services/jobs';
+import { getEngineJob, getEngineJobs } from '@/services/jobs';
 import type { EngineJobsListParams } from '@/types/jobs';
 
 export function useJobs(params: EngineJobsListParams = {}) {
@@ -11,6 +11,17 @@ export function useJobs(params: EngineJobsListParams = {}) {
     queryKey: ['jobs', params],
     queryFn: () => getEngineJobs(params),
     enabled: status === 'authenticated',
+  });
+}
+
+/** GET /api/engine/jobs/:id, for the Job Detail screen. */
+export function useJob(id: number) {
+  const { status } = useAuth();
+
+  return useQuery({
+    queryKey: ['jobs', 'detail', id],
+    queryFn: () => getEngineJob(id),
+    enabled: status === 'authenticated' && Number.isFinite(id),
   });
 }
 
