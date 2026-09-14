@@ -5,6 +5,7 @@ import { useColorScheme } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Colors } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
@@ -43,6 +44,8 @@ export default function RootLayout() {
  */
 function RootNavigator() {
   const { status } = useAuth();
+  const scheme = useColorScheme();
+  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
 
   useEffect(() => {
     if (status !== 'hydrating') {
@@ -66,6 +69,20 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="application" />
         <Stack.Screen name="job" />
+        <Stack.Screen name="account" />
+        <Stack.Screen name="companies" />
+        <Stack.Screen name="sources" />
+        <Stack.Screen
+          name="engine-applications"
+          options={{
+            headerShown: true,
+            title: 'Engine Applications',
+            headerStyle: { backgroundColor: colors.background },
+            headerTintColor: colors.tint,
+            headerTitleStyle: { color: colors.text },
+            headerShadowVisible: false,
+          }}
+        />
       </Stack.Protected>
       <Stack.Protected guard={status === 'unauthenticated'}>
         <Stack.Screen name="(auth)" />

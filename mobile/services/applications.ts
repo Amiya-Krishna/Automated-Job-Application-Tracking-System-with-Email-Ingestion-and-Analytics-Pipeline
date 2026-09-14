@@ -54,13 +54,16 @@ export async function updateTrackedJob(
  * GET /api/applications — the apply-engine's own record, already scoped
  * server-side to jobs this user has tracked (see applyRoutes.js's
  * ownsApplicationJob/GET "/" — SECURITY FIX comment, verified by reading
- * the route). Used only to resolve the numeric `applications.id` a given
- * engine job maps to, since GET /api/jobs/applied never exposes it — see
- * hooks/use-applications.ts's useEngineApplicationForJob for how this is
- * cached so it isn't refetched on every screen.
+ * the route). `status` is a real, backend-supported query filter
+ * (`?status=pending`, etc.) — used both to resolve the numeric
+ * `applications.id` a given engine job maps to (hooks/use-applications.ts's
+ * useEngineApplicationForJob) and by the standalone Engine Applications
+ * screen's status filter chips (useEngineApplications).
  */
-export async function getEngineApplications(): Promise<EngineApplication[]> {
-  const { data } = await api.get<{ data: EngineApplication[] }>('/applications');
+export async function getEngineApplications(status?: string): Promise<EngineApplication[]> {
+  const { data } = await api.get<{ data: EngineApplication[] }>('/applications', {
+    params: status ? { status } : undefined,
+  });
   return data.data;
 }
 

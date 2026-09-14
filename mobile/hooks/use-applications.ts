@@ -60,9 +60,34 @@ export function useEngineApplicationForJob(engineJobId: number | null) {
 
   return useQuery({
     queryKey: ['applications', 'engine'],
-    queryFn: getEngineApplications,
+    queryFn: () => getEngineApplications(),
     enabled: status === 'authenticated' && engineJobId !== null,
     select: (data) => data.find((item) => item.job_id === engineJobId) ?? null,
+  });
+}
+
+/**
+ * The standalone Engine Applications ("queue") screen's list, with an
+ * optional status filter — a distinct, technical view of the raw
+ * apply-engine queue, separate from the regular Applications tab (see
+ * app/engine-applications.tsx for why this exists as its own screen
+ * rather than folded into Applications).
+ *
+ * The unfiltered case reuses the exact same `['applications', 'engine']`
+ * query key useEngineApplicationForJob above already populates, so
+ * opening the queue screen with no filter selected costs zero extra
+ * requests if an application detail screen already fetched it. A status
+ * filter gets its own cache entry (`status` appended to the key) since
+ * it's a genuinely different server response, not a client-side slice
+ * of the same one.
+ */
+export function useEngineApplications(status?: OutcomeStatus | 'pending' | 'applied') {
+  const { status: authStatus } = useAuth();
+
+  return useQuery({
+    queryKey: status ? ['applications', 'engine', status] : ['applications', 'engine'],
+    queryFn: () => getEngineApplications(status),
+    enabled: authStatus === 'authenticated',
   });
 }
 

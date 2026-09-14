@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApplicationRow } from '@/components/application-row';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
+import { JobCard } from '@/components/job-card';
 import { LoadingState } from '@/components/loading-state';
 import { QuickActionCard } from '@/components/quick-action-card';
 import { SectionHeader } from '@/components/section-header';
@@ -17,6 +18,7 @@ import { useAnalyticsSummary } from '@/hooks/use-analytics';
 import { useApplications } from '@/hooks/use-applications';
 import { useAuth } from '@/hooks/use-auth';
 import { useGmailStatus } from '@/hooks/use-gmail-status';
+import { useJobs } from '@/hooks/use-jobs';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function HomeScreen() {
@@ -25,6 +27,11 @@ export default function HomeScreen() {
   const analytics = useAnalyticsSummary();
   const applications = useApplications();
   const gmail = useGmailStatus();
+  // GET /api/engine/jobs already returns page 1 ordered by best match
+  // score descending (engineJobsRoutes.js sorts server-side before
+  // paginating) — so the first 3 rows of the default, unfiltered query
+  // ARE "top matches" already; no separate client-side sort invented.
+  const topJobs = useJobs({ pageSize: 3 });
 
   const recentApplications = useMemo(
     () => (applications.data ?? []).slice(0, 3),
@@ -33,12 +40,14 @@ export default function HomeScreen() {
 
   const isLoading = analytics.isLoading || applications.isLoading;
   const isError = analytics.isError || applications.isError;
-  const isRefetching = analytics.isRefetching || applications.isRefetching || gmail.isRefetching;
+  const isRefetching =
+    analytics.isRefetching || applications.isRefetching || gmail.isRefetching || topJobs.isRefetching;
 
   const refetchAll = () => {
     analytics.refetch();
     applications.refetch();
     gmail.refetch();
+    topJobs.refetch();
   };
 
   const firstName = user?.name?.split(' ')[0];
@@ -88,9 +97,32 @@ export default function HomeScreen() {
             <ThemedView style={styles.section}>
               <SectionHeader title="Quick actions" />
               <ThemedView style={styles.quickActionGrid}>
+                <QuickActionCard label="Add application" onPress={() => router.push('/application/add')} />
                 <QuickActionCard label="View applications" onPress={() => router.navigate('/applications')} />
                 <QuickActionCard label="Browse jobs" onPress={() => router.navigate('/jobs')} />
               </ThemedView>
+            </ThemedView>
+
+            <ThemedView style={styles.section}>
+              <SectionHeader
+                title="Top matches"
+                actionLabel="View all"
+                onActionPress={() => router.navigate('/jobs')}
+              />
+              {topJobs.data?.jobs.length ? (
+                <ThemedView style={styles.recentList}>
+                  {topJobs.data.jobs.slice(0, 3).map((item) => (
+                    <JobCard key={item.id} item={item} />
+                  ))}
+                </ThemedView>
+              ) : topJobs.isError ? (
+                <ErrorState error={topJobs.error} onRetry={topJobs.refetch} />
+              ) : !topJobs.isLoading ? (
+                <EmptyState
+                  title="No jobs yet"
+                  subtitle="New matches will show up here once the job pipeline finds some."
+                />
+              ) : null}
             </ThemedView>
 
             <ThemedView style={styles.section}>
@@ -114,7 +146,11 @@ export default function HomeScreen() {
             </ThemedView>
 
             <ThemedView style={styles.section}>
-              <SectionHeader title="Gmail sync" />
+              <SectionHeader
+                title="Gmail sync"
+                actionLabel="Manage"
+                onActionPress={() => router.navigate('/profile')}
+              />
               <ThemedView type="backgroundElement" style={styles.syncCard}>
                 <ThemedText type="small" themeColor={gmail.data?.connected ? 'tint' : 'textSecondary'}>
                   {gmail.isLoading ? 'Checking…' : gmail.data?.connected ? 'Connected' : 'Not connected'}

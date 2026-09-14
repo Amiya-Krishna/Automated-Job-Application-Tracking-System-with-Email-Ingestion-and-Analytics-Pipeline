@@ -128,16 +128,13 @@ export type TrackedJobStatus = (typeof TRACKED_JOB_STATUSES)[number];
  *
  * The automated apply-engine's own record — see services/applications.ts
  * and server/routes/applyRoutes.js's ownership-note comment for why this
- * is a *different* table from TrackedJob/AppliedJob above, and why it's
- * only fetched here to resolve the numeric id that POST /:id/submit and
- * POST /:id/outcome require (AppliedJob.engineApplicationStatus tells you
- * the status as a string, but never exposes this row's own id).
- *
- * The response also includes a nested `jobs` (with `companies`) object,
- * but no screen in this phase needs it — the Application Detail screen
- * already has the job's title/company/location from AppliedJob, so it's
- * intentionally left off this type rather than declared and unused.
- * `playwright_log` (a Json? column) is similarly omitted: its shape is
+ * is a *different* table from TrackedJob/AppliedJob above. Used to
+ * resolve the numeric id that POST /:id/submit and POST /:id/outcome
+ * require (AppliedJob.engineApplicationStatus tells you the status as a
+ * string, but never exposes this row's own id), and — via its nested
+ * `jobs`/`companies` fields — to render the standalone Engine
+ * Applications screen, which has no other source for a job's name.
+ * `playwright_log` (a Json? column) is still omitted: its shape is
  * undocumented/unused by any screen, so it is not guessed here.
  */
 export interface EngineApplication {
@@ -150,6 +147,19 @@ export interface EngineApplication {
   retry_count: number | null;
   outcome_updated_at: string | null;
   created_at: string | null;
+  /**
+   * GET /api/applications includes this (applyRoutes.js:
+   * `include: { jobs: { include: { companies: { select: { name: true } } } } }`)
+   * but earlier screens (Application Detail) never needed it — they
+   * already have the job's title/company from AppliedJob. The
+   * standalone Engine Applications screen (app/engine-applications.tsx)
+   * DOES need it, since it has no other source for a human-readable job
+   * name. Only the fields actually rendered are declared here, not the
+   * full `jobs` row Prisma returns — `jobs` is nullable because
+   * `applications.job_id` itself is an optional FK in schema.prisma,
+   * even though every row this app creates always sets it.
+   */
+  jobs: { id: number; title: string; companies: { name: string } | null } | null;
 }
 
 /** POST /api/applications/:id/outcome — the exact 3 values applyRoutes.js accepts (400 on anything else). */

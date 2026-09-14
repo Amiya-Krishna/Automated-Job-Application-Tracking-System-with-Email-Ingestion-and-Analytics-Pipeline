@@ -7,7 +7,10 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 // Mirrors client/src/pages/AppliedJobs.jsx's STATUS_STYLES exactly, so a
 // status means the same color on web and mobile. Light/dark pairs taken
 // directly from those Tailwind classes (amber-100/800, amber-950/300, etc).
-const STATUS_COLORS: Record<string, { light: [string, string]; dark: [string, string] }> = {
+// Exported so other screens needing the same status→color mapping (e.g.
+// the Analytics tab's outcome breakdown) reuse these instead of picking
+// new, inconsistent colors — this is the only place they're defined.
+export const STATUS_COLORS: Record<string, { light: [string, string]; dark: [string, string] }> = {
   Applied: { light: ['#fef3c7', '#92400e'], dark: ['#451a03', '#fcd34d'] },
   Interview: { light: ['#dbeafe', '#1e40af'], dark: ['#172554', '#93c5fd'] },
   Offer: { light: ['#d1fae5', '#065f46'], dark: ['#022c22', '#6ee7b7'] },

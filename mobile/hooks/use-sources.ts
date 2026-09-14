@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
-import { getSources } from '@/services/sources';
+import { getSourceDetail, getSources } from '@/services/sources';
 
 /**
  * The job_sources table (LinkedIn, Indeed, Manual, Gmail, Extension —
@@ -30,4 +30,14 @@ export function useSourceNameById(): Map<number, string> {
     data?.forEach((source) => map.set(source.id, source.name));
     return map;
   }, [data]);
+}
+
+export function useSourceDetail(id: number) {
+  const { status } = useAuth();
+
+  return useQuery({
+    queryKey: ['sources', 'detail', id],
+    queryFn: () => getSourceDetail(id),
+    enabled: status === 'authenticated' && Number.isFinite(id),
+  });
 }

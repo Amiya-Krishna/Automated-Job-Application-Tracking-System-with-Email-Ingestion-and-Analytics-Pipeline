@@ -1,3 +1,4 @@
+import { Link } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -84,6 +85,23 @@ export default function JobsScreen() {
         <ThemedText type="title" style={styles.title}>
           Jobs
         </ThemedText>
+
+        <ThemedView style={styles.directoryLinks}>
+          <Link href="/companies" asChild>
+            <Pressable accessibilityRole="button" style={styles.directoryLink}>
+              <ThemedText type="small" themeColor="tint">
+                Companies
+              </ThemedText>
+            </Pressable>
+          </Link>
+          <Link href="/sources" asChild>
+            <Pressable accessibilityRole="button" style={styles.directoryLink}>
+              <ThemedText type="small" themeColor="tint">
+                Sources
+              </ThemedText>
+            </Pressable>
+          </Link>
+        </ThemedView>
 
         <ThemedView style={styles.controls}>
           <TextInput
@@ -187,6 +205,16 @@ const styles = StyleSheet.create({
     fontSize: 28,
     lineHeight: 34,
     paddingHorizontal: Spacing.four,
+  },
+  directoryLinks: {
+    flexDirection: 'row',
+    gap: Spacing.four,
+    paddingHorizontal: Spacing.four,
+    backgroundColor: 'transparent',
+  },
+  directoryLink: {
+    minHeight: 32,
+    justifyContent: 'center',
   },
   controls: {
     gap: Spacing.two,

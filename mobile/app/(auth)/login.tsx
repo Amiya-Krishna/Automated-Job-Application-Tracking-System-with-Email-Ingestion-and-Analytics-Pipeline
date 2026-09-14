@@ -114,6 +114,12 @@ export default function LoginScreen() {
               {isSubmitting ? 'Signing in…' : 'Sign in'}
             </ThemedText>
           </Pressable>
+
+          <Link href="/forgot-password" style={styles.forgotPasswordLink}>
+            <ThemedText type="small" themeColor="tint">
+              Forgot password?
+            </ThemedText>
+          </Link>
         </ThemedView>
 
         <ThemedView style={styles.footer}>
@@ -169,6 +175,11 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     color: '#ffffff',
+  },
+  forgotPasswordLink: {
+    alignSelf: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   footer: {
     flexDirection: 'row',

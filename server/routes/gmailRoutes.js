@@ -7,21 +7,53 @@ const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
 
 const prisma = require("../lib/prisma");
 
+// MOBILE OAUTH (Phase 3 addition): unlike the browser extension, there is
+// no single fixed redirect URL for mobile — a standalone/dev-client build
+// uses the stable `mobile://` scheme from mobile/app.json, but Expo Go
+// uses a per-machine `exp://<lan-ip>:8081/--/...` URL that can't be baked
+// into a server .env var. So instead of a static *_REDIRECT_URL like the
+// extension's, the mobile client computes its own redirect URI
+// (Linking.createURL(...)) and sends it with the auth-url request; it
+// rides inside the signed `state` JWT (server-issued and verified on the
+// way back, so it can't be tampered with in transit) and is restricted to
+// the `mobile://` / `exp://` schemes below so `state` can't be abused as
+// an open redirect to an arbitrary domain.
+function isAllowedMobileRedirect(url) {
+  return typeof url === "string" && /^(mobile:\/\/|exp:\/\/)/.test(url);
+}
+
 // STEP 1 — Get Google auth URL
 // The browser extension calls this as /gmail/auth-url?source=extension so
 // the callback below knows to send the browser back to the extension's own
-// dashboard instead of the Vercel-hosted web client.
+// dashboard instead of the Vercel-hosted web client. The mobile app calls
+// it as /gmail/auth-url?source=mobile&redirectUri=<its own deep link>.
 router.get("/auth-url", auth, (req, res) => {
   try {
     const oauth2Client = getOAuthClient();
 
-    const source = req.query.source === "extension" ? "extension" : "web";
+    const source =
+      req.query.source === "extension"
+        ? "extension"
+        : req.query.source === "mobile"
+        ? "mobile"
+        : "web";
 
-    const state = jwt.sign(
-      { id: req.user.id, source },
-      process.env.JWT_SECRET,
-      { expiresIn: "10m" }
-    );
+    const statePayload = { id: req.user.id, source };
+
+    if (source === "mobile") {
+      const redirectUri = req.query.redirectUri;
+      if (!isAllowedMobileRedirect(redirectUri)) {
+        return res.status(400).json({
+          message:
+            "A valid redirectUri (mobile:// or exp://) is required when source=mobile",
+        });
+      }
+      statePayload.redirectUri = redirectUri;
+    }
+
+    const state = jwt.sign(statePayload, process.env.JWT_SECRET, {
+      expiresIn: "10m",
+    });
 
     const url = oauth2Client.generateAuthUrl({
       access_type: "offline",
@@ -51,31 +83,44 @@ router.get("/callback", async (req, res) => {
     process.env.EXTENSION_REDIRECT_URL ||
     `${(process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "")}/extension/gmail-success.html`;
 
-  function redirectTarget(status, source) {
+  function redirectTarget(status, source, mobileRedirectUri) {
     if (source === "extension") {
       const sep = extensionRedirectUrl.includes("?") ? "&" : "?";
       return `${extensionRedirectUrl}${sep}gmail=${status}`;
+    }
+    if (source === "mobile" && isAllowedMobileRedirect(mobileRedirectUri)) {
+      const sep = mobileRedirectUri.includes("?") ? "&" : "?";
+      return `${mobileRedirectUri}${sep}gmail=${status}`;
     }
     return `${clientUrl}/integrations?gmail=${status}`;
   }
 
   let source = "web";
+  let mobileRedirectUri;
 
   try {
     const { code, state } = req.query;
 
     if (!code || !state) {
-      return res.redirect(redirectTarget("error", source));
+      return res.redirect(redirectTarget("error", source, mobileRedirectUri));
     }
 
     const decoded = jwt.verify(state, process.env.JWT_SECRET);
-    source = decoded.source === "extension" ? "extension" : "web";
+    source =
+      decoded.source === "extension"
+        ? "extension"
+        : decoded.source === "mobile"
+        ? "mobile"
+        : "web";
+    mobileRedirectUri = decoded.redirectUri;
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
-      return res.redirect(redirectTarget("no_refresh_token", source));
+      return res.redirect(
+        redirectTarget("no_refresh_token", source, mobileRedirectUri)
+      );
     }
 
     // ✅ Save refresh token in DB
@@ -84,10 +129,10 @@ router.get("/callback", async (req, res) => {
       data: { gmailRefreshToken: tokens.refresh_token },
     });
 
-    res.redirect(redirectTarget("connected", source));
+    res.redirect(redirectTarget("connected", source, mobileRedirectUri));
   } catch (err) {
     console.error(err);
-    res.redirect(redirectTarget("error", source));
+    res.redirect(redirectTarget("error", source, mobileRedirectUri));
   }
 });
 

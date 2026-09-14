@@ -33,3 +33,43 @@ export interface RegisterRequest {
 export interface RegisterResponse {
   message: string;
 }
+
+/**
+ * POST /api/auth/forgot-password  { email } -> 200 { message }
+ *
+ * Always returns the same generic message whether or not the account
+ * exists (server/routes/authRoutes.js is deliberately non-enumerating),
+ * so the UI should treat every 200 response as "check your email",
+ * never as confirmation the account exists.
+ */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+/**
+ * POST /api/auth/reset-password  { token, password } -> 200 { message }
+ *
+ * `token` is a short-lived (30 min) signed JWT emailed as a link to
+ * `${CLIENT_URL}/reset-password?token=...` — the WEB client's own
+ * domain, not a mobile deep link (see server/routes/authRoutes.js's
+ * forgot-password handler: there is no per-request source/redirect
+ * parameter the way Gmail OAuth has, so the server can't target the
+ * mobile app's scheme without changing what every platform's reset
+ * email links to). The mobile Reset Password screen therefore has the
+ * user paste in the token from that email manually — see
+ * app/(auth)/reset-password.tsx for the full explanation of why a true
+ * one-tap deep link isn't implemented here without a scoped-in backend/
+ * native-config decision.
+ */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}

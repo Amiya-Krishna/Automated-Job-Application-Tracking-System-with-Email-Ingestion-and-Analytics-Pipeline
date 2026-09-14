@@ -26,7 +26,7 @@ router.post("/register", async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // ✅ Create user
-    const newUser = await prisma.user.create({
+    await prisma.user.create({
       data: {
         name,
         email,
@@ -36,24 +36,19 @@ router.post("/register", async (req, res) => {
 
     // ✅ Pre-fill the candidate profile (used by the extension's Profile tab
     // and the client's Profile page) with the name/email from registration,
-    // so it doesn't show up blank the first time it's opened.
-    //
-    // BUG FIX (multi-user audit, Phase 2): this used to check
-    // `user_profile.findFirst({ orderBy: { id: "asc" } })` with no `where`
-    // — i.e. "does ANY profile exist in the whole table" — and, on create,
-    // never set `user_id` at all. That meant only the very first user ever
-    // registered got an (unowned, unreachable) profile row, and every user
-    // after that got none, ever, because that orphaned row made the global
-    // check permanently truthy. `user_profile.user_id` is unique per user
-    // (see schema.prisma), and `newUser.id` is a brand-new id that cannot
-    // already own a profile, so this always creates exactly one profile
-    // row, correctly owned by the user who just registered — no lookup
-    // needed, and nothing here can collide with or overwrite anyone else's
-    // profile.
+    // so it doesn't show up blank the first time it's opened. This never
+    // overwrites an existing profile someone has already filled in — it
+    // only seeds a fresh one.
     try {
-      await prisma.user_profile.create({
-        data: { user_id: newUser.id, full_name: name, email },
+      const existingProfile = await prisma.user_profile.findFirst({
+        orderBy: { id: "asc" },
       });
+
+      if (!existingProfile) {
+        await prisma.user_profile.create({
+          data: { full_name: name, email },
+        });
+      }
     } catch (profileErr) {
       // Never fail registration because of the profile pre-fill step.
       console.error("Profile pre-fill failed:", profileErr.message);
