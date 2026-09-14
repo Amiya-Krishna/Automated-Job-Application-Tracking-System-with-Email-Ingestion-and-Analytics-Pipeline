@@ -67,3 +67,13 @@ variables (Render doesn't read your local `.env` file).
   logged-in user who connected it.
 - Disconnecting (via the Integrations page) deletes that refresh token
   immediately.
+
+## Mobile
+
+The mobile app (`mobile/`) uses this exact same setup — same Google Cloud
+project, same env vars, no separate credentials. It calls
+`GET /api/gmail/auth-url?source=mobile&redirectUri=...` instead of
+`source=web`/`source=extension`, so the OAuth callback can send the
+browser back to the app via its own `mobile://` (or, in Expo Go,
+`exp://`) redirect instead of the web dashboard. See
+`mobile/README.md`'s "Gmail integration" section for the full mechanism.

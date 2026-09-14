@@ -32,6 +32,12 @@ export default function ProfileScreen() {
 
   const [scanResults, setScanResults] = useState<GmailScanResult[] | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
+  const [addedResult, setAddedResult] = useState<{
+    id: number;
+    company: string;
+    role: string;
+    duplicate: boolean;
+  } | null>(null);
 
   const handleConnectGmail = () => {
     connectGmail.mutate(undefined, {
@@ -72,6 +78,7 @@ export default function ProfileScreen() {
   };
 
   const handleScanGmail = () => {
+    setAddedResult(null);
     scanGmail.mutate(undefined, {
       onSuccess: (messages) => {
         const parsed = messages.map((msg) => ({ ...msg, parsed: parseJobEmail(`${msg.subject}\n${msg.snippet}`) }));
@@ -97,7 +104,17 @@ export default function ProfileScreen() {
         externalJobId: item.id,
       },
       {
-        onSuccess: () => setScanResults((prev) => prev?.filter((r) => r.id !== item.id) ?? null),
+        // The backend's real response — { ...TrackedJobRecord, duplicate }
+        // (server/routes/jobRoutes.js's POST /) — is the only source of
+        // truth for where this landed and whether it's new. It already
+        // does duplicate detection itself (findExistingTrackedJob,
+        // matching this Gmail result against the user's existing tracked
+        // jobs); this screen just has to surface what it decided rather
+        // than re-deciding it or guessing.
+        onSuccess: (result) => {
+          setScanResults((prev) => prev?.filter((r) => r.id !== item.id) ?? null);
+          setAddedResult({ id: result.id, company: result.company, role: result.role, duplicate: result.duplicate });
+        },
         onError: (err) => Alert.alert('Failed to save', err instanceof ApiError ? err.message : 'Please try again.'),
         onSettled: () => setAddingId(null),
       },
@@ -220,6 +237,42 @@ export default function ProfileScreen() {
               </ThemedView>
             </ThemedView>
 
+            {addedResult ? (
+              <ThemedView style={styles.section}>
+                <ThemedView type="backgroundElement" style={[styles.confirmationCard, { borderColor: theme.tint }]}>
+                  <ThemedText type="smallBold" themeColor="tint">
+                    {addedResult.duplicate ? 'Already in Applications' : '✓ Added to Applications'}
+                  </ThemedText>
+                  <ThemedText type="small">{addedResult.role}</ThemedText>
+                  <ThemedText type="small" themeColor="textSecondary">
+                    {addedResult.company}
+                  </ThemedText>
+                  <ThemedView style={styles.confirmationActions}>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => {
+                        const id = addedResult.id;
+                        setAddedResult(null);
+                        router.push({ pathname: '/application/[id]', params: { id: String(id) } });
+                      }}
+                      style={[styles.primaryButton, styles.viewApplicationButton, { backgroundColor: theme.tint }]}>
+                      <ThemedText type="smallBold" style={styles.primaryButtonText}>
+                        View Application
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => setAddedResult(null)}
+                      style={styles.dismissButton}>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        Dismiss
+                      </ThemedText>
+                    </Pressable>
+                  </ThemedView>
+                </ThemedView>
+              </ThemedView>
+            ) : null}
+
             {scanResults && scanResults.length > 0 ? (
               <ThemedView style={styles.section}>
                 <SectionHeader
@@ -341,5 +394,27 @@ const styles = StyleSheet.create({
   },
   addButton: {
     marginTop: Spacing.one,
+  },
+  confirmationCard: {
+    borderWidth: 1,
+    borderRadius: Spacing.three,
+    padding: Spacing.three,
+    gap: Spacing.half,
+  },
+  confirmationActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    marginTop: Spacing.two,
+    backgroundColor: 'transparent',
+  },
+  viewApplicationButton: {
+    flex: 1,
+    marginTop: 0,
+  },
+  dismissButton: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
   },
 });

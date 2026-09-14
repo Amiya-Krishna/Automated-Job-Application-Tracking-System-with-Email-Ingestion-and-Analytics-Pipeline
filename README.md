@@ -392,6 +392,8 @@ Client: polls GET /api/scrape/runs/:id until the run reaches a final status
 
 **Polling is intentionally non-cacheable.** `GET /api/scrape/runs/:id` sends `Cache-Control: no-store` and skips Express's default ETag generation for that one route, so a browser can never receive a `304 Not Modified` for it. Left to Express's defaults, a byte-identical poll response would 304, and since the frontend's axios client only treats 2xx as success, a raw 304 reaching it would throw and permanently stop the polling loop — freezing the UI on a stale status. This fix is scoped to this one dynamic endpoint; no other route's caching behavior changed.
 
+**Polling gives up after 45s of still being "queued."** A `ScrapeRun` starts at `queued` and only moves to `running` once the separate worker process (`npm run worker` — see Quick Start below) actually picks the BullMQ job up. If that process isn't running, or can't reach Redis, the job sits queued forever — server-side, nothing is actually wrong or lost, but the dashboard used to poll silently forever too, showing "Waiting for a worker..." with no way to tell a slow run from one that will never start. It now stops polling after 45 seconds still stuck at `queued` and shows an explicit message pointing at the worker requirement, with the "Run discovery" button re-enabled so the user isn't stuck. This is a client-only fix — the run itself resumes normally the moment a worker does pick it up, since nothing about the queued job or its status was touched.
+
 Users can remove their own discovery-run history via `DELETE /api/scrape/runs/:id` (ownership-checked — a user can only delete their own runs). This deletes only the `ScrapeRun` history row; it never touches the shared `jobs` catalog, `applications`, `match_scores`, or anyone's `tracked_jobs`.
 
 ---
@@ -447,7 +449,23 @@ Remotive requires **no environment variable at all** — it's a public API with 
 
 ---
 
-## Interview Talking Points
+## Mobile App
+
+A native Expo/React Native client (`mobile/`) covers the same backend as the web dashboard above — no separate backend, no duplicated business logic, same REST contracts and JWT auth (Axios + a `token` header, session persisted in Expo SecureStore).
+
+**What it covers:** authentication (incl. forgot/reset password), a home overview, applications (add/edit/status/search/filter/sort), job discovery (search, match scoring, apply), analytics, profile editing, Gmail integration (OAuth connect, inbox scan, add-to-pipeline), companies, sources, and a secondary "Engine Applications" queue view. Built with Expo Router (file-based routing, no WebViews anywhere), TypeScript in strict mode, TanStack Query, and React Hook Form + Zod.
+
+**The one place mobile needed a real (small) backend change — Gmail OAuth:** `GET /api/gmail/auth-url` accepts `source=mobile&redirectUri=<...>` alongside the existing `source=extension`. Unlike the extension's fixed `EXTENSION_REDIRECT_URL`, there's no single static redirect URI that works for mobile — Expo Go generates a different `exp://<lan-ip>:8081/...` URL per developer machine, while a standalone/dev-client build uses the app's own `mobile://` scheme. So the mobile app computes its own redirect and sends it along; the server signs it into the existing OAuth `state` JWT and only honors `mobile://` / `exp://` schemes (`isAllowedMobileRedirect` in `gmailRoutes.js`), so `state` can't be turned into an open redirect. See `mobile/hooks/use-gmail.ts`.
+
+**Password reset works from mobile without any backend change at all.** The reset email links to the same `${CLIENT_URL}/reset-password` page for every platform. On a mobile browser, that web page now also offers a "Continue in the mobile app" link built from the app's own `mobile://` scheme (`client/src/pages/ResetPassword.jsx`) — a custom-scheme link needs no Universal Links/App Links hosting or native entitlements to be honored by the OS, unlike an `https://` deep link would. Tapping it hands the token to `mobile/app/(auth)/reset-password.tsx`, which pre-fills it; manual paste remains the fallback for anyone who reaches that screen without a token in hand. Known edge case: if the device already has an active session, the reset screen sits behind an "unauthenticated only" route guard and the deep link won't be reachable until the user logs out — not yet fixed.
+
+**Deliberately not built:** push notifications — the backend has no notification tables, device-token storage, or push-provider integration (FCM/APNs/Expo push) anywhere, confirmed by inspection rather than assumed, so there's nothing to build a mobile UI on top of without inventing a new backend feature.
+
+See `mobile/README.md` for setup, environment variables, and the full list of known limitations.
+
+---
+
+
 
 - Why async queues (BullMQ + Redis) instead of synchronous processing?
 - How would you redesign deduplication at scale?
@@ -535,6 +553,8 @@ Production considerations:
 - **A separate, disconnected legacy script** (`server/services/scraper.js`, run manually via `npm run scrape`) contains real Playwright-based LinkedIn/Indeed DOM scraping. It predates the Remotive-based Job Discovery feature, is not invoked by any worker or route, and is not part of the active pipeline — see "Code issues discovered but intentionally not modified" in project history for why it wasn't removed as part of a documentation-only pass.
 - Fuzzy deduplication and the `0.85` similarity threshold are hand-tuned, not backed by a labeled dataset.
 - The learning loop needs a meaningful number of recorded outcomes before it contributes anything beyond flat skill weighting (cold-start problem).
+- **Mobile password reset deep link doesn't work for an already-logged-in device.** The handoff (see Mobile App, above) lands on a route guarded to unauthenticated sessions only; a user with an active session on that device would need to log out first. Not yet fixed.
+- **No push notifications on mobile.** The backend has no device-token storage or push-provider integration at all — this is a genuine gap, not a mobile-side omission, and isn't planned without that backend work.
 
 ---
 

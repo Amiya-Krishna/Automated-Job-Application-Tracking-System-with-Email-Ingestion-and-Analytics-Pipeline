@@ -139,6 +139,15 @@ TrackTrail/
 │   │                                      #   Profile, Email — all authenticated, mirroring the web client
 │   └── config.js                         # DEFAULT_API_BASE_URL
 │
+├── 📁 mobile/                             # Native Expo/React Native app — same backend, no duplicated logic
+│   ├── 📄 README.md                      # Full architecture, setup, env vars, and known limitations
+│   ├── 📄 app.json                       # Expo config — scheme: "mobile" (used by Gmail OAuth + password-reset deep links)
+│   ├── 📁 app/                           # Expo Router file-based routes ((tabs)/, (auth)/, application/, job/, account/, companies/, sources/)
+│   ├── 📁 services/                      # One file per API area, wrapping the shared Axios client — the only layer that knows endpoint paths
+│   ├── 📁 hooks/                         # TanStack Query hooks built on services/
+│   ├── 📁 types/                         # One file per API area, documenting the exact backend contract each type matches
+│   └── 📁 components/                    # Shared UI (cards, badges, empty/loading/error states, form fields)
+│
 └── 📁 docs/                              # Documentation (this folder)
     ├── GETTING_STARTED.md
     ├── INSTALLATION.md

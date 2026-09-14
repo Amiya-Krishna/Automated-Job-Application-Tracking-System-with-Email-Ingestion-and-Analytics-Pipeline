@@ -1,6 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Link, router } from 'expo-router';
-import { useState } from 'react';
+import { Link, router, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,51 +15,55 @@ import { ApiError } from '@/types/api';
 import { resetPasswordSchema, type ResetPasswordFormValues } from '@/utils/auth-validation';
 
 /**
- * Token entry is manual (paste from the email), not a deep link, and
- * that's a real, currently-unclosed gap rather than an oversight:
+ * Token entry now supports BOTH a deep link and manual paste, fixing the
+ * earlier gap the hard way rather than papering over it:
  *
- * The email's reset link points at `${CLIENT_URL}/reset-password?token=`
- * — the WEB client's own domain (server/routes/authRoutes.js's
- * forgot-password handler), decided once per server, not per request.
- * Unlike Gmail OAuth (Phase 3), there is no `source`/`redirectUri`
- * parameter here for the mobile app to ask for a different link shape —
- * the only input to /forgot-password is an email address, so the server
- * has no way to know whether the person who requested the reset wants a
- * web or mobile link.
+ * The email's reset link still points at
+ * `${CLIENT_URL}/reset-password?token=...` for every platform — no
+ * backend change, since /forgot-password only ever takes an email and
+ * has no per-request way to know the requester wants a different link
+ * shape (unlike Gmail OAuth's redirectUri). What changed is the WEB
+ * page at that URL (client/src/pages/ResetPassword.jsx): on a mobile
+ * browser, it now also offers a "Continue in the mobile app" link built
+ * from this app's own `mobile://` scheme (already configured in
+ * app.json — no Universal Links/App Links hosting or native
+ * entitlements needed, since a custom-scheme link, unlike an https deep
+ * link, needs no domain verification to be honored by the OS once
+ * tapped from an open browser).
  *
- * Making the link open this app directly would need one of:
- *   (a) Universal Links / App Links — hosting an
- *       apple-app-site-association / assetlinks.json file on the
- *       server's domain, plus native entitlements (associated domains /
- *       intent-filter) in the mobile build — a real backend + native
- *       config change, not a code-only mobile PR, and not something
- *       verifiable from this sandbox (no way to confirm DNS/hosting or
- *       run the native build), or
- *   (b) splitting CLIENT_URL by request source the way Gmail's
- *       redirectUri is, which would change what EVERY platform's reset
- *       email links to, including already-deployed web users.
- *
- * Per this phase's own instruction ("if implementing reset requires a
- * backend redirect/deep-link change, stop and explain the minimal
- * required change before modifying backend code"), neither was done
- * without checking in first — see the final report. What ships here
- * works completely today with zero backend changes: the same
- * POST /api/auth/reset-password {token, password} the web app calls,
- * just with the token pasted in instead of read from a URL.
+ * This screen is what that handoff lands on: `useLocalSearchParams`
+ * reads the `token` Expo Router extracts from
+ * `mobile://reset-password?token=...`, and the token field is
+ * pre-filled and read-only in that case. Manual paste (the original
+ * fix) remains the fallback for anyone who opens this screen without a
+ * token already in hand — the field is only locked when a deep link
+ * actually supplied one.
  */
 export default function ResetPasswordScreen() {
   const theme = useTheme();
+  const { token: deepLinkToken } = useLocalSearchParams<{ token?: string }>();
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<ResetPasswordFormValues>({
     resolver: zodResolver(resetPasswordSchema),
-    defaultValues: { token: '', password: '', confirmPassword: '' },
+    defaultValues: { token: deepLinkToken ?? '', password: '', confirmPassword: '' },
   });
+
+  // Covers the case where this screen was already mounted (e.g. the user
+  // navigated here manually) and a deep link arrives afterward — reset()
+  // only runs when there's actually a token to apply, so it never wipes
+  // out password/confirmPassword the user has already started typing.
+  useEffect(() => {
+    if (deepLinkToken) {
+      reset((current) => ({ ...current, token: deepLinkToken }));
+    }
+  }, [deepLinkToken, reset]);
 
   const onSubmit = async (values: ResetPasswordFormValues) => {
     setFormError(null);
@@ -85,7 +89,9 @@ export default function ResetPasswordScreen() {
               Set a new password
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Paste the reset code from the email we sent you, then choose a new password.
+              {deepLinkToken
+                ? "We've filled in your reset code from the link you tapped — just choose a new password."
+                : 'Paste the reset code from the email we sent you, then choose a new password.'}
             </ThemedText>
           </ThemedView>
 
@@ -125,6 +131,8 @@ export default function ResetPasswordScreen() {
                       placeholder="Paste the code from your email"
                       autoCapitalize="none"
                       autoCorrect={false}
+                      editable={!deepLinkToken}
+                      style={deepLinkToken ? styles.readOnlyInput : undefined}
                       value={value}
                       onChangeText={onChange}
                       onBlur={onBlur}
@@ -223,6 +231,9 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     padding: Spacing.three,
     backgroundColor: 'transparent',
+  },
+  readOnlyInput: {
+    opacity: 0.6,
   },
   successBanner: {
     borderWidth: 1,

@@ -140,6 +140,25 @@ function JobDiscovery() {
   const [removingRunId, setRemovingRunId] = useState(null);
 
   const pollRef = useRef(null);
+  // Root-cause context for the timeout below: a ScrapeRun starts at
+  // "queued" (server/routes/scrapeRoutes.js) and only moves to "running"
+  // once server/workers/scrapeWorker.js actually picks the BullMQ job up
+  // — which requires the separate `npm run worker` process to be running
+  // (see README.md / docs/GETTING_STARTED.md's troubleshooting section,
+  // which already documents this exact requirement). If that process
+  // isn't running, or Redis is unreachable from it, the job sits queued
+  // in Redis forever and this poll would otherwise say "Waiting for a
+  // worker..." indefinitely with no way for the user to tell a genuine
+  // slow run from a worker that will never come. This is a real,
+  // separate failure mode from anything runDiscovery()/the Remotive
+  // adapter can throw — those are already caught and turned into a
+  // "failed" ScrapeRun (services/jobDiscovery/index.js,
+  // adapters/remotiveJobsAdapter.js's own 10s request timeout) — so no
+  // amount of fixing that code path closes this one; only the client
+  // giving up and saying so does.
+  const QUEUED_TIMEOUT_MS = 45000;
+  const pollStartedAtRef = useRef(null);
+  const [runTimedOut, setRunTimedOut] = useState(false);
 
   const loadHistory = async () => {
     setIsLoadingHistory(true);
@@ -199,6 +218,8 @@ function JobDiscovery() {
 
   const pollRun = (runId) => {
     if (pollRef.current) clearInterval(pollRef.current);
+    pollStartedAtRef.current = Date.now();
+    setRunTimedOut(false);
     pollRef.current = setInterval(async () => {
       try {
         const res = await api.get(`/scrape/runs/${runId}`);
@@ -209,7 +230,6 @@ function JobDiscovery() {
         if (["succeeded", "failed", "blocked"].includes(run.status)) {
           clearInterval(pollRef.current);
           pollRef.current = null;
-          loadHistory();
 
           if (run.status === "succeeded") {
             toast.success("Discovery run finished");
@@ -218,6 +238,22 @@ function JobDiscovery() {
           } else {
             toast.error("Discovery run failed");
           }
+          loadHistory();
+          return;
+        }
+
+        // Still "queued" (never even reached "running") past the
+        // timeout: the worker process most likely isn't running, or
+        // can't reach Redis. This is the fix for the reported "stuck at
+        // Waiting for worker forever" bug — the run itself is left
+        // alone (still genuinely queued server-side, and will resume
+        // updating on its own the moment a worker does pick it up), but
+        // the UI stops pretending it knows that's imminent.
+        if (run.status === "queued" && Date.now() - pollStartedAtRef.current > QUEUED_TIMEOUT_MS) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+          setRunTimedOut(true);
+          toast.error("No worker picked this up in time.");
         }
       } catch (err) {
         clearInterval(pollRef.current);
@@ -378,7 +414,10 @@ function JobDiscovery() {
 
             <button
               type="submit"
-              disabled={isSubmitting || (activeRun && !["succeeded", "failed", "blocked"].includes(activeRun.status))}
+              disabled={
+                isSubmitting ||
+                (activeRun && !runTimedOut && !["succeeded", "failed", "blocked"].includes(activeRun.status))
+              }
               className="ml-auto rounded-2xl bg-slate-950 dark:bg-cyan-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800 dark:hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "Starting..." : "Run discovery"}
@@ -406,11 +445,26 @@ function JobDiscovery() {
               <RunStatusBadge status={activeRun.status} />
             </div>
 
-            {["queued", "running"].includes(activeRun.status) && (
-              <p className="mt-3 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
-                {activeRun.status === "queued" ? "Waiting for a worker..." : "Contacting providers..."}
-              </p>
+            {runTimedOut ? (
+              <div className="mt-3 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/40 px-4 py-3">
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                  No worker picked this up after {Math.round(QUEUED_TIMEOUT_MS / 1000)}s.
+                </p>
+                <p className="mt-1 text-sm text-amber-700 dark:text-amber-400">
+                  This run is still genuinely queued — it isn't lost, and will resume the moment a
+                  worker is running. If this keeps happening, the background worker process
+                  (<code className="rounded bg-amber-100 dark:bg-amber-900 px-1">npm run worker</code>,
+                  a separate process from the API server) likely isn't running, or can't reach
+                  Redis. See the README's "Background Workers" section.
+                </p>
+              </div>
+            ) : (
+              ["queued", "running"].includes(activeRun.status) && (
+                <p className="mt-3 flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-sky-500" />
+                  {activeRun.status === "queued" ? "Waiting for a worker..." : "Contacting providers..."}
+                </p>
+              )
             )}
 
             <RunResultsSummary run={activeRun} />

@@ -120,36 +120,52 @@ No other backend change is required — connect/disconnect/scan/add-to-
 pipeline all use the same endpoints the web client's Integrations page
 uses.
 
-## Password reset — known limitation
+**Add to Pipeline shows exactly where the job landed.** After a scanned
+email is added, the Profile screen shows a confirmation card — "Added to
+Applications" or "Already in Applications" if the backend's own
+duplicate check (`findExistingTrackedJob` in `server/routes/jobRoutes.js`)
+matched an existing tracked job — with a "View Application" button that
+opens the real application detail screen using the actual id `POST
+/api/jobs` returned (`{ ...TrackedJobRecord, duplicate }`). No second
+detail view and no client-side duplicate guessing; the backend's decision
+is shown as-is.
+
+## Password reset
 
 `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` work
-exactly as the web client uses them. The **Forgot Password** screen is
-fully functional with zero backend changes.
+exactly as the web client uses them, and both mobile screens are fully
+functional with **zero backend changes**.
 
-**Reset Password currently uses manual token entry** (paste the code from
-the email) rather than a one-tap deep link, and this is a deliberate,
-documented gap rather than an oversight. The reset email links to
-`${CLIENT_URL}/reset-password?token=...` — the *web* client's domain,
-decided once per server deployment. Unlike Gmail OAuth, there is no
-per-request parameter here for the mobile app to ask for a different link
-shape (the only input to `/forgot-password` is an email address). Making
-the email open the mobile app directly would require one of:
+**Reset Password now supports a deep-link handoff from the email, not
+just manual entry.** The reset email links to
+`${CLIENT_URL}/reset-password?token=...` for every platform, same as
+before — there's still no per-request parameter for `/forgot-password`
+to ask for a different link shape the way Gmail OAuth's `redirectUri`
+does, since the only input to it is an email address. What changed is
+the *web* page at that URL (`client/src/pages/ResetPassword.jsx`): on a
+mobile browser, it now also shows a "Continue in the mobile app" link
+built from this app's own `mobile://` scheme (already configured in
+`app.json`). A custom-scheme link — unlike an `https://` deep link —
+needs no Universal Links/App Links hosting or native entitlements to be
+honored by the OS once tapped from an open browser, so this needed no
+backend change and no native build configuration. Tapping it hands the
+token to `app/(auth)/reset-password.tsx` via `useLocalSearchParams`,
+which pre-fills it (read-only in that case); manual paste remains the
+fallback for anyone who reaches this screen without a token already in
+hand.
 
-- **Universal Links (iOS) / App Links (Android)** — hosting an
-  `apple-app-site-association` / `assetlinks.json` file on the server's
-  domain, plus native entitlements in the mobile build. This is
-  infrastructure and native-build configuration, not a code-only change,
-  and isn't something that can be verified from a development sandbox.
-- **Splitting `CLIENT_URL` by request source**, which would change what
-  *every* platform's reset email links to, including already-deployed web
-  users — too broad a change to make unilaterally.
-
-If you want one-tap reset links on mobile, pick one of the above
-deliberately; don't guess at it.
+**Known remaining edge case:** the reset screen sits inside this app's
+"unauthenticated only" route group (`Stack.Protected guard={status ===
+'unauthenticated'}` in `app/_layout.tsx`). If the device already has an
+active session, that group is guarded out and the deep link won't
+navigate there — the person would need to log out first. Fixing this
+would mean restructuring the auth-guard logic to make one screen
+reachable regardless of session state, which wasn't done here to avoid
+touching working auth-gating logic without dedicated testing.
 
 ## Known limitations
 
-- Password reset deep linking (above).
+- Password reset deep linking's already-logged-in edge case (above).
 - Push notifications: **not implemented, and correctly so** — the backend
   has no notification/device-token/push-provider infrastructure at all
   (confirmed by inspection, not assumed), so there is nothing to build a
