@@ -21,7 +21,7 @@ import { parseJobEmail } from '@/utils/email-parser';
 
 export default function ProfileScreen() {
   const theme = useTheme();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const profile = useProfile();
   const gmail = useGmailStatus();
 
@@ -161,14 +161,22 @@ export default function ProfileScreen() {
                   {displayEmail}
                 </ThemedText>
               ) : null}
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/account/edit')}
-                style={[styles.secondaryButton, styles.editProfileButton, { borderColor: theme.border }]}>
-                <ThemedText type="smallBold" themeColor="tint">
-                  Edit profile
-                </ThemedText>
-              </Pressable>
+              <ThemedView style={[styles.buttonRow, styles.editProfileButton]}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/account/edit')}
+                  style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                  <ThemedText type="smallBold" themeColor="tint">
+                    Edit profile
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/account/settings')}
+                  style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                  <ThemedText type="smallBold">Settings</ThemedText>
+                </Pressable>
+              </ThemedView>
             </ThemedView>
 
             <ThemedView style={styles.section}>
@@ -312,17 +320,6 @@ export default function ProfileScreen() {
                 ))}
               </ThemedView>
             ) : null}
-
-            {/* Never renders the JWT or any credential — only account-level
-                info from GET /api/profile, per Step 5's security instructions. */}
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => logout()}
-              style={[styles.logoutButton, { borderColor: theme.border }]}>
-              <ThemedText type="smallBold" themeColor="danger">
-                Log out
-              </ThemedText>
-            </Pressable>
           </ScrollView>
         )}
       </SafeAreaView>
@@ -356,14 +353,6 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.three,
     padding: Spacing.three,
     gap: Spacing.half,
-  },
-  logoutButton: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
   },
   buttonRow: {
     flexDirection: 'row',

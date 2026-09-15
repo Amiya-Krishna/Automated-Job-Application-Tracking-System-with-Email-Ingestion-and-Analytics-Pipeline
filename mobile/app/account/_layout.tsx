@@ -27,6 +27,7 @@ export default function AccountLayout() {
         headerShadowVisible: false,
       }}>
       <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
+      <Stack.Screen name="settings" options={{ title: 'Settings' }} />
     </Stack>
   );
 }
