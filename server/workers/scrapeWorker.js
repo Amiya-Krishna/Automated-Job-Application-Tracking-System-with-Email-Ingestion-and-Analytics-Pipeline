@@ -1,4 +1,5 @@
 const { Worker } = require("bullmq");
+const { Prisma } = require("@prisma/client");
 const { connection } = require("../queue");
 const prisma = require("../lib/prisma");
 const { runDiscovery } = require("../services/jobDiscovery");
@@ -15,14 +16,39 @@ const scrapeWorker = new Worker(
       return result;
     } catch (err) {
       console.error(`[scrapeWorker] run=${scrapeRunId} crashed:`, err.message);
-      await prisma.scrapeRun.update({
-        where: { id: scrapeRunId },
-        data: {
-          status: "failed",
-          results: { error: err.message },
-          finishedAt: new Date(),
-        },
-      });
+
+      // Report the crash back onto the ScrapeRun row — but the row may
+      // no longer exist (the user can delete their own run history
+      // mid-flight via DELETE /api/scrape/runs/:id; see
+      // services/jobDiscovery/index.js's updateScrapeRunIfExists for the
+      // full explanation). This used to let a second, uncaught Prisma
+      // P2025 mask whatever `err` actually was. Now: try to record it,
+      // but if the row's gone, just log that plainly and move on — the
+      // BullMQ job still fails correctly below either way, via the
+      // original `err`, not a replacement one.
+      try {
+        await prisma.scrapeRun.update({
+          where: { id: scrapeRunId },
+          data: {
+            status: "failed",
+            results: { error: err.message },
+            finishedAt: new Date(),
+          },
+        });
+      } catch (updateErr) {
+        if (updateErr instanceof Prisma.PrismaClientKnownRequestError && updateErr.code === "P2025") {
+          console.warn(
+            `[scrapeWorker] run=${scrapeRunId} was already deleted from history — ` +
+              `couldn't record the failure, but the original error is still reported below.`,
+          );
+        } else {
+          // A genuinely different failure while trying to report the
+          // first one (e.g. the database is down) — worth knowing about
+          // on its own, but still must not replace `err` below.
+          console.error(`[scrapeWorker] run=${scrapeRunId} also failed to record its failure:`, updateErr.message);
+        }
+      }
+
       throw err;
     }
   },

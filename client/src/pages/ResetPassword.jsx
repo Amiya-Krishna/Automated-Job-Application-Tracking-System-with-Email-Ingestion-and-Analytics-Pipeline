@@ -9,20 +9,14 @@ function ResetPassword() {
   const navigate = useNavigate();
   const token = searchParams.get("token") || "";
 
-  // Same email link works for every platform — no backend change, no
-  // per-request "source" needed the way Gmail OAuth's redirectUri is,
-  // because this hands off client-side instead: a custom-scheme link
-  // (`mobile://...`, reusing the exact scheme already configured in
-  // mobile/app.json — no Universal Links/App Links hosting or native
-  // entitlements required for a custom scheme, unlike an https deep
-  // link) that the OS offers to open in the installed app when tapped
-  // from an already-open mobile browser. If the app isn't installed,
-  // tapping it is a harmless no-op and the web form below still works —
-  // this is why the link is offered as an addition, never a redirect
-  // that could strand someone without the app. Only the token — never
-  // the password — travels in this URL, same as the web link itself.
-  const isMobileUA = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const mobileDeepLink = token ? `mobile://reset-password?token=${encodeURIComponent(token)}` : null;
+  // Web and Mobile reset flows are completely isolated: the web app
+  // never sends `source`/`redirectUri` to /forgot-password, so this page
+  // only ever sees a web-issued token. There is deliberately no mobile
+  // handoff, deep-link button, or mobile-browser detection here — mobile
+  // gets its OWN reset email pointed straight at its own
+  // mobile://reset-password deep link (see
+  // mobile/app/(auth)/forgot-password.tsx), so this page never needs to
+  // know or care whether a mobile app exists.
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -101,14 +95,6 @@ function ResetPassword() {
         </div>
       ) : (
         <form className="max-w-xl space-y-5" onSubmit={handleSubmit}>
-          {isMobileUA && mobileDeepLink && (
-            <a
-              href={mobileDeepLink}
-              className="block w-full rounded-2xl border border-cyan-200 dark:border-cyan-800 bg-cyan-50 dark:bg-cyan-950/40 px-4 py-3 text-center text-sm font-semibold text-cyan-800 dark:text-cyan-300 transition hover:bg-cyan-100 dark:hover:bg-cyan-950"
-            >
-              Continue in the mobile app →
-            </a>
-          )}
           <div>
             <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               New password

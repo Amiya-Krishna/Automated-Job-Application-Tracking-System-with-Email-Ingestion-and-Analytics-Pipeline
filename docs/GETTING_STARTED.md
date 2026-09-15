@@ -266,7 +266,30 @@ CLIENT_URL=http://localhost:5173
 ### Job Discovery runs stay "queued" forever
 
 **Solution**: The worker process (`npm run worker`, Step 6) isn't running, or
-can't reach Redis. Check `REDIS_URL` in `.env`.
+can't reach Redis. Check `REDIS_URL` in `.env`. The dashboard now gives up
+polling after 45 seconds of a run still showing "queued" and tells you this
+directly instead of waiting silently forever — if you see that message,
+this is almost certainly the cause.
+
+### `Invalid prisma.scrapeRun.update()` / "Record to update not found" in worker logs
+
+**Solution**: this happens if a run's history row was deleted
+(`DELETE /api/scrape/runs/:id`) while its BullMQ job was still queued or
+running — a real, harmless race (the run's owner just doesn't want to see
+the result anymore), not data corruption. The worker and
+`services/jobDiscovery/index.js` both detect this specific case (Prisma
+error code `P2025`) and log it plainly instead of crashing a second time
+while trying to report the first error. If you see a *different* Prisma
+error here, that's a genuine bug worth investigating on its own.
+
+### `duplicate key value violates unique constraint` on `companies.normalized_name`
+
+**Solution**: this was a real check-then-insert race when two discovery
+runs (the worker runs with `concurrency: 2`) ingested a job from the same
+brand-new company at the same moment. Fixed in `services/ingestionService.js`
+with an atomic `INSERT ... ON CONFLICT (normalized_name) DO UPDATE` — if
+you still see this error, you're likely running an older version of that
+file.
 
 ---
 

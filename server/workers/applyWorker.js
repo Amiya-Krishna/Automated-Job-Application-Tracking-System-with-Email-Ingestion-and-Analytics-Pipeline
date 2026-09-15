@@ -2,7 +2,7 @@ const { Worker } = require("bullmq");
 const { chromium } = require("playwright");
 const { connection } = require("../queue");
 const { query } = require("../lib/prisma");
-const { prepareApplication } = require("../services/applyEngine");
+const { prepareApplication, setStatus } = require("../services/applyEngine");
 
 // A persistent, "warmed" context (real cookies/session) rather than a fresh
 // headless context per run — cold headless sessions are the easiest bot
@@ -61,7 +61,21 @@ const applyWorker = new Worker(
       [ownerUserId],
     );
     const profile = profileRows[0];
-    if (!profile) throw new Error(`No profile configured for user ${ownerUserId}`);
+    if (!profile) {
+      // Legitimate business-state failure, not a code bug (Step 18/final
+      // stabilization audit) — but it used to only ever reach a server
+      // console log via BullMQ's own `failed` handler below, with no
+      // trace in the `applications` row this job is for. The user had
+      // no way to discover *why* an automated application never
+      // progressed short of reading server logs they don't have access
+      // to. Recording it the same way prepareApplication's own failures
+      // are (setStatus, applyEngine.js) means it now shows up as a
+      // normal "failed" application with a clear, actionable reason in
+      // both the Applications tab and the Engine Applications queue.
+      const reason = `No profile configured for user ${ownerUserId} — add a profile before running automated applications.`;
+      await setStatus(jobId, "failed", { reason });
+      throw new Error(reason);
+    }
 
     const context = await getSharedContext();
     const result = await prepareApplication(

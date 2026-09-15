@@ -22,20 +22,34 @@ async function ingestJob(payload) {
   const sourceId = sourceRes.rows[0].id;
 
   const normalizedCompany = normalize(payload.company);
-  let companyRes = await query(
-    "SELECT id FROM companies WHERE normalized_name = $1",
-    [normalizedCompany],
+  // Was SELECT-then-INSERT: two concurrent ingestions of a job from a
+  // brand-new company (the scrape worker runs with concurrency:2 — see
+  // workers/scrapeWorker.js — so two discovery runs, or a run overlapping
+  // a manual browser-extension capture, can genuinely land here at the
+  // same moment) could both find no existing row and both attempt the
+  // INSERT; whichever lost the race hit the `normalized_name` unique
+  // constraint (Postgres 23505) as a raw, uncaught error — silently
+  // dropping that one job posting rather than crashing anything (the
+  // per-job try/catch in services/jobDiscovery/index.js's runDiscovery
+  // loop swallows it), but that's still real, silent data loss, not
+  // just a noisy log line.
+  //
+  // `INSERT ... ON CONFLICT ... DO UPDATE` makes the check-and-create a
+  // single atomic statement instead of two round-trips, so there's no
+  // window for a second insert to race the first — the loser of the
+  // race reuses the winner's row instead of failing. `DO UPDATE SET
+  // name = EXCLUDED.name` (rather than `DO NOTHING`) is what makes
+  // Postgres return the existing row from `RETURNING id` on a conflict;
+  // `DO NOTHING` would return zero rows on conflict and still require a
+  // follow-up SELECT, just with the same race moved one statement later.
+  const upserted = await query(
+    `INSERT INTO companies (name, normalized_name)
+     VALUES ($1, $2)
+     ON CONFLICT (normalized_name) DO UPDATE SET name = companies.name
+     RETURNING id`,
+    [payload.company, normalizedCompany],
   );
-  let companyId;
-  if (companyRes.rows.length) {
-    companyId = companyRes.rows[0].id;
-  } else {
-    const inserted = await query(
-      "INSERT INTO companies (name, normalized_name) VALUES ($1, $2) RETURNING id",
-      [payload.company, normalizedCompany],
-    );
-    companyId = inserted.rows[0].id;
-  }
+  const companyId = upserted.rows[0].id;
 
   const duplicate = await findDuplicate({
     title: payload.title,

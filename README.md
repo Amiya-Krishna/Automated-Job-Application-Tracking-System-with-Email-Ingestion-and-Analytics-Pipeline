@@ -300,6 +300,31 @@ This is what turns the matcher from a static keyword filter into a system that s
 - Cause: two sources (scraper + manual capture) ingest the same listing within seconds of each other.
 - Mitigation: dedup runs synchronously before insert, and every row commits to a canonical id at insert time — there's no window where two rows can both claim to be canonical for the same listing.
 
+**Concurrent company creation**
+
+- Cause: the scrape worker runs with `concurrency: 2` (`workers/scrapeWorker.js`), so two discovery runs (or a run overlapping a manual browser-extension capture) can genuinely process a job from the same brand-new company at the same moment. The company lookup used to be a plain SELECT-then-INSERT — two concurrent ingestions could both find no existing row, both attempt the INSERT, and the loser hit the `companies.normalized_name` unique constraint as a raw, uncaught Postgres error (`23505`), silently dropping that one job posting.
+- Mitigation: `services/ingestionService.js` now does the lookup-and-create as a single atomic `INSERT ... ON CONFLICT (normalized_name) DO UPDATE ... RETURNING id` — the loser of the race reuses the winner's row instead of failing. No unique constraint was weakened or removed.
+
+**ScrapeRun deleted mid-flight**
+
+- Cause: `DELETE /api/scrape/runs/:id` lets a user remove their own run history at any time, including while a BullMQ job for that run is still queued or actively running. The worker (and `services/jobDiscovery/index.js`'s own status transitions) used to assume the row it was updating still existed — when it didn't, a `prisma.scrapeRun.update()` P2025 ("Record to update not found") went uncaught, and the worker's own crash-recovery handler then tried the identical now-missing update a second time and threw again, masking whatever the real underlying result would have been.
+- Mitigation: every `scrapeRun.update` call now checks for Prisma's P2025 specifically and treats a missing row as "nothing left to report to" rather than fatal — logged plainly, no crash, no masked error, and no further (wasted) provider calls once nobody can ever see the result.
+
+**Apply-engine field detection on real-world pages**
+
+- Cause: `#${forId}`-style selectors built from a `<label for="...">`'s id (the generic ATS-field-detection fallback, `adapters/genericAdapter.js`) aren't actually guaranteed unique — real pages routinely have several elements sharing an id (duplicate desktop/mobile form variants, hidden steps of a multi-step form all present in the DOM at once). Playwright's `page.fill()` silently took the first DOM-order match regardless of visibility, then waited up to 30s for a hidden decoy field to become visible — which it never would.
+- Mitigation: `services/applyEngine.js` now resolves the first genuinely *visible* match among all of a selector's hits before filling it, rather than trusting DOM order. Not `force: true` (which would happily fill a hidden decoy and submit wrong data) and not a longer timeout (a field that's never going to become visible just fails slower).
+
+**Apply-engine navigation race**
+
+- Cause: some ATS pages (React/Angular-driven forms) do a client-side redirect shortly after `domcontentloaded` fires — an initial loading shell that immediately navigates to the real form. Field detection running exactly during that second navigation tore down Playwright's execution context mid-evaluation ("Execution context was destroyed, most likely because of a navigation").
+- Mitigation: field detection now retries once, specifically on that error, after waiting for the page to settle — a genuinely broken adapter still fails immediately and visibly; only this one known, expected race gets a retry.
+
+**Missing user profile during automated apply**
+
+- Cause: an apply job can be queued for a user who hasn't filled out their profile yet — a legitimate business-state failure, not a code bug. The worker already refused to guess at (or fabricate) missing profile data, but the failure previously only reached a server console log, never the `applications` row itself.
+- Mitigation: `workers/applyWorker.js` now records this the same way the apply engine's own failures are (`setStatus`), so it shows up as a normal "failed" application with a clear, actionable reason in both the Applications tab and the Engine Applications queue instead of silently vanishing into server logs.
+
 **Noisy Gmail data**
 
 - Cause: inbox text is not a reliable ground truth — false positives on subject-line keyword matches are common.
@@ -457,13 +482,15 @@ A native Expo/React Native client (`mobile/`) covers the same backend as the web
 
 **The one place mobile needed a real (small) backend change — Gmail OAuth:** `GET /api/gmail/auth-url` accepts `source=mobile&redirectUri=<...>` alongside the existing `source=extension`. Unlike the extension's fixed `EXTENSION_REDIRECT_URL`, there's no single static redirect URI that works for mobile — Expo Go generates a different `exp://<lan-ip>:8081/...` URL per developer machine, while a standalone/dev-client build uses the app's own `mobile://` scheme. So the mobile app computes its own redirect and sends it along; the server signs it into the existing OAuth `state` JWT and only honors `mobile://` / `exp://` schemes (`isAllowedMobileRedirect` in `gmailRoutes.js`), so `state` can't be turned into an open redirect. See `mobile/hooks/use-gmail.ts`.
 
-**Password reset works from mobile without any backend change at all.** The reset email links to the same `${CLIENT_URL}/reset-password` page for every platform. On a mobile browser, that web page now also offers a "Continue in the mobile app" link built from the app's own `mobile://` scheme (`client/src/pages/ResetPassword.jsx`) — a custom-scheme link needs no Universal Links/App Links hosting or native entitlements to be honored by the OS, unlike an `https://` deep link would. Tapping it hands the token to `mobile/app/(auth)/reset-password.tsx`, which pre-fills it; manual paste remains the fallback for anyone who reaches that screen without a token in hand. Known edge case: if the device already has an active session, the reset screen sits behind an "unauthenticated only" route guard and the deep link won't be reachable until the user logs out — not yet fixed.
+**Password reset is completely isolated between Web and Mobile — separate emails, separate destinations, no cross-platform handoff.** Web's Forgot Password page never sends `source`/`redirectUri`, so it always gets the unchanged `${CLIENT_URL}/reset-password` link. Mobile's Forgot Password screen explicitly requests its own: `POST /api/auth/forgot-password { email, source: "mobile", redirectUri }`, where `redirectUri` is this app's own deep link (`Linking.createURL('reset-password')` — same mechanism as Gmail OAuth's mobile flow, validated server-side against the same `mobile://`/`exp://` allow-list, `server/utils/mobileRedirect.js`, shared between both features). The mobile reset email links straight to that deep link — no web page, no "continue in app" handoff button, no mobile-browser detection. Tapping it in Gmail opens `mobile/app/(auth)/reset-password.tsx` directly with the token pre-filled; manual paste remains the fallback for anyone who reaches that screen without one. Known edge case: if the device already has an active session, the reset screen sits behind an "unauthenticated only" route guard and the deep link won't be reachable until the user logs out — not yet fixed. Separately: Gmail's own webmail UI opens link clicks in a new tab regardless of what the email's HTML specifies (there's no `target="_blank"` anywhere in `server/services/emailService.js`'s template) — that's Gmail's behavior, not something this project controls or can fix.
 
 **Deliberately not built:** push notifications — the backend has no notification tables, device-token storage, or push-provider integration (FCM/APNs/Expo push) anywhere, confirmed by inspection rather than assumed, so there's nothing to build a mobile UI on top of without inventing a new backend feature.
 
 See `mobile/README.md` for setup, environment variables, and the full list of known limitations.
 
 ---
+
+## Interview Talking Points
 
 
 
@@ -503,7 +530,20 @@ npm run dev
 # workers (separate terminal, required for discovery/matching/apply/analytics)
 cd ../server
 npm run worker
+
+# mobile app (separate terminal — Expo Router, native, no WebView)
+cd ../mobile
+npm install
+npx expo start
+
+cp .env.example .env        # then set EXPO_PUBLIC_API_URL to point at the server above
+npm start                   # then choose a target from the terminal UI, or:
+npm run android             # Android emulator or a physical device via Expo Go
+npm run ios                 # iOS Simulator (macOS only)
+npm run web                 # runs it as a web app too, in the browser
 ```
+
+`server`, `worker`, `client`, and `mobile` are four separate, independently-run processes — the worker in particular is easy to forget, and without it every discovery/matching/apply/analytics job will sit queued forever (see "Job Discovery" below for exactly what that looks like and how the app now surfaces it instead of hanging silently). See `mobile/README.md` for environment variable details (`EXPO_PUBLIC_API_URL` differs by target — localhost, Android emulator, or a LAN IP for a physical device) and known limitations.
 
 `npm run db:migrate` (`node migrate.js`) is legacy and no longer works — it reads a `db/schema.sql` file that doesn't exist in this Prisma-based version of the project. Use `npx prisma migrate deploy` (or `npx prisma migrate dev` while developing locally) instead.
 

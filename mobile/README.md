@@ -133,35 +133,50 @@ is shown as-is.
 ## Password reset
 
 `POST /api/auth/forgot-password` and `POST /api/auth/reset-password` work
-exactly as the web client uses them, and both mobile screens are fully
-functional with **zero backend changes**.
+exactly as the web client uses them.
 
-**Reset Password now supports a deep-link handoff from the email, not
-just manual entry.** The reset email links to
-`${CLIENT_URL}/reset-password?token=...` for every platform, same as
-before — there's still no per-request parameter for `/forgot-password`
-to ask for a different link shape the way Gmail OAuth's `redirectUri`
-does, since the only input to it is an email address. What changed is
-the *web* page at that URL (`client/src/pages/ResetPassword.jsx`): on a
-mobile browser, it now also shows a "Continue in the mobile app" link
-built from this app's own `mobile://` scheme (already configured in
-`app.json`). A custom-scheme link — unlike an `https://` deep link —
-needs no Universal Links/App Links hosting or native entitlements to be
-honored by the OS once tapped from an open browser, so this needed no
-backend change and no native build configuration. Tapping it hands the
-token to `app/(auth)/reset-password.tsx` via `useLocalSearchParams`,
-which pre-fills it (read-only in that case); manual paste remains the
-fallback for anyone who reaches this screen without a token already in
-hand.
+**Web and Mobile have completely separate, isolated reset flows —
+separate emails, separate destinations, no cross-platform handoff.**
+This app's Forgot Password screen (`app/(auth)/forgot-password.tsx`)
+explicitly requests its own reset email:
+
+```ts
+POST /api/auth/forgot-password
+{ email, source: 'mobile', redirectUri: Linking.createURL('reset-password') }
+```
+
+`redirectUri` is this app's own deep link -- the same mechanism Gmail
+OAuth's mobile connect flow uses (`hooks/use-gmail.ts`), validated
+server-side against the same `mobile://`/`exp://` allow-list
+(`server/utils/mobileRedirect.js`, shared between both features so the
+two can't drift apart). The web app never sends `source`/`redirectUri`
+at all, so it always gets its own unchanged `${CLIENT_URL}/reset-password`
+link -- there is deliberately no "continue in the mobile app" button on
+the web page, no mobile-browser detection, and no fallback that could
+send a web user into the mobile app or vice versa.
+
+The mobile reset email links straight to `mobile://reset-password?token=...`
+-- no web page in between. Tapping it in Gmail opens
+`app/(auth)/reset-password.tsx` directly, with the token pre-filled via
+`useLocalSearchParams` (read-only in that case); manual paste remains
+the fallback for anyone who reaches this screen without a token already
+in hand (e.g. copy-pasting it from a desktop email client).
 
 **Known remaining edge case:** the reset screen sits inside this app's
 "unauthenticated only" route group (`Stack.Protected guard={status ===
 'unauthenticated'}` in `app/_layout.tsx`). If the device already has an
 active session, that group is guarded out and the deep link won't
-navigate there — the person would need to log out first. Fixing this
+navigate there -- the person would need to log out first. Fixing this
 would mean restructuring the auth-guard logic to make one screen
 reachable regardless of session state, which wasn't done here to avoid
 touching working auth-gating logic without dedicated testing.
+
+**Also outside this app's control:** Gmail's own webmail UI opens link
+taps in a new tab/window regardless of what the email's HTML specifies
+-- there is no `target="_blank"` or `window.open` anywhere in
+`server/services/emailService.js`'s template. That's Gmail's own
+link-handling behavior, not something either the server or this app can
+override.
 
 ## Known limitations
 

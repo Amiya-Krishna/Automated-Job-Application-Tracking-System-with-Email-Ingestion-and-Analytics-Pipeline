@@ -4,6 +4,7 @@ const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
 const auth = require("../middleware/authMiddleware");
 const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
+const { isAllowedMobileRedirect } = require("../utils/mobileRedirect");
 
 const prisma = require("../lib/prisma");
 
@@ -16,11 +17,9 @@ const prisma = require("../lib/prisma");
 // (Linking.createURL(...)) and sends it with the auth-url request; it
 // rides inside the signed `state` JWT (server-issued and verified on the
 // way back, so it can't be tampered with in transit) and is restricted to
-// the `mobile://` / `exp://` schemes below so `state` can't be abused as
-// an open redirect to an arbitrary domain.
-function isAllowedMobileRedirect(url) {
-  return typeof url === "string" && /^(mobile:\/\/|exp:\/\/)/.test(url);
-}
+// the `mobile://` / `exp://` schemes (see ../utils/mobileRedirect.js —
+// shared with password reset's forgot-password route, same trust model)
+// so `state` can't be abused as an open redirect to an arbitrary domain.
 
 // STEP 1 — Get Google auth URL
 // The browser extension calls this as /gmail/auth-url?source=extension so

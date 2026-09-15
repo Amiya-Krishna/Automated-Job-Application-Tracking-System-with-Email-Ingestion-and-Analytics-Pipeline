@@ -5,6 +5,7 @@
 // indeedJobsAdapter.js) report `unavailable`/`blocked`/`error` instead of
 // empty-but-successful, so the caller can show that honestly.
 
+const { Prisma } = require("@prisma/client");
 const prisma = require("../../lib/prisma");
 const { ingestJob } = require("../ingestionService");
 const linkedin = require("../../adapters/linkedinJobsAdapter");
@@ -17,11 +18,48 @@ const remotive = require("../../adapters/remotiveJobsAdapter");
 // partner credentials exist — see those adapters for why.
 const ADAPTERS = { linkedin, indeed, remotive };
 
+// A user can delete their own run history mid-flight
+// (`DELETE /api/scrape/runs/:id` — scrapeRoutes.js does a hard delete
+// with no check for a still-queued/active BullMQ job for that run, by
+// design: it's just history, not the shared jobs catalog, so there's
+// nothing unsafe about deleting it). That's a real, expected race, not
+// a bug to prevent — but it used to crash this function with an
+// uncaught Prisma P2025 ("Record to update not found") the moment
+// *either* of the two updates below ran after the row was gone, which
+// then propagated into scrapeWorker.js's own catch block, which tried
+// the SAME now-missing update a second time and threw again — two
+// crashes for one deleted row, with the second one masking whatever the
+// real discovery outcome (or lack of one) actually was.
+//
+// This wraps every `scrapeRun.update` so a missing row is treated as
+// "nothing left to report to," not a fatal error: log it plainly and
+// return `false` so the caller can stop doing further (wasted) work
+// instead of continuing to scrape providers for a run nobody will ever
+// see the result of.
+async function updateScrapeRunIfExists(scrapeRunId, data) {
+  try {
+    await prisma.scrapeRun.update({ where: { id: scrapeRunId }, data });
+    return true;
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2025") {
+      console.warn(
+        `[jobDiscovery] scrapeRun ${scrapeRunId} no longer exists (likely deleted from history while ` +
+          `still in flight) — skipping this status update rather than crashing.`,
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
 async function runDiscovery({ scrapeRunId, query, location, sources, limit }) {
-  await prisma.scrapeRun.update({
-    where: { id: scrapeRunId },
-    data: { status: "running", startedAt: new Date() },
+  const stillExists = await updateScrapeRunIfExists(scrapeRunId, {
+    status: "running",
+    startedAt: new Date(),
   });
+  if (!stillExists) {
+    return { status: "abandoned", results: {} };
+  }
 
   const results = {};
   let anyOk = false;
@@ -89,9 +127,10 @@ async function runDiscovery({ scrapeRunId, query, location, sources, limit }) {
         ? "failed"
         : "succeeded";
 
-  await prisma.scrapeRun.update({
-    where: { id: scrapeRunId },
-    data: { status: finalStatus, results, finishedAt: new Date() },
+  await updateScrapeRunIfExists(scrapeRunId, {
+    status: finalStatus,
+    results,
+    finishedAt: new Date(),
   });
 
   return { status: finalStatus, results };

@@ -1,5 +1,6 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, router } from 'expo-router';
+import * as Linking from 'expo-linking';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
@@ -31,11 +32,20 @@ export default function ForgotPasswordScreen() {
   const onSubmit = async (values: ForgotPasswordFormValues) => {
     setFormError(null);
     try {
+      // Ask the backend for a MOBILE-specific reset email — a completely
+      // separate link from what the web app's Forgot Password page
+      // requests, same mechanism as Gmail OAuth's mobile connect flow
+      // (Linking.createURL(...) -> validated server-side against a
+      // mobile://exp:// allow-list). This is what makes the emailed
+      // link open this app's reset-password screen directly, with no
+      // web page or "continue in app" handoff in between — see
+      // types/auth.ts's ForgotPasswordRequest for the full contract.
+      const redirectUri = Linking.createURL('reset-password');
       // The backend always returns the same generic message whether or
       // not the account exists (deliberately non-enumerating — see
       // types/auth.ts) — shown as-is rather than re-worded, so the UI
       // never implies anything about whether the email is registered.
-      const { message } = await forgotPassword(values);
+      const { message } = await forgotPassword({ ...values, source: 'mobile', redirectUri });
       setSentMessage(message);
     } catch (err) {
       setFormError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');

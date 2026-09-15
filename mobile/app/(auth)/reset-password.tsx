@@ -15,29 +15,25 @@ import { ApiError } from '@/types/api';
 import { resetPasswordSchema, type ResetPasswordFormValues } from '@/utils/auth-validation';
 
 /**
- * Token entry now supports BOTH a deep link and manual paste, fixing the
- * earlier gap the hard way rather than papering over it:
+ * Token entry supports both a deep link and manual paste.
  *
- * The email's reset link still points at
- * `${CLIENT_URL}/reset-password?token=...` for every platform — no
- * backend change, since /forgot-password only ever takes an email and
- * has no per-request way to know the requester wants a different link
- * shape (unlike Gmail OAuth's redirectUri). What changed is the WEB
- * page at that URL (client/src/pages/ResetPassword.jsx): on a mobile
- * browser, it now also offers a "Continue in the mobile app" link built
- * from this app's own `mobile://` scheme (already configured in
- * app.json — no Universal Links/App Links hosting or native
- * entitlements needed, since a custom-scheme link, unlike an https deep
- * link, needs no domain verification to be honored by the OS once
- * tapped from an open browser).
+ * This app requests its OWN, completely separate reset email — Web and
+ * Mobile never share a link or cross over (see
+ * app/(auth)/forgot-password.tsx and server/routes/authRoutes.js):
+ * `POST /api/auth/forgot-password` is called with
+ * `{ email, source: 'mobile', redirectUri: Linking.createURL('reset-password') }`,
+ * the same mechanism Gmail OAuth's mobile flow uses, validated
+ * server-side against a `mobile://`/`exp://` allow-list
+ * (server/utils/mobileRedirect.js). The resulting email links straight
+ * to `mobile://reset-password?token=...` — no web page, no "continue in
+ * app" handoff, no mobile-browser detection anywhere in the web client.
  *
- * This screen is what that handoff lands on: `useLocalSearchParams`
- * reads the `token` Expo Router extracts from
- * `mobile://reset-password?token=...`, and the token field is
- * pre-filled and read-only in that case. Manual paste (the original
- * fix) remains the fallback for anyone who opens this screen without a
- * token already in hand — the field is only locked when a deep link
- * actually supplied one.
+ * `useLocalSearchParams` reads the `token` Expo Router extracts from
+ * that deep link, and the token field is pre-filled and read-only in
+ * that case. Manual paste remains the fallback for anyone who opens
+ * this screen without a token already in hand (e.g. copy-pasting it
+ * from a desktop email client) — the field is only locked when a deep
+ * link actually supplied one.
  */
 export default function ResetPasswordScreen() {
   const theme = useTheme();

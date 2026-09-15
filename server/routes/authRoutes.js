@@ -2,6 +2,7 @@ const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { sendPasswordResetEmail } = require("../services/emailService");
+const { isAllowedMobileRedirect } = require("../utils/mobileRedirect");
 
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
@@ -124,10 +125,31 @@ router.post("/login", async (req, res) => {
 // FORGOT PASSWORD — sends a time-limited reset link to the user's email.
 router.post("/forgot-password", async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email, source, redirectUri } = req.body;
 
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
+    }
+
+    // Web and Mobile get completely separate reset destinations — the
+    // web app never sends `source`, so it always gets the CLIENT_URL
+    // page below, unchanged from before. Mobile explicitly opts in with
+    // `source: "mobile"` and must also supply its own `redirectUri`
+    // (built with Linking.createURL(...), same mechanism as Gmail
+    // OAuth's mobile flow — see gmailRoutes.js), validated against the
+    // same mobile://exp:// allow-list so this can't become an open
+    // redirect. An invalid/missing redirectUri for source=mobile fails
+    // the request outright rather than silently falling back to the web
+    // link, so a broken mobile client can't end up emailing itself a
+    // web link it didn't ask for.
+    let redirectDestination = null;
+    if (source === "mobile") {
+      if (!isAllowedMobileRedirect(redirectUri)) {
+        return res.status(400).json({
+          message: "A valid redirectUri (mobile:// or exp://) is required when source=mobile",
+        });
+      }
+      redirectDestination = redirectUri;
     }
 
     const user = await prisma.user.findUnique({ where: { email } });
@@ -148,8 +170,18 @@ router.post("/forgot-password", async (req, res) => {
       { expiresIn: "30m" }
     );
 
-    const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "";
-    const resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
+    let resetUrl;
+    if (redirectDestination) {
+      // Mobile: the email link IS the deep link directly — no web page
+      // in between, no "open in app" handoff, no mobile-browser
+      // detection. Tapping it in Gmail hands straight to Expo Router's
+      // reset-password screen (see mobile/app/reset-password.tsx).
+      const sep = redirectDestination.includes("?") ? "&" : "?";
+      resetUrl = `${redirectDestination}${sep}token=${resetToken}`;
+    } else {
+      const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "";
+      resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
+    }
 
     await sendPasswordResetEmail({ to: user.email, resetUrl });
 

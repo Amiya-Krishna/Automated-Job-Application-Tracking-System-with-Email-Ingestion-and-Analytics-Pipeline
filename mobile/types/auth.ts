@@ -42,8 +42,28 @@ export interface RegisterResponse {
  * so the UI should treat every 200 response as "check your email",
  * never as confirmation the account exists.
  */
+/**
+ * POST /api/auth/forgot-password  { email } -> 200 { message }
+ *
+ * Always returns the same generic message whether or not the account
+ * exists (server/routes/authRoutes.js is deliberately non-enumerating),
+ * so the UI should treat every 200 response as "check your email",
+ * never as confirmation the account exists.
+ *
+ * `source`/`redirectUri` are how mobile gets its OWN reset email link,
+ * completely separate from the web link — same mechanism as Gmail
+ * OAuth's mobile flow (see mobile/hooks/use-gmail.ts and
+ * server/routes/gmailRoutes.js): `redirectUri` is this app's own deep
+ * link built with `Linking.createURL(...)`, validated server-side
+ * against a `mobile://`/`exp://` allow-list (server/utils/mobileRedirect.js)
+ * so it can't become an open redirect. Web never sends these fields, so
+ * it always gets the unchanged `${CLIENT_URL}/reset-password` link —
+ * the two platforms' reset emails never cross over.
+ */
 export interface ForgotPasswordRequest {
   email: string;
+  source?: 'mobile';
+  redirectUri?: string;
 }
 
 export interface ForgotPasswordResponse {
