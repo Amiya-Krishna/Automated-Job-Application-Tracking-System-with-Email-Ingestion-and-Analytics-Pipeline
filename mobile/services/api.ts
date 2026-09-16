@@ -40,7 +40,12 @@ const baseURL = `${(rawBaseUrl ?? '').replace(/\/+$/, '')}/api`;
 
 export const api: AxiosInstance = axios.create({
   baseURL,
-  timeout: 15000,
+  // 60s, not 15s: the production API (see .env) runs on a Render free-tier
+  // web service, which spins down after 15 minutes idle and takes 30-60s
+  // to cold-start on the next request. A short timeout here was turning a
+  // slow-but-successful wake-up into a hard "could not reach the server"
+  // failure on the first request after inactivity.
+  timeout: 60000,
 });
 
 // --- Request: attach the backend's custom auth header -----------------
@@ -69,7 +74,7 @@ api.interceptors.response.use(
       // mobile/.env.example.
       return Promise.reject(
         new ApiError(
-          'Could not reach the server. Check your connection and try again.',
+          'Could not reach the server. It may still be waking up after being idle — please wait a moment and try again.',
           null,
           true,
         ),
