@@ -92,6 +92,17 @@ app.get("/", (req, res) => {
   res.send("Backend Running");
 });
 
+// Lightweight liveness check — deliberately does NOT touch the database
+// or require auth, so it answers even if Postgres is unreachable (see the
+// prisma.$connect() above, which only logs on failure and never stops the
+// server). Callers (mobile app, uptime pings) can use this to tell "the
+// Render service itself is up" apart from "the DB/a specific route is
+// broken", instead of inferring server state from whether /api/auth/login
+// happens to work.
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
+
 // Catch-all JSON error handler. Without this, any thrown/next(err) error
 // (like the CORS rejection above, or anything else) falls through to
 // Express's default handler, which renders an HTML page — and any JSON

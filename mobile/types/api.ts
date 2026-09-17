@@ -31,11 +31,21 @@ export class ApiError extends Error {
   status: number | null;
   /** True when the request never reached the server (offline, DNS, timeout). */
   isNetworkError: boolean;
+  /**
+   * The underlying Axios error code (e.g. 'ECONNABORTED' for our own
+   * client-side timeout, 'ERR_NETWORK' for a connection that failed
+   * outright), or `null` for HTTP error responses / unknown causes. Not
+   * shown to the user — for logging/diagnostics only, so a real
+   * connectivity problem can be told apart from a slow Render cold start
+   * without guessing. See services/api.ts.
+   */
+  code: string | null;
 
-  constructor(message: string, status: number | null, isNetworkError: boolean) {
+  constructor(message: string, status: number | null, isNetworkError: boolean, code: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.isNetworkError = isNetworkError;
+    this.code = code;
   }
 }
