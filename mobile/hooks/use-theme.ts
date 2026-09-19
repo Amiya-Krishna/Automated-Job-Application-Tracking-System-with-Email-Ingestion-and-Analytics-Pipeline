@@ -1,14 +1,13 @@
 /**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
+ * Returns the active color palette (constants/theme.ts's Colors[scheme]).
+ * Backed by ThemeContext, so it reflects the user's manual light/dark/
+ * system choice from Settings, not just the raw OS scheme. Return shape
+ * is unchanged from before ThemeContext existed — every screen that
+ * already does `const theme = useTheme(); theme.tint` etc. keeps working
+ * with no changes.
  */
-
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeContext } from '@/context/ThemeContext';
 
 export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
-
-  return Colors[theme];
+  return useThemeContext().colors;
 }

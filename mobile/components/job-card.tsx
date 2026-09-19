@@ -13,11 +13,14 @@ interface JobCardProps {
   item: EngineJob;
   /** Display name for item.source_id, if resolved via useSourceNameById(). */
   sourceName?: string;
-  /** This job's tracked application status (e.g. "Applied"), if the user has already applied — see app/(tabs)/jobs.tsx's appliedStatusByJobId. */
+  /** This job's tracked application status (e.g. "Applied"), if the user has already applied — see app/(drawer)/(tabs)/jobs.tsx's appliedStatusByJobId. */
   appliedStatus?: string;
+  /** Bookmark state, from hooks/use-saved-jobs.ts. Omit both to hide the bookmark control entirely (e.g. inside the Saved Jobs screen itself, where every row is already saved). */
+  isSaved?: boolean;
+  onToggleSaved?: () => void;
 }
 
-export function JobCard({ item, sourceName, appliedStatus }: JobCardProps) {
+export function JobCard({ item, sourceName, appliedStatus, isSaved, onToggleSaved }: JobCardProps) {
   const theme = useTheme();
   const score = item.match_scores[0]?.score ?? null;
 
@@ -36,13 +39,30 @@ export function JobCard({ item, sourceName, appliedStatus }: JobCardProps) {
               {item.location ? ` · ${item.location}` : ''}
             </ThemedText>
           </ThemedView>
-          {score !== null ? (
-            <View style={[styles.scorePill, { backgroundColor: theme.tint }]}>
-              <ThemedText type="small" style={styles.scoreText}>
-                {formatPercent(score)}
-              </ThemedText>
-            </View>
-          ) : null}
+          <ThemedView style={styles.headerActions}>
+            {score !== null ? (
+              <View style={[styles.scorePill, { backgroundColor: theme.tint }]}>
+                <ThemedText type="small" style={styles.scoreText}>
+                  {formatPercent(score)}
+                </ThemedText>
+              </View>
+            ) : null}
+            {onToggleSaved ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={isSaved ? 'Remove from saved jobs' : 'Save job'}
+                hitSlop={8}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onToggleSaved();
+                }}
+                style={styles.bookmarkButton}>
+                <ThemedText type="default" themeColor={isSaved ? 'tint' : 'textSecondary'}>
+                  {isSaved ? '★' : '☆'}
+                </ThemedText>
+              </Pressable>
+            ) : null}
+          </ThemedView>
         </View>
 
         {item.remote_type || sourceName ? (
@@ -78,6 +98,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: Spacing.half,
     backgroundColor: 'transparent',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    backgroundColor: 'transparent',
+  },
+  bookmarkButton: {
+    minWidth: 24,
+    minHeight: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   scorePill: {
     borderRadius: 999,

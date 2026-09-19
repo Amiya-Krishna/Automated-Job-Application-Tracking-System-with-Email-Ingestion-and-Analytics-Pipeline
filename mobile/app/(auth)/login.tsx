@@ -34,7 +34,7 @@ export default function LoginScreen() {
     try {
       await login(values);
       // No explicit navigation call: the root layout's Stack.Protected
-      // guards (app/_layout.tsx) switch from the (auth) group to (tabs)
+      // guards (app/_layout.tsx) switch from the (auth) group to (drawer)
       // automatically once auth status flips to 'authenticated'.
     } catch (err) {
       // Covers invalid credentials ("User not found" / "Invalid

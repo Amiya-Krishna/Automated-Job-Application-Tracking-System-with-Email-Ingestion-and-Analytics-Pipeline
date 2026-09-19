@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 /**
  * Search on the Jobs tab filters an already-loaded, in-memory array (see
- * app/(tabs)/jobs.tsx — there is no server-side text search param on
+ * app/(drawer)/(tabs)/jobs.tsx — there is no server-side text search param on
  * GET /api/engine/jobs), so this isn't debouncing network requests. It's
  * still worth debouncing the derived filtered list so fast typing on a
  * larger loaded set doesn't re-filter/re-render on every keystroke.

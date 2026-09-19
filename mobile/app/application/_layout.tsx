@@ -6,7 +6,7 @@ import { Colors } from '@/constants/theme';
 /**
  * A plain (non-tab) Stack for everything reached from the Applications
  * tab that isn't itself a tab: detail, add, and edit. Registered as a
- * sibling of `(tabs)` inside the root layout's authenticated
+ * sibling of `(drawer)` inside the root layout's authenticated
  * `Stack.Protected` block (app/_layout.tsx) — so it's still gated behind
  * the same auth guard, it just isn't one of the five bottom tabs.
  */

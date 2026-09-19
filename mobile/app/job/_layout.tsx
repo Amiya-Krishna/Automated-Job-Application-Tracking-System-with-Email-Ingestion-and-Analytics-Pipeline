@@ -5,7 +5,7 @@ import { Colors } from '@/constants/theme';
 
 /**
  * Mirrors app/application/_layout.tsx — a plain Stack for the Job Detail
- * screen reached from the Jobs tab, registered as a sibling of `(tabs)`
+ * screen reached from the Jobs tab, registered as a sibling of `(drawer)`
  * in the root layout's authenticated Stack.Protected block.
  */
 export default function JobLayout() {
