@@ -16,6 +16,11 @@
  */
 export interface ApiErrorResponse {
   message: string;
+  /**
+   * Optional machine-readable code (e.g. "no_resume", "jd_too_short"). Only
+   * the /api/resume/* routes send it; older routes never do.
+   */
+  code?: string;
 }
 
 /**
@@ -40,12 +45,25 @@ export class ApiError extends Error {
    * without guessing. See services/api.ts.
    */
   code: string | null;
+  /**
+   * The backend's own error code from the response body (e.g. "no_resume"),
+   * for the few routes that send one (/api/resume/*). `null` otherwise. Unlike
+   * `code` above, this is safe to branch UI on.
+   */
+  apiCode: string | null;
 
-  constructor(message: string, status: number | null, isNetworkError: boolean, code: string | null = null) {
+  constructor(
+    message: string,
+    status: number | null,
+    isNetworkError: boolean,
+    code: string | null = null,
+    apiCode: string | null = null,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.isNetworkError = isNetworkError;
     this.code = code;
+    this.apiCode = apiCode;
   }
 }

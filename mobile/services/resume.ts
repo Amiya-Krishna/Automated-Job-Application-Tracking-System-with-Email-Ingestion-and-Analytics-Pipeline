@@ -1,0 +1,105 @@
+/**
+ * Client for the central Resume Tailoring API (/api/resume/*). Uses the shared
+ * `api` instance, so auth (the `token` header), error normalisation and the
+ * 401 handling all come from services/api.ts. No tailoring logic lives here.
+ */
+import { api } from '@/services/api';
+import { ApiError } from '@/types/api';
+import type {
+  ApproveAction,
+  CurrentResume,
+  MatchAnalysis,
+  ResumeJobInput,
+  ReviewDecision,
+  TailoredVersion,
+  TailoringSession,
+  VersionList,
+} from '@/types/resume';
+
+export const STAGES: { key: string; label: string }[] = [
+  { key: 'analyzing_resume', label: 'Analyzing Resume…' },
+  { key: 'analyzing_jd', label: 'Analyzing Job Description…' },
+  { key: 'matching', label: 'Matching Requirements…' },
+  { key: 'generating', label: 'Generating Tailored Resume…' },
+  { key: 'validating', label: 'Validating Changes…' },
+  { key: 'ready', label: 'Resume Ready' },
+];
+
+/** "tracked-12" | "engine-33" → the `job` object the API expects. */
+export function jobFromKey(key: string | undefined | null): ResumeJobInput | null {
+  const m = /^(tracked|engine)-(\d+)$/.exec(key ?? '');
+  if (!m) return null;
+  return m[1] === 'tracked' ? { trackedJobId: Number(m[2]) } : { engineJobId: Number(m[2]) };
+}
+
+export async function getCurrentResume(): Promise<CurrentResume> {
+  const { data } = await api.get<CurrentResume>('/resume/current');
+  return data;
+}
+
+export async function analyzeJob(job: ResumeJobInput): Promise<MatchAnalysis> {
+  const { data } = await api.post<MatchAnalysis>('/resume/analyze', { job });
+  return data;
+}
+
+export async function startTailoring(job: ResumeJobInput, regenerate = false): Promise<TailoringSession> {
+  const { data } = await api.post<TailoringSession>('/resume/tailor', { job, ...(regenerate ? { regenerate: true } : {}) });
+  return data;
+}
+
+export async function getSession(id: string): Promise<TailoringSession> {
+  const { data } = await api.get<TailoringSession>(`/resume/sessions/${encodeURIComponent(id)}`);
+  return data;
+}
+
+export async function getVersion(id: number): Promise<TailoredVersion> {
+  const { data } = await api.get<TailoredVersion>(`/resume/tailored/${id}`);
+  return data;
+}
+
+export async function listVersions(): Promise<VersionList> {
+  const { data } = await api.get<VersionList>('/resume/versions');
+  return data;
+}
+
+export async function previewVersion(id: number, decisions: Record<string, ReviewDecision>): Promise<{ resumeText: string; status: string }> {
+  const { data } = await api.post<{ resumeText: string; status: string }>(`/resume/versions/${id}/preview`, { decisions });
+  return data;
+}
+
+export async function approveVersion(
+  id: number,
+  body: { action: ApproveAction; decisions?: Record<string, ReviewDecision> },
+): Promise<TailoredVersion> {
+  const { data } = await api.post<TailoredVersion>(`/resume/versions/${id}/approve`, body);
+  return data;
+}
+
+interface WaitOptions {
+  onUpdate?: (s: TailoringSession) => void;
+  intervalMs?: number;
+  timeoutMs?: number;
+  isCancelled?: () => boolean;
+  sleep?: (ms: number) => Promise<void>;
+  /** injectable for tests */
+  fetchSession?: (id: string) => Promise<TailoringSession>;
+}
+
+/**
+ * Poll a tailoring session until it finishes, reporting the REAL stage the
+ * server is in (not a fake timer). Rejects with an ApiError carrying the
+ * server's error code (e.g. "no_matching_skills") if the run failed.
+ */
+export async function waitForSession(id: string, opts: WaitOptions = {}): Promise<TailoringSession> {
+  const { onUpdate, intervalMs = 1000, timeoutMs = 180_000, isCancelled, sleep = (ms) => new Promise<void>((r) => setTimeout(r, ms)), fetchSession = getSession } = opts;
+  const started = Date.now();
+  for (;;) {
+    if (isCancelled?.()) throw new ApiError('Cancelled.', null, false, null, 'cancelled');
+    const s = await fetchSession(id);
+    onUpdate?.(s);
+    if (s.status === 'succeeded') return s;
+    if (s.status === 'failed') throw new ApiError(s.error ?? 'Tailoring failed.', null, false, null, s.errorCode);
+    if (Date.now() - started > timeoutMs) throw new ApiError('This is taking longer than expected. Please try again.', null, false, null, 'timeout');
+    await sleep(intervalMs);
+  }
+}

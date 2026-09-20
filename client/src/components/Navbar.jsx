@@ -21,6 +21,7 @@ const engineLinks = [
 ];
 
 const trailingLinks = [
+  { to: "/resumes", label: "Resumes" },
   { to: "/analytics", label: "Analytics" },
   { to: "/integrations", label: "Integrations" },
   { to: "/profile", label: "Profile" },

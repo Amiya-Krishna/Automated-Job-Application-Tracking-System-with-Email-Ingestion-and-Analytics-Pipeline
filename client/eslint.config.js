@@ -18,4 +18,9 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // test files run in Node (vitest) and start a local API harness
+    files: ['src/test/**/*.{js,jsx}'],
+    languageOptions: { globals: { ...globals.browser, ...globals.node } },
+  },
 ])

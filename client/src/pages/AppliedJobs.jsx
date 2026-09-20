@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
@@ -296,6 +297,12 @@ function AppliedJobs() {
                         </select>
                       </td>
                       <td className="px-5 py-3.5 text-right">
+                        <Link
+                          to={`/tailor?job=tracked-${job.trackedJobId}`}
+                          className="mr-4 text-xs font-semibold text-cyan-700 dark:text-cyan-400 transition hover:underline"
+                        >
+                          Tailor Resume
+                        </Link>
                         <button
                           onClick={() => removeJob(job)}
                           disabled={deletingId === job.trackedJobId}

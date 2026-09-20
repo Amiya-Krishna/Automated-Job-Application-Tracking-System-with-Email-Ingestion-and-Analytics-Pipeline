@@ -126,6 +126,15 @@ export default function ApplicationDetailScreen() {
 
           <Pressable
             accessibilityRole="button"
+            onPress={() => router.push({ pathname: '/tailor', params: { jobKey: `tracked-${trackedJobId}` } })}
+            style={[styles.editButton, { borderColor: theme.tint }]}>
+            <ThemedText type="smallBold" themeColor="tint">
+              Tailor Resume
+            </ThemedText>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             onPress={() =>
               router.push({ pathname: '/application/[id]/edit', params: { id: String(trackedJobId) } })
             }

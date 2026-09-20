@@ -143,3 +143,32 @@ The manual tracker's status option/filter/badge that used to say
 filter chip, stats). Status matching in the popup is now case-insensitive
 too, so a job saved with any casing of a known status still filters and
 displays correctly.
+
+## Resume match & tailoring (v1.1)
+
+On a LinkedIn or Indeed job page a **Resume match** button appears above the
+Save pill. It opens a panel with **Save Job**, **Analyze JD** and **Tailor
+Resume**:
+
+- **Analyze JD** shows your match % and ✓ / ⚠ / ✕ per requirement. ✕ means the
+  skill is *not on your resume* — it is never added to it.
+- **Tailor Resume** starts a tailoring run on the backend, shows the real
+  progress stages, and then hands off to the web app (**Review in TrackTrail**)
+  where you approve each change. Nothing is applied until you approve.
+- **View Full Analysis** opens the cached analysis in the web app **without**
+  saving the job.
+
+The extension contains no AI logic and no AI credentials: it extracts the job
+(`jd-extract.js`), sends it to the authenticated `/api/resume/*` API via the
+background worker, and displays the result (`tailor-panel.js`).
+
+The web app URL defaults to `DEFAULT_WEB_APP_URL` in `config.js` and can be
+overridden with `chrome.storage.local.webAppUrl`.
+
+### Tests
+
+```bash
+cd browser-extension
+npm install      # dev-only: jsdom
+npm test
+```

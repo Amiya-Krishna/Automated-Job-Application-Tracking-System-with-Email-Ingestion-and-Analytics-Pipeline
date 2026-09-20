@@ -21,6 +21,11 @@ model User {
   trackedJobs        TrackedJob[]
   scrapeRuns         ScrapeRun[]
   userProfile        user_profile?
+  resumes            Resume[]
+  jobDescriptions    JobDescription[]
+  resumeAnalyses     ResumeAnalysis[]
+  resumeVersions     ResumeVersion[]
+  tailoringSessions  TailoringSession[]
 
   @@map("users")
 }
@@ -221,4 +226,195 @@ model user_profile {
   user             User?          @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id], map: "idx_user_profile_user_id")
+}
+
+/// ======================================================================
+/// AI Resume Tailoring
+/// The user's original resume is immutable (a new row is created when the
+/// source text changes). Tailored output is stored as ResumeVersion +
+/// ResumeChange rows that are applied ON TOP of the original; nothing ever
+/// rewrites the original in place.
+/// ======================================================================
+
+model Resume {
+  id            Int      @id @default(autoincrement())
+  userId        Int      @map("user_id")
+  sourceType    String   @map("source_type") @db.VarChar(20) // profile_text | upload
+  label         String   @default("Original") @db.VarChar(120)
+  fileName      String?  @map("file_name") @db.VarChar(255)
+  mimeType      String?  @map("mime_type") @db.VarChar(100)
+  fileSize      Int?     @map("file_size")
+  fileSha256    String?  @map("file_sha256") @db.VarChar(64)
+  // Original uploaded file bytes (<= 2 MB, validated). Never returned by list/detail APIs.
+  fileData      Bytes?   @map("file_data")
+  rawText       String   @map("raw_text")
+  textHash      String   @map("text_hash") @db.VarChar(64)
+  parsed        Json?
+  parserVersion String?  @map("parser_version") @db.VarChar(20)
+  parseQuality  Json?    @map("parse_quality")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facts     ResumeFact[]
+  analyses  ResumeAnalysis[]
+  versions  ResumeVersion[]
+
+  @@unique([userId, textHash], map: "uq_resumes_user_text_hash")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_resumes_user_created")
+  @@map("resumes")
+}
+
+model ResumeFact {
+  id          Int    @id @default(autoincrement())
+  resumeId    Int    @map("resume_id")
+  factKey     String @map("fact_key") @db.VarChar(20)
+  unitId      String @map("unit_id") @db.VarChar(40)
+  kind        String @db.VarChar(30)
+  section     String @db.VarChar(30)
+  text        String
+  sourcePath  String @map("source_path") @db.VarChar(120)
+  entryId     String? @map("entry_id") @db.VarChar(40)
+  confidence  Float  @default(1)
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeId, factKey], map: "uq_resume_facts_resume_key")
+  @@index([resumeId], map: "idx_resume_facts_resume")
+  @@map("resume_facts")
+}
+
+model JobDescription {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  jdHash          String   @map("jd_hash") @db.VarChar(64)
+  jobKey          String?  @map("job_key") @db.VarChar(60)
+  title           String   @db.VarChar(255)
+  company         String   @db.VarChar(255)
+  location        String?  @db.VarChar(255)
+  sourceUrl       String?  @map("source_url") @db.VarChar(1000)
+  sourceName      String?  @map("source_name") @db.VarChar(50)
+  // sanitised original JD text, kept for verification
+  rawText         String   @map("raw_text")
+  parsed          Json
+  taxonomyVersion String   @map("taxonomy_version") @db.VarChar(20)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analyses ResumeAnalysis[]
+  versions ResumeVersion[]
+
+  @@unique([userId, jdHash], map: "uq_job_descriptions_user_hash")
+  @@map("job_descriptions")
+}
+
+model ResumeAnalysis {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @map("user_id")
+  resumeId          Int      @map("resume_id")
+  jdId              Int      @map("jd_id")
+  jobKey            String   @map("job_key") @db.VarChar(60)
+  taxonomyVersion   String   @map("taxonomy_version") @db.VarChar(20)
+  matchScore        Int?     @map("match_score")
+  matchedSkills     String[] @default([]) @map("matched_skills")
+  partialSkills     String[] @default([]) @map("partial_skills")
+  missingSkills     String[] @default([]) @map("missing_skills")
+  unsupportedClaims Json     @default("[]") @map("unsupported_claims")
+  recommendations   Json     @default("[]")
+  result            Json
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  jd     JobDescription @relation(fields: [jdId], references: [id], onDelete: Cascade)
+
+  @@unique([resumeId, jdId, taxonomyVersion], map: "uq_resume_analyses_resume_jd_tax")
+  @@index([userId, jobKey, createdAt(sort: Desc)], map: "idx_resume_analyses_user_job")
+  @@map("resume_analyses")
+}
+
+model ResumeVersion {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  resumeId      Int       @map("resume_id")
+  jdId          Int       @map("jd_id")
+  jobKey        String    @map("job_key") @db.VarChar(60)
+  trackedJobId  Int?      @map("tracked_job_id")
+  jdHash        String    @map("jd_hash") @db.VarChar(64)
+  label         String    @db.VarChar(255)
+  targetCompany String    @map("target_company") @db.VarChar(255)
+  targetTitle   String    @map("target_title") @db.VarChar(255)
+  status        String    @default("draft") @db.VarChar(20) // draft | approved | rejected
+  // Resulting profile for the current status: draft = original + pending
+  // changes; approved = original + accepted changes only.
+  profile       Json
+  matchScore    Int?      @map("match_score")
+  analysis      Json
+  // Immutable copy of the base profile + evidence facts this version was
+  // built from, so the version stays verifiable/displayable even if the
+  // parser is later upgraded.
+  snapshot      Json
+  unsupportedClaims Json  @default("[]") @map("unsupported_claims")
+  recommendations Json    @default("[]")
+  warnings      Json      @default("[]")
+  aiProvider    String?   @map("ai_provider") @db.VarChar(30)
+  aiModel       String?   @map("ai_model") @db.VarChar(80)
+  aiUsed        Boolean   @default(false) @map("ai_used")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(6)
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume  Resume         @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  jd      JobDescription @relation(fields: [jdId], references: [id], onDelete: Cascade)
+  changes ResumeChange[]
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_resume_versions_user_created")
+  @@index([userId, jobKey], map: "idx_resume_versions_user_job")
+  @@map("resume_versions")
+}
+
+model ResumeChange {
+  id           Int      @id @default(autoincrement())
+  versionId    Int      @map("version_id")
+  changeKey    String   @map("change_key") @db.VarChar(20)
+  position     Int      @default(0)
+  section      String   @db.VarChar(30)
+  op           String   @db.VarChar(20) // reorder | rewrite
+  listPath     String?  @map("list_path") @db.VarChar(40)
+  unitId       String?  @map("unit_id") @db.VarChar(40)
+  originalText String   @map("original_text")
+  proposedText String   @map("proposed_text")
+  beforeIds    Json?    @map("before_ids")
+  afterIds     Json?    @map("after_ids")
+  reason       String
+  evidenceIds  String[] @default([]) @map("evidence_ids")
+  source       String   @db.VarChar(20) // deterministic | ai
+  status       String   @default("pending") @db.VarChar(20) // pending | accepted | rejected
+  validation   Json     @default("{}")
+
+  version ResumeVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@unique([versionId, changeKey], map: "uq_resume_changes_version_key")
+  @@index([versionId, position], map: "idx_resume_changes_version")
+  @@map("resume_changes")
+}
+
+model TailoringSession {
+  id         String    @id @default(uuid()) @db.VarChar(36)
+  userId     Int       @map("user_id")
+  resumeId   Int?      @map("resume_id")
+  jobKey     String    @map("job_key") @db.VarChar(60)
+  status     String    @default("queued") @db.VarChar(20) // queued | running | succeeded | failed
+  stage      String    @default("queued") @db.VarChar(30)
+  versionId  Int?      @map("version_id")
+  error      String?
+  errorCode  String?   @map("error_code") @db.VarChar(40)
+  warnings   Json      @default("[]")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_tailoring_sessions_user")
+  @@map("tailoring_sessions")
 }

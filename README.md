@@ -605,3 +605,10 @@ Production considerations:
 - Trade-off driven engineering (accuracy vs cost, automation vs risk, live queries vs precomputed rollups)
 - Building beyond CRUD into decision-making systems
 - Willingness to honestly report a feature as "unavailable" rather than fake it (LinkedIn/Indeed, average response time)
+
+## AI resume tailoring
+
+TrackTrail can tailor your resume to a job **without ever inventing anything**: it only reorders and
+rewords what is already on your resume, and you approve every change. An LLM provider
+(Gemini, Groq, OpenRouter, Anthropic, OpenAI) is optional and configured **server-side only**.
+See [`docs/RESUME_TAILORING.md`](docs/RESUME_TAILORING.md), especially *AI Provider Configuration*.

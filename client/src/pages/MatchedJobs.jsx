@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
@@ -185,10 +186,16 @@ function MatchedJobs() {
                         View posting ↗
                       </a>
                     )}
+                    <Link
+                      to={`/tailor?job=engine-${job.id}`}
+                      className="ml-auto text-xs font-semibold text-cyan-700 dark:text-cyan-400 hover:underline"
+                    >
+                      Tailor Resume
+                    </Link>
                     <button
                       onClick={() => queueApply(job.id)}
                       disabled={queuingId === job.id || job.status === "applied"}
-                      className="ml-auto rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                      className="rounded-xl bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                     >
                       {job.status === "applied"
                         ? "Queued ✓"

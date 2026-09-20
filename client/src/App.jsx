@@ -17,6 +17,8 @@ import EngineApplications from "./pages/EngineApplications";
 import Companies from "./pages/Companies";
 import Sources from "./pages/Sources";
 import NotFound from "./pages/NotFound";
+import ResumeTailoring from "./pages/ResumeTailoring";
+import ResumeVersions from "./pages/ResumeVersions";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
@@ -134,6 +136,22 @@ function App() {
             appliedJobsService.js. */}
         <Route path="/jobs" element={<Navigate to="/applied-jobs" replace />} />
 
+        <Route
+          path="/tailor"
+          element={
+            <ProtectedRoute>
+              <ResumeTailoring />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/resumes"
+          element={
+            <ProtectedRoute>
+              <ResumeVersions />
+            </ProtectedRoute>
+          }
+        />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

@@ -53,6 +53,8 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    // lets the browser read the filename of resume exports cross-origin
+    exposedHeaders: ["Content-Disposition"],
   })
 );
 app.use(express.json());
@@ -85,6 +87,8 @@ app.use("/api/engine/jobs", auth, require("./routes/engineJobsRoutes"));
 app.use("/api/applications", auth, require("./routes/applyRoutes"));
 app.use("/api/analytics", auth, require("./routes/analyticsRoutes"));
 app.use("/api/profile", auth, require("./routes/profileRoutes"));
+// AI resume tailoring: one central service used by web, mobile and the extension.
+app.use("/api/resume", auth, require("./routes/resumeRoutes").createResumeRouter());
 app.use("/api/companies", auth, require("./routes/companiesRoutes"));
 app.use("/api/sources", auth, require("./routes/sourcesRoutes"));
 

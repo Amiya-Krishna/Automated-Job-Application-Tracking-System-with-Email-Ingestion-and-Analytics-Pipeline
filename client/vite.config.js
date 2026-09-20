@@ -7,4 +7,10 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  // `npm test` — component/integration tests (jsdom).
+  test: {
+    environment: 'jsdom',
+    include: ['src/**/*.test.{js,jsx}'],
+    testTimeout: 20000,
+  },
 })

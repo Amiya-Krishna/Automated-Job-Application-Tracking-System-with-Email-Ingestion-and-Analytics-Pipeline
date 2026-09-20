@@ -216,6 +216,6 @@ api.interceptors.response.use(
       message = data?.message || 'Something went wrong. Please try again.';
     }
 
-    return Promise.reject(new ApiError(message, status, false, error.code ?? null));
+    return Promise.reject(new ApiError(message, status, false, error.code ?? null, data?.code ?? null));
   },
 );

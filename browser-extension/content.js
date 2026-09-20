@@ -12,183 +12,33 @@
 // can't be found on the page is sent as null/empty and the backend
 // decides whether that's "enough".
 
-function text(el) {
-  return el ? el.textContent.trim().replace(/\s+/g, " ") : "";
-}
+// Detection lives in jd-extract.js (loaded first, see manifest.json) so it can
+// be unit-tested. This file only wires the page UI: the original "Save to
+// TrackTrail" button plus the new Resume Match panel launcher.
+const detectJob = () => TrackTrailExtract.detectJob(document, window.location);
 
-function firstMatch(selectors) {
-  for (const sel of selectors) {
-    const found = text(document.querySelector(sel));
-    if (found) return found;
-  }
-  return "";
-}
+let panel = null;
 
-// LinkedIn job ids live in the URL as ?currentJobId=NNNN or /jobs/view/NNNN
-function extractLinkedInJobId(url) {
-  try {
-    const u = new URL(url);
-    const fromQuery = u.searchParams.get("currentJobId");
-    if (fromQuery) return fromQuery;
-    const viewMatch = u.pathname.match(/\/jobs\/view\/(\d+)/);
-    if (viewMatch) return viewMatch[1];
-  } catch {
-    // ignore malformed URL
-  }
-  return "";
-}
+function injectPanelLauncher() {
+  if (document.getElementById("tracktrail-panel-btn")) return;
+  const detected = detectJob();
+  if (!detected.company && !detected.role) return;
 
-// Indeed job ids live in the URL as ?jk=xxxxxxxxxxxxxxxx
-function extractIndeedJobId(url) {
-  try {
-    const u = new URL(url);
-    return u.searchParams.get("jk") || "";
-  } catch {
-    return "";
-  }
-}
+  const launcher = document.createElement("button");
+  launcher.id = "tracktrail-panel-btn";
+  launcher.className = "tracktrail-fab tracktrail-fab--secondary";
+  launcher.textContent = "Resume match";
+  document.body.appendChild(launcher);
 
-// Builds a canonical, shareable job URL rather than always using
-// window.location.href verbatim — LinkedIn/Indeed URLs carry a lot of
-// session/tracking query params that make otherwise-identical postings
-// look like different URLs to the backend's dedup logic.
-function canonicalLinkedInUrl(jobId) {
-  return jobId
-    ? `https://www.linkedin.com/jobs/view/${jobId}/`
-    : window.location.href.split("?")[0];
-}
-
-function canonicalIndeedUrl(jobId) {
-  return jobId
-    ? `https://www.indeed.com/viewjob?jk=${jobId}`
-    : window.location.href.split("?")[0];
-}
-
-function detectLinkedIn() {
-  const titleSelectors = [
-    "h1.job-details-jobs-unified-top-card__job-title",
-    "h1.top-card-layout__title",
-    '[role="heading"][aria-level="1"]',
-    "h1",
-  ];
-  const companySelectors = [
-    ".job-details-jobs-unified-top-card__company-name a",
-    ".job-details-jobs-unified-top-card__company-name",
-    ".top-card-layout__second-subline a",
-  ];
-  const locationSelectors = [
-    ".job-details-jobs-unified-top-card__primary-description-container .tvm__text",
-    ".job-details-jobs-unified-top-card__bullet",
-    ".top-card-layout__second-subline .topcard__flavor--bullet",
-  ];
-  const descriptionSelectors = [
-    "#job-details",
-    ".jobs-description__content",
-    ".jobs-box__html-content",
-    ".description__text",
-  ];
-
-  let role = firstMatch(titleSelectors);
-  let company = firstMatch(companySelectors);
-  const location = firstMatch(locationSelectors);
-  const description = firstMatch(descriptionSelectors);
-
-  // DOM selectors above rely on LinkedIn's CSS classnames, which are
-  // increasingly hashed/randomized (e.g. "bed7a945") and change often.
-  // document.title is far more stable and LinkedIn keeps it in one of
-  // two formats depending on the listing:
-  //   "(N) Company hiring Role in Location | LinkedIn"   (older format)
-  //   "Role | Company | LinkedIn"                         (current format)
-  if (!role || !company) {
-    const title = document.title.replace(/^\(\d+\)\s*/, "");
-
-    const hiringMatch = title.match(/^(.+?)\s+hiring\s+(.+?)\s+in\s+/i);
-    if (hiringMatch) {
-      if (!company) company = hiringMatch[1].trim();
-      if (!role) role = hiringMatch[2].trim();
-    } else {
-      const parts = title.split("|").map((p) => p.trim()).filter(Boolean);
-      // parts look like ["Role", "Company", "LinkedIn"] — drop the
-      // trailing "LinkedIn" and use what's left.
-      const withoutSiteName = parts.filter((p) => p.toLowerCase() !== "linkedin");
-      if (!role && withoutSiteName[0]) role = withoutSiteName[0];
-      if (!company && withoutSiteName[1]) company = withoutSiteName[1];
+  launcher.addEventListener("click", () => {
+    if (!chrome.runtime?.id) {
+      launcher.textContent = "Reload this page";
+      return;
     }
-
-    const ogSiteName = document.querySelector('meta[property="og:title"]');
-    if (ogSiteName && !role) role = ogSiteName.content;
-  }
-
-  const externalJobId = extractLinkedInJobId(window.location.href);
-
-  return {
-    role,
-    company,
-    location,
-    description,
-    externalJobId,
-    sourceUrl: canonicalLinkedInUrl(externalJobId),
-    sourceName: "linkedin",
-  };
-}
-
-function detectIndeed() {
-  const titleSelectors = [
-    '[data-testid="jobsearch-JobInfoHeader-title"]',
-    "h1.jobsearch-JobInfoHeader-title",
-    "h1",
-  ];
-  const companySelectors = [
-    '[data-testid="inlineHeader-companyName"]',
-    ".jobsearch-InlineCompanyRating div",
-  ];
-  const locationSelectors = [
-    '[data-testid="inlineHeader-companyLocation"]',
-    ".jobsearch-JobInfoHeader-subtitle .jobsearch-JobInfoHeader-locationText",
-  ];
-  const descriptionSelectors = ["#jobDescriptionText"];
-
-  let role = firstMatch(titleSelectors);
-  let company = firstMatch(companySelectors);
-  const location = firstMatch(locationSelectors);
-  const description = firstMatch(descriptionSelectors);
-
-  if (!role || !company) {
-    // Fallback: Indeed <title> is usually "Role - Company - Location"
-    const parts = document.title.split(" - ");
-    if (parts.length >= 2) {
-      if (!role) role = parts[0].trim();
-      if (!company) company = parts[1].trim();
-    }
-  }
-
-  const externalJobId = extractIndeedJobId(window.location.href);
-
-  return {
-    role,
-    company,
-    location,
-    description,
-    externalJobId,
-    sourceUrl: canonicalIndeedUrl(externalJobId),
-    sourceName: "indeed",
-  };
-}
-
-function detectJob() {
-  if (window.location.hostname.includes("linkedin.com")) return detectLinkedIn();
-  if (window.location.hostname.includes("indeed.com")) return detectIndeed();
-  // Generic fallback for any other host the manifest might someday allow —
-  // never invent a source, just report what's genuinely on the page.
-  return {
-    role: "",
-    company: "",
-    location: "",
-    description: "",
-    externalJobId: "",
-    sourceUrl: window.location.href,
-    sourceName: "extension",
-  };
+    if (!panel) panel = TrackTrailPanel.createPanel({ hostname: window.location.hostname });
+    if (panel.isOpen()) panel.close();
+    else panel.open();
+  });
 }
 
 function injectButton() {
@@ -229,20 +79,7 @@ function injectButton() {
     chrome.runtime.sendMessage(
       {
         type: "SAVE_JOB",
-        job: {
-          company: live.company || "Unknown company",
-          role: live.role || "Unknown role",
-          status: "Applied",
-          notes: `Saved from ${window.location.hostname}`,
-          // Full capture for the engine bridge — never fabricated, only
-          // what was actually found on the page (empty string/undefined
-          // where nothing was detected).
-          location: live.location || null,
-          description: live.description || null,
-          sourceName: live.sourceName,
-          sourceUrl: live.sourceUrl,
-          externalJobId: live.externalJobId || null,
-        },
+        job: TrackTrailExtract.toSaveJob(live, window.location.hostname),
       },
       (response) => {
         button.disabled = false;
@@ -282,8 +119,12 @@ const pollId = setInterval(() => {
   if (window.location.href !== lastHref) {
     lastHref = window.location.href;
     document.getElementById("tracktrail-save-btn")?.remove();
+    document.getElementById("tracktrail-panel-btn")?.remove();
+    panel?.reset(); // results for the previous posting no longer apply
   }
   injectButton();
+  injectPanelLauncher();
 }, 1500);
 
 injectButton();
+injectPanelLauncher();

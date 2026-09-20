@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "TrackTrail — Job Application Tracker",
-  "version": "1.0.0",
-  "description": "Save jobs from LinkedIn and Indeed straight to your TrackTrail dashboard with one click.",
+  "version": "1.1.0",
+  "description": "Save jobs from LinkedIn and Indeed to your TrackTrail dashboard, see how well your resume matches, and tailor it truthfully.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://*.linkedin.com/*",
@@ -17,7 +17,7 @@
   "content_scripts": [
     {
       "matches": ["https://*.linkedin.com/jobs/*", "https://*.indeed.com/*"],
-      "js": ["content.js"],
+      "js": ["jd-extract.js", "tailor-panel.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
     }

@@ -169,6 +169,15 @@ export default function JobDetailScreen() {
 
           <Pressable
             accessibilityRole="button"
+            onPress={() => router.push({ pathname: '/tailor', params: { jobKey: `engine-${jobId}` } })}
+            style={[styles.primaryButton, { borderColor: theme.tint, borderWidth: 1 }]}>
+            <ThemedText type="smallBold" themeColor="tint">
+              Tailor Resume
+            </ThemedText>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
             onPress={() => WebBrowser.openBrowserAsync(job.source_url)}
             style={styles.linkRow}>
             <ThemedText type="linkPrimary">View original posting ↗</ThemedText>

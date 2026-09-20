@@ -51,3 +51,16 @@
 .tracktrail-fab--dark:hover {
   background: #06b6d4;
 }
+
+/* Secondary launcher for the Resume Match panel, stacked above the Save pill. */
+.tracktrail-fab--secondary {
+  bottom: 76px;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 8px 24px rgba(2, 6, 23, 0.18);
+}
+
+.tracktrail-fab--secondary:hover {
+  background: #f1f5f9;
+}

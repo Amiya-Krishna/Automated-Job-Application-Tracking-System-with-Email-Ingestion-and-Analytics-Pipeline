@@ -1,8 +1,13 @@
-import { DEFAULT_API_BASE_URL } from "./config.js";
+import { DEFAULT_API_BASE_URL, DEFAULT_WEB_APP_URL } from "./config.js";
 
 async function getApiBaseUrl() {
   const { apiBaseUrl } = await chrome.storage.local.get("apiBaseUrl");
   return (apiBaseUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+}
+
+async function getWebAppUrl() {
+  const { webAppUrl } = await chrome.storage.local.get("webAppUrl");
+  return (webAppUrl || DEFAULT_WEB_APP_URL).replace(/\/+$/, "");
 }
 
 async function getToken() {
@@ -164,6 +169,38 @@ async function deleteJob(id) {
   return true;
 }
 
+// ---- Resume Tailoring --------------------------------------------------
+// The extension holds NO tailoring/AI logic and NO AI credentials: it forwards
+// the extracted job to the authenticated backend (/api/resume/*) and returns
+// whatever the API says. Machine-readable error codes (e.g. "no_resume") are
+// passed through so the panel can show the right call to action.
+async function resumeApi(path, { method = "GET", body } = {}) {
+  const base = await getApiBaseUrl();
+  const token = await getToken();
+
+  if (!token) {
+    const err = new Error("Not logged in. Open the extension and sign in first.");
+    err.code = "not_logged_in";
+    throw err;
+  }
+
+  const res = await fetch(`${base}/resume${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", token },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const err = new Error(data.message || "Resume request failed");
+    err.code = data.code || null;
+    throw err;
+  }
+
+  return data;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
@@ -216,11 +253,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true });
           break;
         }
+        case "RESUME_ANALYZE": {
+          const analysis = await resumeApi("/analyze", { method: "POST", body: { job: message.job } });
+          sendResponse({ ok: true, analysis });
+          break;
+        }
+        case "RESUME_TAILOR": {
+          const session = await resumeApi("/tailor", { method: "POST", body: { job: message.job } });
+          sendResponse({ ok: true, session });
+          break;
+        }
+        case "RESUME_SESSION": {
+          const session = await resumeApi(`/sessions/${encodeURIComponent(message.id)}`);
+          sendResponse({ ok: true, session });
+          break;
+        }
+        case "RESUME_VERSION": {
+          const version = await resumeApi(`/tailored/${encodeURIComponent(message.id)}`);
+          sendResponse({ ok: true, version });
+          break;
+        }
+        case "GET_WEB_URL": {
+          sendResponse({ ok: true, url: await getWebAppUrl() });
+          break;
+        }
         default:
           sendResponse({ ok: false, error: "Unknown message type" });
       }
     } catch (err) {
-      sendResponse({ ok: false, error: err.message });
+      sendResponse({ ok: false, error: err.message, code: err.code || null });
     }
   })();
 
