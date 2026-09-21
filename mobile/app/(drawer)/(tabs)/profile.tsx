@@ -179,6 +179,26 @@ export default function ProfileScreen() {
             </ThemedView>
 
             <ThemedView style={styles.section}>
+              <SectionHeader title="Resumes" />
+              <ThemedView type="backgroundElement" style={styles.card}>
+                <ThemedText type="small" themeColor="textSecondary">
+                  Your uploaded resumes, the one used for tailoring, and every tailored version — the same
+                  resumes you see in the web app and browser extension.
+                </ThemedText>
+                <ThemedView style={styles.buttonRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => router.push('/resumes')}
+                    style={[styles.secondaryButton, { borderColor: theme.border }]}>
+                    <ThemedText type="smallBold" themeColor="tint">
+                      My Resumes
+                    </ThemedText>
+                  </Pressable>
+                </ThemedView>
+              </ThemedView>
+            </ThemedView>
+
+            <ThemedView style={styles.section}>
               <SectionHeader title="Skills" />
               <ThemedView type="backgroundElement" style={styles.card}>
                 {profile.data?.skills.length ? (

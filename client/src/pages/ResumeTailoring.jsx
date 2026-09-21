@@ -124,6 +124,7 @@ function ResumeTailoring() {
   const jobKey = params.get("job");
   const versionParam = params.get("version");
   const analysisParam = params.get("analysis"); // e.g. opened from the browser extension: "jd-<hash>"
+  const resumeParam = Number(params.get("resume")) || undefined; // resume chosen for this job (browser extension hand-off)
 
   const [phase, setPhase] = useState(versionParam || jobKey || analysisParam ? "loading" : "needs_input");
   const [error, setError] = useState(null); // {message, code}
@@ -171,12 +172,12 @@ function ResumeTailoring() {
           setAnalysis(v.analysis);
           setPhase("review");
         } else if (analysisParam) {
-          const a = await getMatchAnalysis(analysisParam);
+          const a = await getMatchAnalysis(analysisParam, resumeParam);
           if (cancelled) return;
           setAnalysis(a);
           setPhase("analyzed");
         } else if (baseJob) {
-          const a = await analyzeJob({ job: baseJob });
+          const a = await analyzeJob({ job: baseJob, ...(resumeParam ? { resumeId: resumeParam } : {}) });
           if (cancelled) return;
           setAnalysis(a);
           setPhase("analyzed");
@@ -188,7 +189,7 @@ function ResumeTailoring() {
       }
     })();
     return () => { cancelled = true; };
-  }, [versionParam, baseJob, analysisParam]);
+  }, [versionParam, baseJob, analysisParam, resumeParam]);
 
   // ---- live preview while reviewing (server applies decisions; client never re-implements it)
   useEffect(() => {
@@ -209,7 +210,7 @@ function ResumeTailoring() {
     setBusy(true);
     setError(null);
     try {
-      const a = await analyzeJob({ job: jobPayload() });
+      const a = await analyzeJob({ job: jobPayload(), ...(resumeParam ? { resumeId: resumeParam } : {}) });
       setAnalysis(a);
       setPhase("analyzed");
     } catch (e) {
@@ -226,7 +227,7 @@ function ResumeTailoring() {
     const ctrl = new AbortController();
     cancelRef.current = ctrl;
     try {
-      const session = await startTailoring({ job: jobPayload(), regenerate: regenerate || undefined });
+      const session = await startTailoring({ job: jobPayload(), regenerate: regenerate || undefined, ...(resumeParam ? { resumeId: resumeParam } : {}) });
       const done = await waitForSession(session.id, { onUpdate: (s) => setStage(s.stage), signal: ctrl.signal });
       setNotes(done.warnings || []);
       const v = await getVersion(done.versionId);

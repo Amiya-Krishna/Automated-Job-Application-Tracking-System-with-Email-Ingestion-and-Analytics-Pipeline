@@ -172,3 +172,16 @@ cd browser-extension
 npm install      # dev-only: jsdom
 npm test
 ```
+
+## My Resumes (dashboard)
+
+The dashboard has a **My Resumes** section (document icon in the sidebar). It shows the resumes stored on your
+TrackTrail account — the same ones the web app and mobile app show; nothing is stored in the extension.
+
+- **Upload Resume** (PDF or DOCX). The file is sent only to the TrackTrail backend, which validates and parses it.
+- Each card shows name, upload date, file type, *Active/Available*, and the actions **View**, **Use for Tailoring**,
+  **Versions** and **Delete**.
+- **Versions** lists the original resume (upload date, parsed-facts count, active status) and every tailored version
+  (job title, company, created date, match score, provenance) with **View** (opens the web app), **Preview** and **Export**.
+  Drafts must be approved in the web app before they can be exported.
+- On a LinkedIn/Indeed job, **Tailor Resume** uses your only resume automatically, or asks you to *Select resume for this job*.

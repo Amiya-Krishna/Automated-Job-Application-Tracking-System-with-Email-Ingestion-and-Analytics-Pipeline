@@ -79,6 +79,15 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
     }
     const profileRow = await repo.getProfileRow(userId);
     const profText = profileRow?.resume_text ? sanitizeResumeText(profileRow.resume_text, { maxChars: LIMITS.MAX_RESUME_CHARS }).text : "";
+
+    // An explicit choice ("Use for tailoring", or an upload) wins — unless the user has since edited their
+    // profile text to something different, in which case the newest action wins (the previous behaviour).
+    const active = await repo.findActiveResume(userId);
+    if (active) {
+      const profileNewer = profText && sha256(profText) !== active.textHash && new Date(profileRow.updated_at || 0) > new Date(active.activatedAt);
+      if (!profileNewer) return ensureParsed(active);
+    }
+
     const upload = await repo.findLatestUploadResume(userId);
 
     let chosen = null;
@@ -96,9 +105,26 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
     return ensureParsed(chosen);
   }
 
+  /** Make sure the resume derived from the user's profile text exists as a row (no-op when there is none). */
+  async function materializeProfileTextResume(userId) {
+    const profileRow = await repo.getProfileRow(userId);
+    const text = profileRow?.resume_text ? sanitizeResumeText(profileRow.resume_text, { maxChars: LIMITS.MAX_RESUME_CHARS }).text : "";
+    if (text.length < LIMITS.MIN_RESUME_CHARS) return null;
+    const hash = sha256(text);
+    const row = (await repo.findResumeByHash(userId, hash)) || (await createResumeRow(userId, { sourceType: "profile_text", label: "Original", rawText: text, textHash: hash }));
+    if (row && !row.parsed) { try { await ensureParsed(row); } catch (e) { if (!(e instanceof HttpError)) throw e; } }
+    return row;
+  }
+
+  const fileTypeOf = (r) => {
+    const m = /\.([a-z0-9]+)$/i.exec(r.fileName || "");
+    return m ? m[1].toLowerCase() : r.sourceType === "profile_text" ? "text" : null;
+  };
   const resumeDto = (r, quality) => ({
     id: r.id, label: r.label, sourceType: r.sourceType, fileName: r.fileName || null, fileSize: r.fileSize || null,
+    fileType: fileTypeOf(r), name: r.fileName || "Resume from profile text",
     hasFile: Boolean(r.hasFile), createdAt: r.createdAt, parseQuality: quality || r.parseQuality || null,
+    factsCount: (quality || r.parseQuality)?.counts?.facts ?? 0,
   });
 
   async function getCurrentResume(userId) {
@@ -126,8 +152,59 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
       row = await createResumeRow(userId, { ...fileMeta, label: "Original", rawText: text, textHash: hash });
     }
     await repo.saveParse(row.id, { parsed: parsed.profile, parserVersion: PARSER_VERSION, quality: parsed.quality, facts: parsed.facts });
+    await repo.setActiveResume(userId, row.id); // a freshly uploaded resume is the one in use (as before: newest upload wins)
     if (syncProfile) await repo.upsertProfileResumeText(userId, text);
-    return { resume: resumeDto(row, parsed.quality), truncated, syncedToProfile: Boolean(syncProfile) };
+    return { resume: { ...resumeDto(row, parsed.quality), isActive: true }, truncated, syncedToProfile: Boolean(syncProfile) };
+  }
+
+  // ------------------------------------------------------- resume manager
+  const versionSummary = (v) => ({ id: v.id, label: v.label, status: v.status, targetCompany: v.targetCompany, targetTitle: v.targetTitle, jobKey: v.jobKey, resumeId: v.resumeId, matchScore: v.matchScore, changeCount: v.changeCount, acceptedCount: v.acceptedCount, aiUsed: v.aiUsed, aiProvider: v.aiProvider || null, aiModel: v.aiModel || null, createdAt: v.createdAt, approvedAt: v.approvedAt });
+
+  /** Every resume of the user, the active one flagged, each with its tailored versions. */
+  async function listResumes(userId) {
+    let activeId = null;
+    try { activeId = (await resolveOriginalResume(userId)).resume.id; } catch (e) { if (!(e instanceof HttpError)) throw e; }
+    await materializeProfileTextResume(userId); // the profile text is always a selectable resume
+    const [rows, versions] = await Promise.all([repo.listResumes(userId), repo.listVersions(userId)]);
+    return {
+      activeResumeId: activeId,
+      resumes: rows.map((r) => ({
+        ...resumeDto(r),
+        isActive: r.id === activeId,
+        status: r.id === activeId ? "active" : "available",
+        versionCount: versions.filter((v) => v.resumeId === r.id).length,
+        versions: versions.filter((v) => v.resumeId === r.id).map(versionSummary),
+      })),
+    };
+  }
+
+  async function getResume(userId, id) {
+    const row = await repo.findResumeById(userId, id);
+    if (!row) throw new HttpError(404, "resume_not_found", "Resume not found.");
+    let profile = row.parsed;
+    if (!profile || row.parserVersion !== PARSER_VERSION) {
+      try { profile = (await ensureParsed(row)).profile; } catch (e) { if (!(e instanceof HttpError)) throw e; profile = null; }
+    }
+    const all = await listResumes(userId);
+    const entry = all.resumes.find((r) => r.id === id);
+    return { resume: entry, resumeText: profile ? toText(profile) : row.rawText, };
+  }
+
+  async function activateResume(userId, id) {
+    const r = await repo.setActiveResume(userId, id);
+    if (!r) throw new HttpError(404, "resume_not_found", "Resume not found.");
+    return listResumes(userId);
+  }
+
+  async function deleteResume(userId, id) {
+    const row = await repo.findResumeById(userId, id);
+    if (!row) throw new HttpError(404, "resume_not_found", "Resume not found.");
+    if (row.sourceType === "profile_text") {
+      // Deleting it would just re-create it from the profile text on the next request.
+      throw new HttpError(409, "profile_text_resume", "This resume comes from the text on your profile. Edit or clear that text on your Profile page instead.");
+    }
+    const out = await repo.deleteResume(userId, id);
+    return { ...out, ...(await listResumes(userId)) };
   }
 
   async function getOriginalFile(userId, resumeId) {
@@ -256,8 +333,9 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
     return view;
   }
 
-  async function getMatchAnalysis(userId, jobKey) {
-    const row = await repo.latestAnalysis(userId, jobKey);
+  async function getMatchAnalysis(userId, jobKey, resumeId) {
+    if (resumeId && !(await repo.findResumeById(userId, resumeId))) throw new HttpError(404, "resume_not_found", "Resume not found.");
+    const row = await repo.latestAnalysis(userId, jobKey, resumeId);
     if (row && row.result) return { ...row.result, jobKey, analysisId: row.id, cached: true };
     // not analysed yet: compute (deterministic, no LLM) if the job is one we can resolve
     let job = null;
@@ -265,7 +343,7 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
     if ((m = /^tracked-(\d+)$/.exec(jobKey))) job = { trackedJobId: Number(m[1]) };
     else if ((m = /^engine-(\d+)$/.exec(jobKey))) job = { engineJobId: Number(m[1]) };
     if (!job) throw new HttpError(404, "analysis_not_found", "No analysis found for this job. Analyze it first.");
-    return analyze(userId, { job });
+    return analyze(userId, { job, resumeId });
   }
 
   // ---------------------------------------------------------- versions
@@ -303,7 +381,7 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
     } catch (e) { if (!(e instanceof HttpError)) throw e; }
     return {
       original,
-      versions: versions.map((v) => ({ id: v.id, label: v.label, status: v.status, targetCompany: v.targetCompany, targetTitle: v.targetTitle, jobKey: v.jobKey, trackedJobId: v.trackedJobId || null, jdHash: v.jdHash, matchScore: v.matchScore, changeCount: v.changeCount, acceptedCount: v.acceptedCount, aiUsed: v.aiUsed, createdAt: v.createdAt, approvedAt: v.approvedAt })),
+      versions: versions.map((v) => ({ id: v.id, label: v.label, status: v.status, targetCompany: v.targetCompany, targetTitle: v.targetTitle, jobKey: v.jobKey, trackedJobId: v.trackedJobId || null, jdHash: v.jdHash, resumeId: v.resumeId, matchScore: v.matchScore, changeCount: v.changeCount, acceptedCount: v.acceptedCount, aiUsed: v.aiUsed, aiProvider: v.aiProvider || null, aiModel: v.aiModel || null, createdAt: v.createdAt, approvedAt: v.approvedAt })),
     };
   }
 
@@ -479,7 +557,7 @@ function createResumeTailoringService({ repo, provider, logger = console, now = 
 
   return {
     HttpError, STAGES,
-    getCurrentResume, uploadResume, getOriginalFile,
+    getCurrentResume, uploadResume, getOriginalFile, listResumes, getResume, activateResume, deleteResume,
     analyze, getMatchAnalysis,
     startTailoring, getSession,
     getVersion, listVersions, previewVersion, approveVersion, exportVersion,

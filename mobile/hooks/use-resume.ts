@@ -3,10 +3,13 @@ import { useCallback, useRef, useState } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import {
+  activateResume,
   analyzeJob,
   approveVersion,
+  deleteResume,
   getCurrentResume,
   getVersion,
+  listResumes,
   listVersions,
   previewVersion,
   startTailoring,
@@ -19,6 +22,32 @@ import type { ApproveAction, ResumeJobInput, ReviewDecision, TailoredVersion } f
 export function useCurrentResume() {
   const { status } = useAuth();
   return useQuery({ queryKey: ['resume', 'current'], queryFn: getCurrentResume, enabled: status === 'authenticated' });
+}
+
+/** All resumes (active flagged) — the same records the web client and the extension show. */
+export function useResumes() {
+  const { status } = useAuth();
+  return useQuery({ queryKey: ['resume', 'list'], queryFn: listResumes, enabled: status === 'authenticated' });
+}
+
+export function useActivateResume() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => activateResume(id),
+    onSuccess: (list) => {
+      qc.setQueryData(['resume', 'list'], list);
+      void qc.invalidateQueries({ queryKey: ['resume', 'current'] });
+      void qc.invalidateQueries({ queryKey: ['resume', 'analysis'] });
+    },
+  });
+}
+
+export function useDeleteResume() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => deleteResume(id),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['resume'] }); },
+  });
 }
 
 export function useVersions() {

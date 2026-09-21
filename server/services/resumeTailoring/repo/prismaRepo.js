@@ -10,7 +10,7 @@ function createPrismaRepo(prismaArg) {
   const prisma = prismaArg || require("../../../lib/prisma");
   const RESUME_NO_FILE = {
     id: true, userId: true, sourceType: true, label: true, fileName: true, mimeType: true, fileSize: true, fileSha256: true,
-    rawText: true, textHash: true, parsed: true, parserVersion: true, parseQuality: true, createdAt: true,
+    rawText: true, textHash: true, parsed: true, parserVersion: true, parseQuality: true, activatedAt: true, createdAt: true,
   };
   const withFileFlag = async (row) => (row ? { ...row, hasFile: Boolean(row.fileName) } : null);
 
@@ -41,6 +41,23 @@ function createPrismaRepo(prismaArg) {
 
     async findResumeById(userId, id) { return withFileFlag(await prisma.resume.findFirst({ where: { id, userId }, select: RESUME_NO_FILE })); },
     async findResumeByHash(userId, textHash) { return withFileFlag(await prisma.resume.findFirst({ where: { userId, textHash }, select: RESUME_NO_FILE })); },
+    async listResumes(userId) {
+      const rows = await prisma.resume.findMany({ where: { userId }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: RESUME_NO_FILE });
+      return rows.map((r) => ({ ...r, hasFile: Boolean(r.fileName) }));
+    },
+    async findActiveResume(userId) {
+      return withFileFlag(await prisma.resume.findFirst({ where: { userId, activatedAt: { not: null } }, orderBy: [{ activatedAt: "desc" }, { id: "desc" }], select: RESUME_NO_FILE }));
+    },
+    async setActiveResume(userId, id) {
+      const r = await prisma.resume.updateMany({ where: { id, userId }, data: { activatedAt: new Date() } });
+      return r.count ? this.findResumeById(userId, id) : null;
+    },
+    // Versions, changes, facts and analyses go with it (ON DELETE CASCADE in the migration).
+    async deleteResume(userId, id) {
+      const deletedVersions = await prisma.resumeVersion.count({ where: { userId, resumeId: id } });
+      const r = await prisma.resume.deleteMany({ where: { id, userId } });
+      return { deleted: r.count > 0, deletedVersions: r.count > 0 ? deletedVersions : 0 };
+    },
     async findLatestUploadResume(userId) {
       return withFileFlag(await prisma.resume.findFirst({ where: { userId, sourceType: "upload" }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], select: RESUME_NO_FILE }));
     },
@@ -81,7 +98,7 @@ function createPrismaRepo(prismaArg) {
 
     async findAnalysis(resumeId, jdId, taxonomyVersion) { return prisma.resumeAnalysis.findFirst({ where: { resumeId, jdId, taxonomyVersion } }); },
     async createAnalysis(data) { return prisma.resumeAnalysis.create({ data }); },
-    async latestAnalysis(userId, jobKey) { return prisma.resumeAnalysis.findFirst({ where: { userId, jobKey }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }); },
+    async latestAnalysis(userId, jobKey, resumeId) { return prisma.resumeAnalysis.findFirst({ where: { userId, jobKey, ...(resumeId ? { resumeId } : {}) }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] }); },
 
     async createVersion(userId, data, changes) {
       const v = await prisma.resumeVersion.create({ data: { userId, ...data, changes: { create: changes.map(chToRow) } }, include: { changes: { orderBy: { position: "asc" } } } });

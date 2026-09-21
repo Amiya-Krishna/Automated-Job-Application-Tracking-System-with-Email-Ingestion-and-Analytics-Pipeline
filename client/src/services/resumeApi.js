@@ -52,7 +52,13 @@ export const uploadResume = (file, { syncProfile = false } = {}) => {
   form.append("syncProfile", String(syncProfile));
   return call(() => api.post("/resume/upload", form));
 };
-export const getMatchAnalysis = (jobKey) => call(() => api.get(`/resume/match-analysis/${encodeURIComponent(jobKey)}`));
+export const getMatchAnalysis = (jobKey, resumeId) =>
+  call(() => api.get(`/resume/match-analysis/${encodeURIComponent(jobKey)}`, { params: resumeId ? { resumeId } : undefined }));
+// resume manager (same backend records the extension and mobile app use)
+export const listResumes = () => call(() => api.get("/resume/resumes"));
+export const getResumeDetail = (id) => call(() => api.get(`/resume/resumes/${id}`));
+export const activateResume = (id) => call(() => api.post(`/resume/resumes/${id}/activate`));
+export const deleteResume = (id) => call(() => api.delete(`/resume/resumes/${id}`));
 export const analyzeJob = (payload) => call(() => api.post("/resume/analyze", payload));
 export const startTailoring = (payload) => call(() => api.post("/resume/tailor", payload));
 export const getSession = (id) => call(() => api.get(`/resume/sessions/${id}`));
@@ -75,6 +81,30 @@ export async function waitForSession(id, { onUpdate, intervalMs = 1000, timeoutM
     if (s.status === "failed") throw new ResumeApiError(s.error || "Tailoring failed.", { code: s.errorCode });
     if (Date.now() - started > timeoutMs) throw new ResumeApiError("This is taking longer than expected. Please try again.", { code: "timeout" });
     await sleep(intervalMs);
+  }
+}
+
+function saveResponseBlob(res, fallbackName) {
+  const cd = res.headers["content-disposition"] || "";
+  const filename = /filename="([^"]+)"/.exec(cd)?.[1] || fallbackName;
+  const url = URL.createObjectURL(res.data);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return filename;
+}
+
+/** Download the exact file the user uploaded for a resume. */
+export async function downloadOriginalFile(resumeId) {
+  try {
+    const res = await api.get("/resume/original/file", { params: { resumeId }, responseType: "blob" });
+    return saveResponseBlob(res, "resume");
+  } catch (err) {
+    throw toApiError(err, "Download failed.");
   }
 }
 

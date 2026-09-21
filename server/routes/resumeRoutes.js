@@ -51,6 +51,7 @@ function createResumeRouter({ repo, provider, service } = {}) {
   const uploadLimit = limit("upload", num(process.env.RESUME_RL_UPLOAD, 10));
   const exportLimit = limit("export", num(process.env.RESUME_RL_EXPORT, 60));
   const readLimit = limit("read", num(process.env.RESUME_RL_READ, 600));
+  const manageLimit = limit("manage", num(process.env.RESUME_RL_MANAGE, 120));
 
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: LIMITS.MAX_UPLOAD_BYTES, files: 1, fields: 5 } });
 
@@ -88,6 +89,13 @@ function createResumeRouter({ repo, provider, service } = {}) {
     res.status(201).json(out);
   }));
 
+  // ---- resume manager (list / view / choose active / delete). Upload, file download,
+  // analysis, tailoring, versions and export reuse the endpoints below.
+  router.get("/resumes", readLimit, wrap(async (req, res) => { res.json(await svc.listResumes(req.user.id)); }));
+  router.get("/resumes/:id", readLimit, wrap(async (req, res) => { res.json(await svc.getResume(req.user.id, versionId(req.params.id))); }));
+  router.post("/resumes/:id/activate", manageLimit, wrap(async (req, res) => { res.json(await svc.activateResume(req.user.id, versionId(req.params.id))); }));
+  router.delete("/resumes/:id", manageLimit, wrap(async (req, res) => { res.json(await svc.deleteResume(req.user.id, versionId(req.params.id))); }));
+
   router.get("/original/file", readLimit, wrap(async (req, res) => {
     const f = await svc.getOriginalFile(req.user.id, req.query.resumeId ? versionId(req.query.resumeId) : undefined);
     res.set("Content-Type", f.mimeType || "application/octet-stream");
@@ -118,7 +126,8 @@ function createResumeRouter({ repo, provider, service } = {}) {
     // plain number = tracked job id; otherwise "tracked-<n>" / "engine-<n>" / "jd-<hash>"
     const key = /^\d+$/.test(jobId) ? `tracked-${jobId}` : jobId;
     if (!/^(tracked|engine)-\d+$|^jd-[a-f0-9]{16}$/.test(key)) throw new HttpError(400, "invalid_request", "Invalid job id.");
-    res.json(await svc.getMatchAnalysis(req.user.id, key));
+    const resumeId = req.query.resumeId ? versionId(req.query.resumeId) : undefined;
+    res.json(await svc.getMatchAnalysis(req.user.id, key, resumeId));
   }));
 
   // ---- review / approval / export

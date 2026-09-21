@@ -30,6 +30,28 @@ function createMemoryRepo() {
 
     async findResumeById(userId, id) { return strip(clone(db.resumes.find((r) => r.userId === userId && r.id === id))); },
     async findResumeByHash(userId, textHash) { return strip(clone(db.resumes.find((r) => r.userId === userId && r.textHash === textHash))); },
+    async listResumes(userId) { return db.resumes.filter((r) => r.userId === userId).sort((a, b) => b.createdAt - a.createdAt || b.id - a.id).map((r) => strip(clone(r))); },
+    async findActiveResume(userId) {
+      const l = db.resumes.filter((r) => r.userId === userId && r.activatedAt).sort((a, b) => b.activatedAt - a.activatedAt || b.id - a.id);
+      return strip(clone(l[0]));
+    },
+    async setActiveResume(userId, id) {
+      const r = db.resumes.find((x) => x.userId === userId && x.id === id);
+      if (!r) return null;
+      r.activatedAt = new Date();
+      return strip(clone(r));
+    },
+    async deleteResume(userId, id) {
+      const r = db.resumes.find((x) => x.userId === userId && x.id === id);
+      if (!r) return { deleted: false, deletedVersions: 0 };
+      const vids = new Set(db.versions.filter((v) => v.resumeId === id).map((v) => v.id));
+      db.versions = db.versions.filter((v) => !vids.has(v.id));
+      db.changes = db.changes.filter((c) => !vids.has(c.versionId));
+      db.analyses = db.analyses.filter((a) => a.resumeId !== id);
+      db.facts = db.facts.filter((f) => f.resumeId !== id);
+      db.resumes = db.resumes.filter((x) => x.id !== id);
+      return { deleted: true, deletedVersions: vids.size };
+    },
     async findLatestUploadResume(userId) {
       const list = db.resumes.filter((r) => r.userId === userId && r.sourceType === "upload").sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
       return strip(clone(list[0]));
@@ -68,8 +90,8 @@ function createMemoryRepo() {
 
     async findAnalysis(resumeId, jdId, taxonomyVersion) { return clone(db.analyses.find((a) => a.resumeId === resumeId && a.jdId === jdId && a.taxonomyVersion === taxonomyVersion)) || null; },
     async createAnalysis(data) { const row = { id: nextId(), createdAt: new Date(), ...clone(data) }; db.analyses.push(row); return clone(row); },
-    async latestAnalysis(userId, jobKey) {
-      const l = db.analyses.filter((a) => a.userId === userId && a.jobKey === jobKey).sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
+    async latestAnalysis(userId, jobKey, resumeId) {
+      const l = db.analyses.filter((a) => a.userId === userId && a.jobKey === jobKey && (!resumeId || a.resumeId === resumeId)).sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
       return clone(l[0]) || null;
     },
 

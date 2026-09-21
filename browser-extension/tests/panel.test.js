@@ -11,6 +11,9 @@ const ANALYSIS = {
   ],
 };
 
+const RESUMES = { activeResumeId: 1, resumes: [{ id: 1, name: "aarav-cv.pdf", fileType: "pdf", createdAt: "2026-09-01T00:00:00Z", isActive: true }] };
+const TWO = { activeResumeId: 1, resumes: [{ id: 1, name: "aarav-cv.pdf", fileType: "pdf", createdAt: "2026-09-01T00:00:00Z", isActive: true }, { id: 2, name: "backend-cv.docx", fileType: "docx", createdAt: "2026-09-10T00:00:00Z", isActive: false }] };
+
 function setup(handler, html = LINKEDIN_HTML) {
   const chrome = mockChrome(handler);
   const dom = loadPage(html, LI_URL, { scripts: ["jd-extract.js", "tailor-panel.js"], chrome });
@@ -53,6 +56,7 @@ test("Tailor Resume: starts a session, shows REAL stages while polling, then lin
   const seenStageText = [];
   const ctx = setup(async (m) => {
     await new Promise((r) => setTimeout(r, 12)); // realistic API latency so intermediate stages are observable
+    if (m.type === "RESUME_LIST") return { ok: true, resumes: RESUMES };
     if (m.type === "RESUME_TAILOR") return { ok: true, session: { id: "s1", status: "queued", stage: "queued" } };
     if (m.type === "RESUME_SESSION") { const s = stages[i++]; return { ok: true, session: s ? { id: "s1", status: "running", stage: s } : { id: "s1", status: "succeeded", stage: "ready", versionId: 42 } }; }
     if (m.type === "RESUME_VERSION") return { ok: true, version: { id: 42, analysis: ANALYSIS, changes: [{}, {}, {}] } };
@@ -103,7 +107,7 @@ test("error states: no resume (with CTA), not logged in, JD too short, failed se
   ctx.btn("Analyze JD").click(); await ctx.flush();
   assert.match(ctx.root().textContent, /does not contain enough information/);
 
-  ctx = setup((m) => (m.type === "RESUME_TAILOR" ? { ok: true, session: { id: "s", status: "queued", stage: "queued" } } : { ok: true, session: { id: "s", status: "failed", error: "None of this job's requirements are supported by your resume.", errorCode: "no_matching_skills" } }));
+  ctx = setup((m) => (m.type === "RESUME_LIST" ? { ok: true, resumes: RESUMES } : m.type === "RESUME_TAILOR" ? { ok: true, session: { id: "s", status: "queued", stage: "queued" } } : { ok: true, session: { id: "s", status: "failed", error: "None of this job's requirements are supported by your resume.", errorCode: "no_matching_skills" } }));
   ctx.btn("Tailor Resume").click(); await new Promise((r) => setTimeout(r, 40));
   assert.match(ctx.root().textContent, /supported by your resume/);
   assert.ok(ctx.btn("Tailor Resume") && !ctx.btn("Tailor Resume").disabled, "buttons re-enabled after failure");
@@ -140,6 +144,7 @@ test("if the extension was reloaded (invalidated context) the user is told to re
 test("SECURITY: the content-script panel never performs network requests itself (only asks the background worker)", async () => {
   const chrome = mockChrome((m) => {
     if (m.type === "RESUME_ANALYZE") return { ok: true, analysis: ANALYSIS };
+    if (m.type === "RESUME_LIST") return { ok: true, resumes: RESUMES };
     if (m.type === "RESUME_TAILOR") return { ok: true, session: { id: "s", status: "failed", stage: "ready", error: "stop", errorCode: "x" } };
     return { ok: true };
   });
@@ -163,8 +168,117 @@ test("SECURITY: the content-script panel never performs network requests itself 
 });
 
 test("a malformed background reply (no session) is reported, not thrown", async () => {
-  const ctx = setup((m) => (m.type === "RESUME_TAILOR" ? { ok: true } : { ok: true }));
+  const ctx = setup((m) => (m.type === "RESUME_LIST" ? { ok: true, resumes: RESUMES } : { ok: true }));
   ctx.btn("Tailor Resume").click(); await ctx.flush();
   assert.match(ctx.root().textContent, /Unexpected response/);
+  const bad = setup((m) => ({ ok: true }));
+  bad.btn("Tailor Resume").click(); await bad.flush();
+  assert.match(bad.root().textContent, /Unexpected response/, "a malformed resume list is reported too");
   assert.ok(!ctx.btn("Tailor Resume").disabled);
+});
+
+// ------------------------------------------------------------ resume selection
+const journey = (list, extra = {}) => {
+  const seq = [];
+  const ctx = setup((m) => {
+    seq.push(m.type + (m.resumeId ? `#${m.resumeId}` : ""));
+    if (m.type === "RESUME_LIST") return { ok: true, resumes: list };
+    if (m.type === "RESUME_ANALYZE") return { ok: true, analysis: { ...ANALYSIS, resumeId: m.resumeId || list.activeResumeId } };
+    if (m.type === "RESUME_TAILOR") return { ok: true, session: { id: "s1", status: "succeeded", stage: "ready", versionId: 42 } };
+    if (m.type === "RESUME_SESSION") return { ok: true, session: { id: "s1", status: "succeeded", stage: "ready", versionId: 42 } };
+    if (m.type === "RESUME_VERSION") return { ok: true, version: { id: 42, analysis: ANALYSIS, changes: [{}, {}] } };
+    if (m.type === "GET_WEB_URL") return { ok: true, url: "https://app.example.com" };
+    return extra.other ? extra.other(m) : { ok: true };
+  });
+  return { ...ctx, seq };
+};
+
+test("ONE resume: it is used automatically — no selection screen — and its id is sent with the tailoring request", async () => {
+  const c = journey(RESUMES);
+  c.btn("Tailor Resume").click(); await new Promise((r) => setTimeout(r, 40));
+  assert.doesNotMatch(c.root().textContent, /Select resume for this job/);
+  assert.deepEqual(c.seq.filter((x) => x.startsWith("RESUME_TAILOR")), ["RESUME_TAILOR#1"]);
+  assert.match(c.root().textContent, /Resume: aarav-cv\.pdf/);
+  assert.match(c.root().textContent, /suggested changes are ready/);
+});
+
+test("SEVERAL resumes: Select resume for this job -> Continue to Analysis -> analysis -> tailoring, all with the chosen resume", async () => {
+  const c = journey(TWO);
+  c.btn("Tailor Resume").click(); await c.flush();
+  assert.match(c.root().textContent, /Select resume for this job/);
+  assert.ok(c.root().textContent.includes("aarav-cv.pdf") && c.root().textContent.includes("backend-cv.docx"));
+  assert.ok(!c.seq.some((x) => x.startsWith("RESUME_TAILOR")), "nothing is tailored before a resume is chosen");
+  // the active resume is preselected; the user picks the other one
+  const radios = [...c.root().querySelectorAll('[role="radio"]')];
+  assert.deepEqual(radios.map((r) => r.getAttribute("aria-checked")), ["true", "false"]);
+  radios[1].click(); await c.flush();
+  assert.deepEqual([...c.root().querySelectorAll('[role="radio"]')].map((r) => r.getAttribute("aria-checked")), ["false", "true"]);
+  c.btn("Continue to Analysis").click(); await new Promise((r) => setTimeout(r, 60));
+  assert.deepEqual(c.seq.filter((x) => /^RESUME_(ANALYZE|TAILOR)/.test(x)), ["RESUME_ANALYZE#2", "RESUME_TAILOR#2"], "analysis THEN tailoring, both for resume #2");
+  assert.match(c.root().textContent, /Resume: backend-cv\.docx/);
+  assert.match(c.root().textContent, /50%/);
+  assert.match(c.root().textContent, /suggested changes are ready/);
+});
+
+test("the selection is remembered for this job (no second prompt), can be changed, and can be cancelled", async () => {
+  const c = journey(TWO);
+  c.btn("Tailor Resume").click(); await c.flush();
+  c.btn("Cancel").click(); await c.flush();
+  assert.doesNotMatch(c.root().textContent, /Select resume for this job/);
+  assert.ok(c.btn("Tailor Resume") && !c.btn("Tailor Resume").disabled);
+  c.btn("Tailor Resume").click(); await c.flush();
+  c.btn("Continue to Analysis").click(); await new Promise((r) => setTimeout(r, 60)); // active (#1) was preselected
+  assert.ok(c.seq.includes("RESUME_TAILOR#1"));
+  const before = c.seq.filter((x) => x === "RESUME_LIST").length;
+  c.btn("Tailor Resume").click(); await new Promise((r) => setTimeout(r, 40));
+  assert.doesNotMatch(c.root().textContent, /Select resume for this job/, "already chosen for this job");
+  assert.equal(c.seq.filter((x) => x === "RESUME_LIST").length, before, "the list isn't re-fetched every click");
+  const change = [...c.root().querySelectorAll("a.link")].find((a) => /Change/.test(a.textContent));
+  change.click(); await c.flush();
+  assert.match(c.root().textContent, /Select resume for this job/);
+});
+
+test("NO resumes: the user is told to add one (with a CTA) and nothing is sent for tailoring", async () => {
+  const c = journey({ activeResumeId: null, resumes: [] });
+  c.btn("Tailor Resume").click(); await c.flush();
+  assert.match(c.root().textContent, /Upload your resume before tailoring\./);
+  assert.ok(c.root().querySelector("a.link"));
+  assert.ok(!c.seq.some((x) => /^RESUME_(ANALYZE|TAILOR)/.test(x)));
+});
+
+test("Analyze JD without a choice defers to the backend's active resume (no resumeId sent)", async () => {
+  const c = journey(TWO);
+  c.btn("Analyze JD").click(); await c.flush();
+  assert.deepEqual(c.seq.filter((x) => x.startsWith("RESUME_ANALYZE")), ["RESUME_ANALYZE"]);
+});
+
+test("View Full Analysis opens the analysis for the SAME resume", async () => {
+  const c = journey(TWO);
+  c.btn("Tailor Resume").click(); await c.flush();
+  [...c.root().querySelectorAll('[role="radio"]')][1].click(); await c.flush();
+  c.btn("Continue to Analysis").click(); await new Promise((r) => setTimeout(r, 60));
+  // a tailored version exists -> the version link; the analysis-only link is checked via Analyze
+  const d = journey(TWO);
+  d.btn("Analyze JD").click(); await d.flush();
+  d.btn("View Full Analysis").click(); await d.flush();
+  assert.equal(d.opened[0][0], "https://app.example.com/tailor?analysis=jd-0123456789abcdef&resume=1");
+});
+
+test("SECURITY: resume names from the backend are rendered as text, never markup", async () => {
+  const evil = { activeResumeId: 1, resumes: [{ id: 1, name: '<img src=x onerror="window.pwned=1">.pdf', fileType: "pdf", createdAt: "2026-01-01", isActive: true }, { id: 2, name: "<script>window.pwned=2</script>", fileType: "docx", createdAt: "2026-01-02" }] };
+  const c = journey(evil);
+  c.btn("Tailor Resume").click(); await c.flush();
+  assert.equal(c.root().querySelectorAll("img, script").length, 0);
+  assert.equal(c.w.pwned, undefined);
+  assert.match(c.root().textContent, /<img src=x/);
+});
+
+test("navigating to another posting forgets the resume choice", async () => {
+  const c = journey(TWO);
+  c.btn("Tailor Resume").click(); await c.flush();
+  c.btn("Continue to Analysis").click(); await new Promise((r) => setTimeout(r, 60));
+  c.panel.reset();
+  assert.doesNotMatch(c.root().textContent, /Resume: /);
+  c.btn("Tailor Resume").click(); await c.flush();
+  assert.match(c.root().textContent, /Select resume for this job/);
 });

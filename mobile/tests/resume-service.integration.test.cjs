@@ -161,3 +161,100 @@ test('SECURITY: the mobile app only ever contacts the TrackTrail API — never a
   const port = new URL(app.origin).port;
   for (const d of destinations) assert.match(d, new RegExp(`^(127\\.0\\.0\\.1|localhost|::1):${port}$`), `unexpected network destination: ${d}`);
 });
+
+// ---------------------------------------------------------------- My Resumes
+const http = require('node:http');
+/** Upload exactly the way the browser extension / web app do (multipart to POST /api/resume/upload). */
+function uploadAsOtherClient(name, buffer, userToken) {
+  return new Promise((resolve, reject) => {
+    const boundary = '----tt' + Math.random().toString(16).slice(2);
+    const body = Buffer.concat([Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/pdf\r\n\r\n`), buffer, Buffer.from(`\r\n--${boundary}--\r\n`)]);
+    const u = new URL(`${app.origin}/api/resume/upload`);
+    const req = http.request({ hostname: u.hostname, port: u.port, path: u.pathname, method: 'POST', headers: { token: userToken, 'content-type': `multipart/form-data; boundary=${boundary}`, 'content-length': body.length } }, (res) => {
+      let d = ''; res.on('data', (c) => (d += c)); res.on('end', () => (res.statusCode === 201 ? resolve(JSON.parse(d).resume) : reject(new Error(`upload ${res.statusCode}: ${d}`))));
+    });
+    req.on('error', reject); req.end(body);
+  });
+}
+const { execFileSync } = require('node:child_process');
+function makePdf(text) {
+  const script = `const { parseResume } = require("./services/resumeTailoring/resumeParser");
+    const { exportProfile } = require("./services/resumeTailoring/resumeRenderer");
+    exportProfile(parseResume(process.argv[1]).profile, "pdf").then((r) => process.stdout.write(r.buffer.toString("base64")));`;
+  return Buffer.from(execFileSync(process.execPath, ['-e', script, text], { cwd: server, env: { ...process.env, DOTENV_CONFIG_QUIET: 'true' }, encoding: 'utf8' }).trim().split('\n').pop(), 'base64');
+}
+
+test('My Resumes: a resume uploaded by ANOTHER client (extension/web) appears in the mobile list; same records, active flagged', async () => {
+  app.repo._seedProfile(5, { resume_text: fx.STUDENT_RESUME });
+  tokenStore.__state.token = app.tokenFor(5);
+  const before = await svc.listResumes();
+  assert.equal(before.resumes.length, 1);
+  assert.equal(before.resumes[0].sourceType, 'profile_text');
+  assert.equal(before.resumes[0].isActive, true);
+
+  const uploaded = await uploadAsOtherClient('from-extension.pdf', makePdf(fx.RICH_RESUME), app.tokenFor(5));
+  const after = await svc.listResumes();
+  assert.equal(after.resumes.length, 2);
+  const item = after.resumes.find((r) => r.id === uploaded.id);
+  assert.deepEqual([item.name, item.fileType, item.isActive, item.status, item.hasFile], ['from-extension.pdf', 'pdf', true, 'active', true]);
+  assert.ok(item.factsCount > 10 && item.createdAt);
+  assert.equal(after.activeResumeId, uploaded.id);
+});
+
+test('My Resumes: select the active resume, and tailoring from a job then uses it; versions list carries company/title/score/provenance', async () => {
+  tokenStore.__state.token = app.tokenFor(5);
+  const list = await svc.listResumes();
+  const profile = list.resumes.find((r) => r.sourceType === 'profile_text');
+  const job = app.repo._seedTrackedJob(5, { company: 'Google', role: 'Software Engineer Intern', description: fx.STRUCTURED_JD });
+
+  const switched = await svc.activateResume(profile.id);
+  assert.equal(switched.activeResumeId, profile.id);
+  const s = await svc.startTailoring({ trackedJobId: job.id });
+  const done = await svc.waitForSession(s.id, { intervalMs: 5 });
+  const v = await svc.getVersion(done.versionId);
+  assert.equal(v.resumeId, profile.id);
+  assert.match(v.resumeText, /Aarav Sharma/);
+
+  const again = await svc.listResumes();
+  const card = again.resumes.find((r) => r.id === profile.id);
+  assert.equal(card.versionCount, 1);
+  const row = card.versions[0];
+  assert.deepEqual([row.id, row.targetCompany, row.targetTitle, row.resumeId], [v.id, 'Google', 'Software Engineer Intern', profile.id]);
+  assert.equal(typeof row.matchScore, 'number');
+  assert.equal(row.aiUsed, false);
+  assert.equal(again.resumes.find((r) => r.id !== profile.id).versionCount, 0);
+});
+
+test('My Resumes: delete removes the resume and its versions; the profile-text resume can not be deleted; errors keep the API code', async () => {
+  tokenStore.__state.token = app.tokenFor(5);
+  const list = await svc.listResumes();
+  const profile = list.resumes.find((r) => r.sourceType === 'profile_text');
+  await assert.rejects(svc.deleteResume(profile.id), (e) => e instanceof ApiError && e.status === 409 && e.apiCode === 'profile_text_resume');
+  const uploaded = list.resumes.find((r) => r.sourceType === 'upload');
+  const out = await svc.deleteResume(uploaded.id);
+  assert.deepEqual([out.deleted, out.resumes.length], [true, 1]);
+  await assert.rejects(svc.deleteResume(uploaded.id), (e) => e.status === 404 && e.apiCode === 'resume_not_found');
+});
+
+test("My Resumes: another user's resumes are invisible and untouchable from the app", async () => {
+  tokenStore.__state.token = app.tokenFor(6); // has no resume of its own yet
+  app.repo._seedProfile(6, { resume_text: fx.MINIMAL_REACT_RESUME + '\nEDUCATION\nB.Tech in Computer Science, Example University\n2022 - 2026\n' });
+  const mine = await svc.listResumes();
+  const others = app.repo._db.resumes.filter((r) => r.userId === 5);
+  assert.ok(others.length >= 1);
+  assert.ok(mine.resumes.every((r) => !others.some((o) => o.id === r.id)));
+  await assert.rejects(svc.activateResume(others[0].id), (e) => e.status === 404);
+  await assert.rejects(svc.deleteResume(others[0].id), (e) => e.status === 404);
+});
+
+test('mobile source: Profile has a "My Resumes" entry, the screen exists and is registered, uploads are a web hand-off (no local resume store)', () => {
+  const fsx = require('node:fs');
+  const profile = fsx.readFileSync(path.join(root, 'app/(drawer)/(tabs)/profile.tsx'), 'utf8');
+  assert.match(profile, /router\.push\('\/resumes'\)/);
+  assert.match(profile, /My Resumes/);
+  assert.ok(fsx.existsSync(path.join(root, 'app/resumes/index.tsx')));
+  assert.match(fsx.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8'), /name="resumes"/);
+  const screen = fsx.readFileSync(path.join(root, 'app/resumes/index.tsx'), 'utf8') + fsx.readFileSync(path.join(root, 'services/resume.ts'), 'utf8');
+  assert.match(screen, /WebBrowser\.openBrowserAsync/);
+  assert.doesNotMatch(screen, /AsyncStorage|SecureStore|FileSystem|expo-document-picker|generativelanguage|groq|openrouter/i, 'no local resume store, no direct AI/provider access');
+});

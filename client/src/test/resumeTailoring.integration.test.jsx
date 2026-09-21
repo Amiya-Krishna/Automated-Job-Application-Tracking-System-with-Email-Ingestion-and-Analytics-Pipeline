@@ -8,6 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createRequire } from "module";
 import path from "path";
+import { request as httpRequest } from "http";
 
 const require = createRequire(import.meta.url);
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
@@ -195,5 +196,86 @@ describe("My Resumes page (web)", () => {
     await user.upload(screen.getByTestId("resume-file-input"), new File(["hello"], "notes.txt", { type: "text/plain" }));
     // still no resume afterwards
     await waitFor(() => expect(screen.getByText(/Upload your resume before tailoring\./)).toBeTruthy());
+  });
+});
+
+describe("Same backend resumes everywhere (web)", () => {
+  // "uploaded elsewhere" = through the very same API the browser extension and mobile app use
+  // jsdom's FormData/Blob can't be serialised by Node's fetch, so build the multipart body by hand over
+  // plain HTTP — exactly what any non-browser client (extension service worker, mobile) sends.
+  const uploadElsewhere = (app, name) => new Promise((resolve, reject) => {
+    const buffer = makePdf(fx.RICH_RESUME);
+    const boundary = "----tt" + Math.random().toString(16).slice(2);
+    const body = Buffer.concat([
+      Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${name}"\r\nContent-Type: application/pdf\r\n\r\n`),
+      buffer,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const u = new URL(`${app.origin}/api/resume/upload`);
+    const req = httpRequest({ hostname: u.hostname, port: u.port, path: u.pathname, method: "POST", headers: { token: app.tokenFor(1), "content-type": `multipart/form-data; boundary=${boundary}`, "content-length": body.length } }, (res) => {
+      let data = "";
+      res.on("data", (c) => (data += c));
+      res.on("end", () => { try { expect(res.statusCode).toBe(201); resolve(JSON.parse(data).resume); } catch (e) { reject(e); } });
+    });
+    req.on("error", reject);
+    req.end(body);
+  });
+
+  it("lists every resume the backend has — including one uploaded from the extension — and switches the active one", async () => {
+    const { app } = await boot({}, { resume: fx.STUDENT_RESUME });
+    const user = userEvent.setup();
+    const meera = await uploadElsewhere(app, "from-extension.pdf");
+    mount("/resumes");
+    const uploaded = await screen.findByTestId(`resume-${meera.id}`);
+    expect(within(uploaded).getByText("from-extension.pdf")).toBeTruthy();
+    expect(within(uploaded).getByText("Active")).toBeTruthy();
+    // the type badge plus the "PDF" export button of the active resume
+    expect(within(uploaded).getAllByText("PDF").length).toBe(2);
+    const all = screen.getAllByTestId(/^resume-\d+$/);
+    expect(all).toHaveLength(2);
+    const profileCard = all.find((c) => c !== uploaded);
+    expect(within(profileCard).getByText("Available")).toBeTruthy();
+    await user.click(within(profileCard).getByRole("button", { name: /use for tailoring/i }));
+    await waitFor(() => expect(within(screen.getByTestId(`resume-${meera.id}`)).getByText("Available")).toBeTruthy());
+    expect((await app.call("GET", "/resumes", { token: app.tokenFor(1) })).data.activeResumeId).not.toBe(meera.id);
+  });
+
+  it("Delete asks first, then removes the resume and its versions from the backend", async () => {
+    const { app } = await boot({}, { resume: fx.STUDENT_RESUME });
+    const user = userEvent.setup();
+    const meera = await uploadElsewhere(app, "to-delete.pdf");
+    const confirm = vi.spyOn(window, "confirm");
+    mount("/resumes");
+    const cardEl = await screen.findByTestId(`resume-${meera.id}`);
+    confirm.mockReturnValueOnce(false);
+    await user.click(within(cardEl).getByRole("button", { name: "Delete" }));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/Delete “to-delete\.pdf”\?/));
+    expect(app.repo._db.resumes).toHaveLength(2);
+    confirm.mockReturnValueOnce(true);
+    await user.click(within(cardEl).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(screen.queryByTestId(`resume-${meera.id}`)).toBeNull());
+    expect(app.repo._db.resumes).toHaveLength(1);
+    // the profile-text resume has no Delete button (edit the profile text instead)
+    expect(within(screen.getAllByTestId(/^resume-\d+$/)[0]).queryByRole("button", { name: "Delete" })).toBeNull();
+    confirm.mockRestore();
+  });
+
+  it("the extension's hand-off (?analysis=…&resume=ID) analyses AND tailors with THAT resume, not the active one", async () => {
+    const { app, tracked } = await boot({}, { resume: fx.STUDENT_RESUME }); // active = profile text (Aarav)
+    const user = userEvent.setup();
+    const meera = await uploadElsewhere(app, "meera.pdf");               // becomes active…
+    await app.call("POST", `/resumes/${(await app.call("GET", "/resumes", { token: app.tokenFor(1) })).data.resumes.find((r) => r.sourceType === "profile_text").id}/activate`, { token: app.tokenFor(1) }); // …then Aarav is active again
+    // what the extension does: analyse an ad-hoc JD with the resume the user picked for this job
+    const res = await app.call("POST", "/analyze", { token: app.tokenFor(1), body: { job: { title: "Frontend Intern", company: "Acme", description: fx.SAFETY_JD + LONG_TAIL }, resumeId: meera.id } });
+    expect(res.status).toBe(200);
+    expect(res.data.resumeId).toBe(meera.id);
+    mount(`/tailor?analysis=${res.data.jobKey}&resume=${meera.id}`);
+    expect((await screen.findByTestId("match-score")).textContent).toBe(`${res.data.matchScore}%`);
+    await user.click(screen.getByRole("button", { name: /generate tailored resume/i }));
+    await screen.findByText(/Change review/, {}, { timeout: 15000 });
+    expect(screen.getByTestId("resume-preview").textContent).toContain("Meera Nair");
+    expect(screen.getByTestId("resume-preview").textContent).not.toContain("Aarav Sharma");
+    expect(app.repo._db.versions.at(-1).resumeId).toBe(meera.id);
+    expect(tracked).toBeTruthy();
   });
 });

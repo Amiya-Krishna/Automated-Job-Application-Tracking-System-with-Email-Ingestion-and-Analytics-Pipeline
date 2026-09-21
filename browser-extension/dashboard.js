@@ -1,4 +1,6 @@
-import { DEFAULT_API_BASE_URL } from "./config.js";
+import { DEFAULT_API_BASE_URL, DEFAULT_WEB_APP_URL } from "./config.js";
+import { createResumeManager } from "./resume-manager.js";
+import { createResumeApi } from "./resume-api.js";
 
 async function getApiBaseUrl() {
   const { apiBaseUrl } = await chrome.storage.local.get("apiBaseUrl");
@@ -60,6 +62,7 @@ dashTabs.addEventListener("click", (e) => {
   if (targetId === "companiesTab") loadCompanies();
   if (targetId === "sourcesTab") loadSources();
   if (targetId === "profileTab") loadProfile();
+  if (targetId === "resumesTab") resumeManager.load();
   if (targetId === "emailTab") loadGmailStatus();
 });
 
@@ -762,3 +765,31 @@ gmailScanBtn.addEventListener("click", async () => {
 // window.TrackTrailTheme comes from theme.js, loaded as a plain script
 // ahead of this module script in dashboard.html.
 window.TrackTrailTheme.wireThemeToggle("themeToggleBtn");
+
+// ============================================================
+// MY RESUMES — backend is the source of truth (/api/resume/*)
+// ============================================================
+const resumeApi = createResumeApi({ chromeApi: chrome, defaultApiBaseUrl: DEFAULT_API_BASE_URL });
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const resumeManager = createResumeManager({
+  doc: document,
+  formatDate,
+  saveBlob,
+  confirmFn: (m) => window.confirm(m),
+  openWeb: async (path) => {
+    const { webAppUrl } = await chrome.storage.local.get("webAppUrl");
+    window.open(`${(webAppUrl || DEFAULT_WEB_APP_URL).replace(/\/+$/, "")}${path}`, "_blank", "noopener");
+  },
+  api: resumeApi,
+});

@@ -4,7 +4,7 @@
  * unread badge. Every other tab uses the plainer ScreenHeader instead —
  * this one is deliberately special since Home is the app's front door.
  */
-import { DrawerActions } from '@react-navigation/native';
+import { DrawerActions } from 'expo-router/react-navigation';
 import { router, useNavigation } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';

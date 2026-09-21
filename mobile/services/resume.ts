@@ -8,6 +8,7 @@ import { ApiError } from '@/types/api';
 import type {
   ApproveAction,
   CurrentResume,
+  ResumeList,
   MatchAnalysis,
   ResumeJobInput,
   ReviewDecision,
@@ -34,6 +35,22 @@ export function jobFromKey(key: string | undefined | null): ResumeJobInput | nul
 
 export async function getCurrentResume(): Promise<CurrentResume> {
   const { data } = await api.get<CurrentResume>('/resume/current');
+  return data;
+}
+
+/** Every resume of the signed-in user, the active one flagged. Backend is the source of truth. */
+export async function listResumes(): Promise<ResumeList> {
+  const { data } = await api.get<ResumeList>('/resume/resumes');
+  return data;
+}
+
+export async function activateResume(id: number): Promise<ResumeList> {
+  const { data } = await api.post<ResumeList>(`/resume/resumes/${id}/activate`);
+  return data;
+}
+
+export async function deleteResume(id: number): Promise<ResumeList & { deleted: boolean; deletedVersions: number }> {
+  const { data } = await api.delete<ResumeList & { deleted: boolean; deletedVersions: number }>(`/resume/resumes/${id}`);
   return data;
 }
 

@@ -65,6 +65,10 @@ LLM rewrites are deliberately conservative.
 | Method & path | Purpose |
 |---|---|
 | `GET /api/resume/current` | The resume that will be used (original) |
+| `GET /api/resume/resumes` | **All** resumes (active flagged) with file type, date, parsed-facts count and their tailored versions |
+| `GET /api/resume/resumes/:id` | One resume + its parsed text (for viewing) |
+| `POST /api/resume/resumes/:id/activate` | "Use for tailoring" — choose the active resume |
+| `DELETE /api/resume/resumes/:id` | Delete an uploaded resume and its tailored versions (the profile-text resume can't be deleted) |
 | `POST /api/resume/upload` | multipart `file` (PDF/DOCX ≤ 2 MB), optional `syncProfile=true` |
 | `GET /api/resume/original/file` | Download the uploaded original file |
 | `POST /api/resume/analyze` | `{ job, resumeId? }` → match analysis (deterministic, cached, no LLM) |
@@ -82,6 +86,24 @@ extension JD `{ title, company, description, … }` (a description may also be
 supplied alongside an id for jobs that have none stored).
 Errors: `{ message, code }` — e.g. `no_resume`, `jd_too_short`, `resume_unreadable`,
 `no_matching_skills`, `rate_limited`, `session_in_progress`.
+
+## Resume manager (web, browser extension, mobile)
+
+One backend, one set of records. The web client, the browser extension ("My Resumes" in the dashboard)
+and the mobile app (Profile → My Resumes) all read `GET /api/resume/resumes`; there are no client-local resumes.
+
+- **Upload** (`POST /api/resume/upload`, PDF/DOCX): the file goes only to the backend, which does all size, magic-byte and
+  ZIP validation, parsing, fact extraction and storage. A new upload becomes the active resume.
+- **Active resume**: the most recently chosen ("Use for tailoring") or uploaded resume; if the user later edits their profile
+  text to something different, the newer profile text wins (the previous behaviour). Every `analyze` / `tailor` call may also
+  pass an explicit `resumeId` for one job without changing the active resume.
+- **Browser extension**: on **Tailor Resume** it lists the resumes; one resume is used automatically, several show
+  *Select resume for this job → Continue to Analysis*, and the chosen `resumeId` is used for both the analysis and the tailoring.
+  **View Full Analysis** opens `/tailor?analysis=…&resume=<id>` in the web app.
+- **Mobile**: lists resumes, switches the active one, shows versions and opens them, and starts tailoring from a job.
+  Uploading a file is a secure hand-off to the web app (native document picking would add a native module that could not be
+  verified here); uploads then appear in the app automatically.
+- Deleting a resume also deletes its tailored versions (database `ON DELETE CASCADE`, verified on Postgres).
 
 ## Data model (migration `20260919000000_resume_tailoring`, purely additive)
 

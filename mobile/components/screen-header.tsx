@@ -6,7 +6,7 @@
  * button that opens the drawer (app/(drawer)/_layout.tsx), plus room for
  * one right-aligned action.
  */
-import { DrawerActions } from '@react-navigation/native';
+import { DrawerActions } from 'expo-router/react-navigation';
 import { useNavigation } from 'expo-router';
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';

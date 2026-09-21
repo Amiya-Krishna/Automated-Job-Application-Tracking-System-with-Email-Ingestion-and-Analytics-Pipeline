@@ -205,3 +205,48 @@ override.
 - Review Prisma/backend `CLIENT_URL` and CORS configuration to make sure
   your deployed backend accepts requests from your mobile app's origin
   where applicable.
+
+## Troubleshooting
+
+### `java.io.IOException: Failed to download remote update`
+
+**What it means.** The app (Expo Go or a development build) asked the Metro dev server for the JavaScript
+bundle and did not get one. The app's code is not the problem; the *bundle could not be built or fetched*.
+This project has **no over-the-air update setup at all** (`expo-updates` is not installed, and `app.json`
+has no `updates` / `runtimeVersion`), so this is not an EAS Update problem.
+
+**The cause that was found in this repository (fixed).** Metro answered the bundle request with HTTP 500 because:
+
+1. four files imported `@react-navigation/*` directly, which Expo Router (SDK 56+) refuses to bundle; and
+2. `react-native-svg@15.13.0` imports `buffer` without declaring it (SDK 57 expects `15.15.4`).
+
+**Check that the bundle builds (no phone needed):**
+
+```bash
+cd mobile
+npm install
+npm run verify:bundle        # requests the real Android + iOS bundles; prints Metro's error if it fails
+```
+
+**If the bundle builds but the phone still shows the error** it is a network/host problem, not the project:
+
+- phone and computer must be on the same Wi-Fi (no VPN / guest network / client isolation); allow Node through the firewall;
+- otherwise use a tunnel: `npx expo start -c --tunnel`;
+- an old installed APK/dev build can keep trying a previous URL: uninstall it and reinstall;
+- use the Expo Go version that supports this SDK (57), or a development build.
+
+**Other checks**
+
+```bash
+npx expo install --check     # dependencies must match the SDK
+npx expo-doctor
+npm run test:integration     # includes static guards for the causes above
+```
+
+### Over-the-air updates (not currently used)
+
+If you later want OTA updates, install `expo-updates` (`npx expo install expo-updates`) **and** configure all of:
+`runtimeVersion` (e.g. `{ "policy": "appVersion" }`), `updates.url` (`https://u.expo.dev/<your EAS project id>`),
+and a `channel` in the `preview` and `production` profiles of `eas.json`. A test in `tests/config.test.cjs`
+fails if this is only partly configured, and if `expo-updates` is *not* installed it fails when any of those
+settings is present.

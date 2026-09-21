@@ -253,13 +253,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true });
           break;
         }
+        case "RESUME_LIST": {
+          // the backend is the source of truth for resumes — nothing is cached in the extension
+          const resumes = await resumeApi("/resumes");
+          sendResponse({ ok: true, resumes });
+          break;
+        }
         case "RESUME_ANALYZE": {
-          const analysis = await resumeApi("/analyze", { method: "POST", body: { job: message.job } });
+          const analysis = await resumeApi("/analyze", { method: "POST", body: { job: message.job, ...(message.resumeId ? { resumeId: message.resumeId } : {}) } });
           sendResponse({ ok: true, analysis });
           break;
         }
         case "RESUME_TAILOR": {
-          const session = await resumeApi("/tailor", { method: "POST", body: { job: message.job } });
+          const session = await resumeApi("/tailor", { method: "POST", body: { job: message.job, ...(message.resumeId ? { resumeId: message.resumeId } : {}) } });
           sendResponse({ ok: true, session });
           break;
         }

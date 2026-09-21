@@ -252,6 +252,9 @@ model Resume {
   parsed        Json?
   parserVersion String?  @map("parser_version") @db.VarChar(20)
   parseQuality  Json?    @map("parse_quality")
+  // Set when the user explicitly chooses this resume ("Use for tailoring") or
+  // uploads it. The most recently activated resume is the one tailoring uses.
+  activatedAt   DateTime? @map("activated_at") @db.Timestamptz(6)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)

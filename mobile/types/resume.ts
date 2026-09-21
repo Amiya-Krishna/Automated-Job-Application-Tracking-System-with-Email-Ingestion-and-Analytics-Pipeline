@@ -89,6 +89,7 @@ export interface ResumeChange {
 
 export interface TailoredVersion {
   id: number;
+  resumeId: number;
   label: string;
   status: VersionStatus;
   targetCompany: string;
@@ -118,6 +119,9 @@ export interface VersionSummary {
   changeCount: number;
   acceptedCount: number;
   aiUsed: boolean;
+  aiProvider?: string | null;
+  aiModel?: string | null;
+  resumeId?: number;
   createdAt: string;
   approvedAt: string | null;
 }
@@ -125,6 +129,29 @@ export interface VersionSummary {
 export interface VersionList {
   original: { id: 'original'; label: string; sourceType: string; fileName: string | null; createdAt: string } | null;
   versions: VersionSummary[];
+}
+
+/** One card in "My Resumes" — the same records the web client and browser extension show. */
+export interface ResumeListItem {
+  id: number;
+  name: string;
+  label: string;
+  sourceType: 'upload' | 'profile_text';
+  fileName: string | null;
+  fileType: 'pdf' | 'docx' | 'text' | null;
+  fileSize: number | null;
+  hasFile: boolean;
+  createdAt: string;
+  isActive: boolean;
+  status: 'active' | 'available';
+  factsCount: number;
+  versionCount: number;
+  versions: VersionSummary[];
+}
+
+export interface ResumeList {
+  activeResumeId: number | null;
+  resumes: ResumeListItem[];
 }
 
 export interface CurrentResume {

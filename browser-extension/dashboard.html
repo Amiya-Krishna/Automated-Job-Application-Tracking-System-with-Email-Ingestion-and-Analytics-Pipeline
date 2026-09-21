@@ -87,6 +87,17 @@
 
           <button
             class="nav-item"
+            data-tab="resumesTab"
+            data-title="My Resumes"
+            data-desc="Upload resumes, choose the one used for tailoring, and see every tailored version."
+            type="button"
+          >
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6M9 9h2"/></svg>
+            <span>My Resumes</span>
+          </button>
+
+          <button
+            class="nav-item"
             data-tab="emailTab"
             data-title="Email"
             data-desc="Scan Gmail for interview, offer, and rejection updates."
@@ -229,12 +240,50 @@
             <label>Skills (comma separated)</label>
             <input type="text" id="profSkills" placeholder="React, Node.js, SQL" />
 
+            <p class="hint">Uploaded PDF/DOCX resumes and tailored versions live under <strong>My Resumes</strong>. The text below is used for job matching.</p>
+
             <label>Resume text</label>
             <textarea id="profResume" rows="8" placeholder="Paste your resume text — used for matching."></textarea>
 
             <button type="submit" id="profSaveBtn">Save profile</button>
             <p id="profMsg" class="success"></p>
           </form>
+        </section>
+
+        <!-- ================= MY RESUMES ================= -->
+        <section id="resumesTab" class="dashPanel hidden">
+          <div class="filterBar">
+            <input
+              type="file"
+              id="resumeFileInput"
+              class="hidden"
+              accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            />
+            <button id="resumeUploadBtn" class="ghost-btn ghost-btn-primary" type="button">⬆ Upload Resume</button>
+            <button id="resumesRefresh" class="ghost-btn" type="button">↻ Refresh</button>
+            <span class="hint">PDF or DOCX, up to 2 MB. Files are sent only to your TrackTrail account.</span>
+          </div>
+          <p id="resumesMsg" class="success"></p>
+          <p id="resumesError" class="error"></p>
+
+          <div id="resumesList" class="resumeList"></div>
+          <p id="resumesEmpty" class="emptyState hidden">
+            No resumes yet. Upload a PDF or DOCX above — or paste your resume text under Profile.
+          </p>
+
+          <div id="resumeViewer" class="resumeViewer hidden" role="dialog" aria-modal="true" aria-labelledby="resumeViewerTitle">
+            <div class="resumeViewerBox">
+              <div class="resumeViewerHead">
+                <div>
+                  <div id="resumeViewerTitle" class="resumeName"></div>
+                  <div id="resumeViewerMeta" class="resumeMeta"></div>
+                </div>
+                <button id="resumeViewerClose" class="ghost-btn" type="button" aria-label="Close">✕</button>
+              </div>
+              <pre id="resumeViewerBody" class="resumeViewerBody"></pre>
+              <div id="resumeViewerActions" class="resumeActions"></div>
+            </div>
+          </div>
         </section>
 
         <!-- ================= EMAIL (GMAIL) ================= -->

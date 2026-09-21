@@ -107,6 +107,7 @@ function RootNavigator() {
           <Stack.Screen name="application" />
           <Stack.Screen name="job" />
           <Stack.Screen name="tailor" />
+          <Stack.Screen name="resumes" />
           <Stack.Screen name="account" />
           <Stack.Screen name="companies" />
           <Stack.Screen name="sources" />

@@ -10,7 +10,7 @@ import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useApproveVersion, useJobAnalysis, usePreviewVersion, useTailoring, useVersion } from '@/hooks/use-resume';
+import { useApproveVersion, useJobAnalysis, usePreviewVersion, useResumes, useTailoring, useVersion } from '@/hooks/use-resume';
 import { useTheme } from '@/hooks/use-theme';
 import { STAGES, jobFromKey } from '@/services/resume';
 import { ApiError } from '@/types/api';
@@ -97,6 +97,7 @@ export default function TailorScreen() {
   const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
   const [previewText, setPreviewText] = useState<string | null>(null);
 
+  const resumesQ = useResumes();
   const analysisQ = useJobAnalysis(activeJob);
   const versionQ = useVersion(versionId);
   const tailoring = useTailoring();
@@ -104,6 +105,8 @@ export default function TailorScreen() {
   const preview = usePreviewVersion();
 
   const version = versionQ.data ?? null;
+  // the resume this job is tailored with: the version's own resume, else the backend's active one
+  const usedResume = (version ? resumesQ.data?.resumes.find((r) => r.id === version.resumeId) : resumesQ.data?.resumes.find((r) => r.isActive)) ?? null;
   const analysis = version?.analysis ?? analysisQ.data ?? null;
   const draft = version?.status === 'draft';
   const apiCode = (analysisQ.error instanceof ApiError ? analysisQ.error.apiCode : null) ?? (tailoring.error?.apiCode ?? null);
@@ -177,6 +180,14 @@ export default function TailorScreen() {
               {[analysis?.jd.company || version?.targetCompany, analysis?.jd.location, analysis?.jd.employmentType].filter(Boolean).join(' · ') || 'Match your existing resume to a job, using only what is already true about you.'}
             </ThemedText>
           </Section>
+
+          {usedResume ? (
+            <Pressable accessibilityRole="button" onPress={() => router.push('/resumes')}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Resume: {usedResume.name} <ThemedText type="linkPrimary">Change</ThemedText>
+              </ThemedText>
+            </Pressable>
+          ) : null}
 
           {analysisQ.isFetching && !analysis ? <ActivityIndicator color={theme.tint} /> : null}
 

@@ -1,14 +1,14 @@
 /**
  * Custom hamburger-menu content for the Drawer navigator
  * (app/(drawer)/_layout.tsx). Built as a plain component rather than
- * relying on @react-navigation/drawer's auto-generated screen list,
+ * relying on the Drawer's auto-generated screen list,
  * because most of these items point at routes that aren't Drawer
  * screens themselves (they're nested tab screens, or top-level Stack
  * screens like /account/settings) — a manual list with router.push
  * calls handles both cases uniformly.
  */
-import { DrawerActions } from '@react-navigation/native';
-import type { DrawerContentComponentProps } from '@react-navigation/drawer';
+import { DrawerActions } from 'expo-router/react-navigation';
+import type { DrawerContentComponentProps } from 'expo-router/drawer';
 import { router, type Href } from 'expo-router';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
