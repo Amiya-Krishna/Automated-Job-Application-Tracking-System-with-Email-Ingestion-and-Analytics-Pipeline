@@ -41,6 +41,7 @@ function seedNotifications(): AppNotification[] {
       body: 'You have an interview coming up — check the Applications tab for details.',
       createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
       read: false,
+      target: { pathname: '/applications' },
     },
     {
       id: makeId(),
@@ -49,6 +50,7 @@ function seedNotifications(): AppNotification[] {
       body: 'Your application was added to your pipeline.',
       createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(),
       read: false,
+      target: { pathname: '/applications' },
     },
     {
       id: makeId(),
@@ -57,6 +59,7 @@ function seedNotifications(): AppNotification[] {
       body: 'Your profile now reflects your latest resume details.',
       createdAt: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
       read: true,
+      target: { pathname: '/resumes' },
     },
   ];
 }
@@ -68,6 +71,7 @@ function fromEvent(event: NotificationEvent): Omit<AppNotification, 'id' | 'crea
         kind: 'application',
         title: 'Application submitted',
         body: `${event.role} at ${event.company} was added to your pipeline.`,
+        target: { pathname: '/application/[id]', params: { id: String(event.trackedJobId) } },
       };
     case 'application_status_changed': {
       const kind: NotificationKind = event.status === 'Interview' ? 'interview' : 'application';
@@ -83,6 +87,7 @@ function fromEvent(event: NotificationEvent): Omit<AppNotification, 'id' | 'crea
                 ? 'Application update'
                 : 'Status updated',
         body: `${event.role} at ${event.company} is now marked "${event.status}"${bodySuffix}.`,
+        target: { pathname: '/application/[id]', params: { id: String(event.trackedJobId) } },
       };
     }
     case 'resume_updated':
@@ -90,6 +95,14 @@ function fromEvent(event: NotificationEvent): Omit<AppNotification, 'id' | 'crea
         kind: 'resume',
         title: 'Resume updated',
         body: 'Your profile now reflects your latest resume details.',
+        target: { pathname: '/resumes' },
+      };
+    case 'resume_tailored':
+      return {
+        kind: 'resume',
+        title: 'Tailored resume ready',
+        body: 'A tailored version of your resume is ready to review.',
+        target: { pathname: '/tailor', params: { versionId: String(event.versionId) } },
       };
     default:
       return null;

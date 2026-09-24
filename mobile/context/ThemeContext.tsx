@@ -13,7 +13,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Appearance, type ColorSchemeName } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { Colors, type ThemePalette } from '@/constants/theme';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 type ResolvedScheme = 'light' | 'dark';
@@ -26,7 +26,7 @@ interface ThemeContextValue {
   /** What 'system' currently resolves to, or the explicit choice. Always 'light' | 'dark'. */
   colorScheme: ResolvedScheme;
   /** Colors[colorScheme] — the actual palette every ThemedView/ThemedText paints with. */
-  colors: (typeof Colors)['light'];
+  colors: ThemePalette;
   isDark: boolean;
   /** Persists to AsyncStorage and updates every consumer immediately. */
   setMode: (mode: ThemeMode) => void;
@@ -36,6 +36,14 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
+/** Appearance.getColorScheme() (and its change-listener payload) is typed as
+ * possibly null/undefined when the OS hasn't reported a preference yet;
+ * normalize that to a definite ColorSchemeName ('light' by default) so state
+ * always holds a concrete, comparable value that resolveScheme() can use. */
+function normalizeScheme(scheme: ColorSchemeName | null | undefined): ColorSchemeName {
+  return scheme ?? 'light';
+}
+
 function resolveScheme(mode: ThemeMode, system: ColorSchemeName): ResolvedScheme {
   if (mode === 'system') return system === 'dark' ? 'dark' : 'light';
   return mode;
@@ -43,7 +51,9 @@ function resolveScheme(mode: ThemeMode, system: ColorSchemeName): ResolvedScheme
 
 export function ThemeContextProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>('system');
-  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(Appearance.getColorScheme());
+  const [systemScheme, setSystemScheme] = useState<ColorSchemeName>(() =>
+    normalizeScheme(Appearance.getColorScheme())
+  );
   const [isReady, setIsReady] = useState(false);
 
   // Load the persisted choice once on mount. Until this resolves, `mode`
@@ -66,7 +76,7 @@ export function ThemeContextProvider({ children }: { children: ReactNode }) {
   // Keeps 'system' mode live if the OS theme changes while the app is open.
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      setSystemScheme(colorScheme);
+      setSystemScheme(normalizeScheme(colorScheme));
     });
     return () => subscription.remove();
   }, []);

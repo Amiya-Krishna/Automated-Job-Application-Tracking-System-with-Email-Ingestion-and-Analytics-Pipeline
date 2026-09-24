@@ -8,10 +8,17 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { createRequire } from "module";
 import path from "path";
+import { fileURLToPath } from "url";
 import { request as httpRequest } from "http";
 
 const require = createRequire(import.meta.url);
-const __dirname = path.dirname(new URL(import.meta.url).pathname);
+// `fileURLToPath` (not manual `new URL(...).pathname` parsing) is required for
+// this to be genuinely cross-platform: on Windows a file URL's `.pathname` keeps
+// a leading slash before the drive letter (e.g. "/C:/Users/..."), which is not
+// a valid Windows path. Passing that as a child-process `cwd` below fails with
+// ENOENT on the spawned node executable (the cwd can't be resolved), even though
+// the executable path itself (process.execPath) is correct and never hardcoded.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { startApp, FakeLlm, LONG_TAIL } = require("../../../server/tests/resumeTailoring/helpers.js");
 const fx = require("../../../server/tests/resumeTailoring/fixtures.js");
 const { execFileSync } = require("child_process");
@@ -23,7 +30,12 @@ function makePdf(resumeText) {
     const { parseResume } = require("./services/resumeTailoring/resumeParser");
     const { exportProfile } = require("./services/resumeTailoring/resumeRenderer");
     exportProfile(parseResume(process.argv[1]).profile, "pdf").then((r) => process.stdout.write(r.buffer.toString("base64")));`;
-  const out = execFileSync(process.execPath, ["-e", script, resumeText], { cwd: serverDir, env: { ...process.env, DOTENV_CONFIG_QUIET: "true" }, encoding: "utf8" });
+  const out = execFileSync(process.execPath, ["-e", script, resumeText], {
+    cwd: serverDir,
+    env: { ...process.env, DOTENV_CONFIG_QUIET: "true" },
+    encoding: "utf8",
+    windowsHide: true,
+  });
   return Buffer.from(out.trim().split("\n").pop(), "base64");
 }
 

@@ -7,7 +7,21 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 
-export const Colors = {
+/** Shared shape for a color palette, so `light` and `dark` are guaranteed to
+ * have identical keys/value types — code that reads `colors[key]` works the
+ * same regardless of which palette resolved. */
+export interface ThemePalette {
+  text: string;
+  background: string;
+  backgroundElement: string;
+  backgroundSelected: string;
+  textSecondary: string;
+  tint: string;
+  danger: string;
+  border: string;
+}
+
+export const Colors: { light: ThemePalette; dark: ThemePalette } = {
   light: {
     text: '#000000',
     background: '#ffffff',
@@ -30,9 +44,9 @@ export const Colors = {
     danger: '#f87171',
     border: '#2E3135',
   },
-} as const;
+};
 
-export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeColor = keyof ThemePalette;
 
 export const Fonts = Platform.select({
   ios: {

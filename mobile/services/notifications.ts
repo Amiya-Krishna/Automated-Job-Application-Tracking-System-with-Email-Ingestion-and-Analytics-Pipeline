@@ -13,9 +13,10 @@
  */
 
 export type NotificationEvent =
-  | { type: 'application_submitted'; role: string; company: string }
-  | { type: 'application_status_changed'; role: string; company: string; status: string; interviewDate?: string | null }
-  | { type: 'resume_updated' };
+  | { type: 'application_submitted'; role: string; company: string; trackedJobId: number }
+  | { type: 'application_status_changed'; role: string; company: string; status: string; interviewDate?: string | null; trackedJobId: number }
+  | { type: 'resume_updated' }
+  | { type: 'resume_tailored'; versionId: number };
 
 type Listener = (event: NotificationEvent) => void;
 

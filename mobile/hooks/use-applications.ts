@@ -116,12 +116,12 @@ export function useCreateApplication() {
 
   return useMutation({
     mutationFn: (input: CreateApplicationInput) => createTrackedJob(input),
-    onSuccess: (_result, input) => {
+    onSuccess: (result, input) => {
       // Real event, not a fabricated one: it fires from the actual
       // mutation the user just performed, with the actual role/company
       // they typed in — see context/NotificationContext.tsx for how
       // this becomes a Notifications-tab entry.
-      emitNotificationEvent({ type: 'application_submitted', role: input.role, company: input.company });
+      emitNotificationEvent({ type: 'application_submitted', role: input.role, company: input.company, trackedJobId: result.id });
       return invalidateApplicationEffects(queryClient);
     },
   });
@@ -133,7 +133,7 @@ export function useUpdateApplication() {
   return useMutation({
     mutationFn: ({ trackedJobId, input }: { trackedJobId: number; input: UpdateApplicationInput }) =>
       updateTrackedJob(trackedJobId, input),
-    onSuccess: (_result, { input }) => {
+    onSuccess: (_result, { input, trackedJobId }) => {
       if (input.status && input.role && input.company) {
         emitNotificationEvent({
           type: 'application_status_changed',
@@ -141,6 +141,7 @@ export function useUpdateApplication() {
           company: input.company,
           status: input.status,
           interviewDate: input.interviewDate,
+          trackedJobId,
         });
       }
       return invalidateApplicationEffects(queryClient);

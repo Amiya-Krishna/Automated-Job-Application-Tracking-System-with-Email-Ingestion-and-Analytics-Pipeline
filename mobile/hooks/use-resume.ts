@@ -13,8 +13,10 @@ import {
   listVersions,
   previewVersion,
   startTailoring,
+  uploadResume,
   waitForSession,
 } from '@/services/resume';
+import { emitNotificationEvent } from '@/services/notifications';
 import { ApiError } from '@/types/api';
 import type { ApproveAction, ResumeJobInput, ReviewDecision, TailoredVersion } from '@/types/resume';
 
@@ -38,6 +40,22 @@ export function useActivateResume() {
       qc.setQueryData(['resume', 'list'], list);
       void qc.invalidateQueries({ queryKey: ['resume', 'current'] });
       void qc.invalidateQueries({ queryKey: ['resume', 'analysis'] });
+    },
+  });
+}
+
+/**
+ * Uploads a resume, then refreshes every resume-derived query so the new
+ * (now-active) resume shows up immediately — same invalidation shape as
+ * useActivateResume, since a fresh upload also becomes the active resume.
+ */
+export function useUploadResume() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, syncProfile }: { file: { uri: string; name: string; mimeType?: string | null }; syncProfile?: boolean }) =>
+      uploadResume(file, { syncProfile }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['resume'] });
     },
   });
 }
@@ -118,6 +136,7 @@ export function useTailoring() {
         const done = await waitForSession(session.id, { onUpdate: (s) => setStage(s.stage), isCancelled: () => cancelled.current });
         setNotes(done.warnings ?? []);
         void qc.invalidateQueries({ queryKey: ['resume', 'versions'] });
+        if (done.versionId !== null) emitNotificationEvent({ type: 'resume_tailored', versionId: done.versionId });
         return done.versionId;
       } catch (e) {
         setError(e instanceof ApiError ? e : new ApiError('Something went wrong. Please try again.', null, false));

@@ -52,6 +52,7 @@ const sessionEvents = require(shims['@/services/sessionEvents']);
 let app;
 let svc;
 let ApiError;
+let api;
 test.before(async () => {
   app = await startApp();
   app.repo._seedProfile(1, { resume_text: fx.RICH_RESUME });
@@ -59,6 +60,7 @@ test.before(async () => {
   process.env.EXPO_PUBLIC_API_URL = app.origin; // read by services/api.ts at import time
   svc = require(path.join(root, 'services/resume.ts'));
   ({ ApiError } = require(path.join(root, 'types/api.ts')));
+  ({ api } = require(path.join(root, 'services/api.ts')));
 });
 test.after(() => app.close());
 test.beforeEach(() => { tokenStore.__state.token = app.tokenFor(1); });
@@ -247,7 +249,7 @@ test("My Resumes: another user's resumes are invisible and untouchable from the 
   await assert.rejects(svc.deleteResume(others[0].id), (e) => e.status === 404);
 });
 
-test('mobile source: Profile has a "My Resumes" entry, the screen exists and is registered, uploads are a web hand-off (no local resume store)', () => {
+test('mobile source: Profile has a "My Resumes" entry, the screen exists and is registered, upload goes straight to the TrackTrail backend (no local resume store, no AI/provider access)', () => {
   const fsx = require('node:fs');
   const profile = fsx.readFileSync(path.join(root, 'app/(drawer)/(tabs)/profile.tsx'), 'utf8');
   assert.match(profile, /router\.push\('\/resumes'\)/);
@@ -255,6 +257,39 @@ test('mobile source: Profile has a "My Resumes" entry, the screen exists and is 
   assert.ok(fsx.existsSync(path.join(root, 'app/resumes/index.tsx')));
   assert.match(fsx.readFileSync(path.join(root, 'app/_layout.tsx'), 'utf8'), /name="resumes"/);
   const screen = fsx.readFileSync(path.join(root, 'app/resumes/index.tsx'), 'utf8') + fsx.readFileSync(path.join(root, 'services/resume.ts'), 'utf8');
-  assert.match(screen, /WebBrowser\.openBrowserAsync/);
-  assert.doesNotMatch(screen, /AsyncStorage|SecureStore|FileSystem|expo-document-picker|generativelanguage|groq|openrouter/i, 'no local resume store, no direct AI/provider access');
+  // native picker + the real upload service call, same backend endpoint the web app and extension use
+  assert.match(screen, /DocumentPicker\.getDocumentAsync/);
+  assert.match(screen, /uploadResume/);
+  assert.match(screen, /\/resume\/upload/);
+  // no local persistence of the file itself, and never a direct call to an AI/LLM provider
+  assert.doesNotMatch(screen, /AsyncStorage|SecureStore|generativelanguage|groq|openrouter/i, 'no local resume store, no direct AI/provider access');
+});
+
+// ---------------------------------------------------------- native upload
+// React Native's FormData understands the { uri, name, type } shape from
+// expo-document-picker and turns it into a real multipart file part on
+// device; Node's FormData does not (it stringifies unknown values), so a
+// byte-for-byte upload can't be exercised through this Node harness. What
+// IS verified here, against the real `api` axios instance, is exactly what
+// services/resume.ts controls: the endpoint, the multipart content type,
+// the auth header, and that the file/syncProfile fields are attached under
+// the same field names the server (and web/extension) expect.
+test('uploadResume: posts multipart to POST /resume/upload with auth header, file and syncProfile fields', async () => {
+  tokenStore.__state.token = app.tokenFor(1);
+  const calls = [];
+  const restore = api.post;
+  api.post = (url, body, config) => {
+    calls.push({ url, isFormData: typeof FormData !== 'undefined' && body instanceof FormData, contentType: config?.headers?.['Content-Type'] });
+    return Promise.resolve({ data: { resume: { id: 1, fileType: 'pdf', isActive: true } } });
+  };
+  try {
+    const out = await svc.uploadResume({ uri: 'file:///tmp/resume.pdf', name: 'resume.pdf', mimeType: 'application/pdf' }, { syncProfile: true });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/resume/upload');
+    assert.equal(calls[0].isFormData, true);
+    assert.equal(calls[0].contentType, 'multipart/form-data');
+    assert.equal(out.resume.fileType, 'pdf');
+  } finally {
+    api.post = restore;
+  }
 });

@@ -9,6 +9,7 @@ import type {
   ApproveAction,
   CurrentResume,
   ResumeList,
+  ResumeListItem,
   MatchAnalysis,
   ResumeJobInput,
   ReviewDecision,
@@ -41,6 +42,28 @@ export async function getCurrentResume(): Promise<CurrentResume> {
 /** Every resume of the signed-in user, the active one flagged. Backend is the source of truth. */
 export async function listResumes(): Promise<ResumeList> {
   const { data } = await api.get<ResumeList>('/resume/resumes');
+  return data;
+}
+
+/**
+ * Uploads a PDF/DOCX resume through the SAME backend endpoint (`POST
+ * /resume/upload`) the web client and browser extension use, so the new
+ * resume is stored as a normal backend record — no local copy is kept on
+ * the device. `file` matches what `expo-document-picker` returns for a
+ * successful pick (uri/name/mimeType). The backend re-validates size, type
+ * and content regardless of what's sent here.
+ */
+export async function uploadResume(
+  file: { uri: string; name: string; mimeType?: string | null },
+  { syncProfile = false }: { syncProfile?: boolean } = {},
+): Promise<{ resume: ResumeListItem }> {
+  const form = new FormData();
+  // React Native's FormData accepts this {uri, name, type} shape (not a real Blob/File) for multipart uploads.
+  form.append('file', { uri: file.uri, name: file.name, type: file.mimeType || 'application/octet-stream' } as unknown as Blob);
+  form.append('syncProfile', String(syncProfile));
+  const { data } = await api.post<{ resume: ResumeListItem }>('/resume/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
   return data;
 }
 

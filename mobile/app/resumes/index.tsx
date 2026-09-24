@@ -1,7 +1,7 @@
-import * as WebBrowser from 'expo-web-browser';
+import * as DocumentPicker from 'expo-document-picker';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Alert, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
@@ -11,12 +11,15 @@ import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useActivateResume, useDeleteResume, useResumes } from '@/hooks/use-resume';
+import { useActivateResume, useDeleteResume, useResumes, useUploadResume } from '@/hooks/use-resume';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
 import type { ResumeListItem, VersionSummary } from '@/types/resume';
 
-const WEB_URL = (process.env.EXPO_PUBLIC_WEB_URL ?? '').replace(/\/+$/, '');
+// 2 MB, matching the backend's hard limit (server/services/resumeTailoring/constants.js).
+// Checked here purely for fast, friendly feedback — the backend re-validates regardless.
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024;
+const ALLOWED_MIME = new Set(['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']);
 const TYPE_LABEL: Record<string, string> = { pdf: 'PDF', docx: 'DOCX', text: 'Profile text' };
 const fmt = (d: string) => new Date(d).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 const provenance = (v: VersionSummary) => (v.aiUsed ? `AI-assisted · ${v.aiProvider ?? 'provider'}` : 'Reorder-only');
@@ -87,15 +90,41 @@ export default function MyResumesScreen() {
   const list = useResumes();
   const activate = useActivateResume();
   const remove = useDeleteResume();
+  const upload = useUploadResume();
+  const [syncProfile, setSyncProfile] = useState(true);
 
-  const uploadOnWeb = () => {
-    // PDF/DOCX are validated, parsed and stored by the TrackTrail backend. The web app uploads them
-    // through the same secure endpoint; this app just lists what the backend has (no local copies).
-    if (!WEB_URL) {
-      Alert.alert('Upload on the web app', 'Open the TrackTrail web app, go to My Resumes, and upload your PDF or DOCX there. It will appear here automatically.');
+  const pickAndUpload = async () => {
+    let picked: DocumentPicker.DocumentPickerResult;
+    try {
+      picked = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+    } catch {
+      Alert.alert('Could not open file picker', 'Please try again.');
       return;
     }
-    void WebBrowser.openBrowserAsync(`${WEB_URL}/resumes`);
+    if (picked.canceled || !picked.assets?.length) return;
+    const asset = picked.assets[0];
+
+    // Fast, friendly checks — same rules the backend enforces server-side (it re-validates regardless).
+    if (asset.mimeType && !ALLOWED_MIME.has(asset.mimeType)) {
+      Alert.alert('Unsupported file', 'Only PDF and DOCX resumes are supported.');
+      return;
+    }
+    if (typeof asset.size === 'number' && asset.size > MAX_UPLOAD_BYTES) {
+      Alert.alert('File too large', `That file is too large. The limit is ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB.`);
+      return;
+    }
+
+    upload.mutate(
+      { file: { uri: asset.uri, name: asset.name, mimeType: asset.mimeType }, syncProfile },
+      {
+        onSuccess: () => Alert.alert('Resume uploaded', `“${asset.name}” was uploaded and set as your active resume.`),
+        onError: (e) => Alert.alert('Upload failed', errMsg(e)),
+      },
+    );
   };
 
   const confirmDelete = (r: ResumeListItem) => {
@@ -117,14 +146,20 @@ export default function MyResumesScreen() {
           <Card style={styles.card}>
             <ThemedText type="smallBold">Upload a resume</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              PDF or DOCX. Uploads go through the secure TrackTrail web app and are stored on your account; they appear here automatically. Nothing is kept on this device.
+              PDF or DOCX, up to 2 MB. It's uploaded straight to your TrackTrail account — the same backend record the web app and browser extension use — and becomes your active resume. Nothing is kept on this device.
             </ThemedText>
             {resumes.length === 0 ? (
               <ThemedText type="small" themeColor="danger">
                 Upload your resume before tailoring.
               </ThemedText>
             ) : null}
-            <Button label="Upload on the web app" onPress={uploadOnWeb} />
+            <View style={styles.row}>
+              <Switch value={syncProfile} onValueChange={setSyncProfile} trackColor={{ true: theme.tint }} />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
+                Also use it as my profile text for job matching
+              </ThemedText>
+            </View>
+            <Button label={upload.isPending ? 'Uploading…' : 'Upload PDF or DOCX'} disabled={upload.isPending} onPress={pickAndUpload} />
           </Card>
 
           {resumes.map((r) => (
