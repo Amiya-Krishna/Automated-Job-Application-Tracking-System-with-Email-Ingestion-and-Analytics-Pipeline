@@ -12,6 +12,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import {
   useApplication,
+  useDeleteApplication,
   useEngineApplicationForJob,
   useRecordEngineOutcome,
   useSubmitEngineApplication,
@@ -46,6 +47,7 @@ export default function ApplicationDetailScreen() {
 
   const submitMutation = useSubmitEngineApplication();
   const outcomeMutation = useRecordEngineOutcome();
+  const deleteMutation = useDeleteApplication();
   const [actionError, setActionError] = useState<string | null>(null);
 
   if (isLoading || application === undefined) {
@@ -107,6 +109,28 @@ export default function ApplicationDetailScreen() {
     ]);
   };
 
+  const runDelete = () => {
+    Alert.alert(
+      'Delete this application?',
+      'This removes it from your tracked applications. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setActionError(null);
+            deleteMutation.mutate(trackedJobId, {
+              onSuccess: () => router.back(),
+              onError: (err) =>
+                setActionError(err instanceof ApiError ? err.message : 'Could not delete. Please try again.'),
+            });
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -144,6 +168,22 @@ export default function ApplicationDetailScreen() {
             </ThemedText>
           </Pressable>
 
+          <Pressable
+            accessibilityRole="button"
+            disabled={deleteMutation.isPending}
+            onPress={runDelete}
+            style={[styles.editButton, { borderColor: theme.danger, opacity: deleteMutation.isPending ? 0.5 : 1 }]}>
+            <ThemedText type="smallBold" themeColor="danger">
+              {deleteMutation.isPending ? 'Deleting…' : 'Delete'}
+            </ThemedText>
+          </Pressable>
+
+          {actionError ? (
+            <ThemedText type="small" themeColor="danger">
+              {actionError}
+            </ThemedText>
+          ) : null}
+
           <ThemedView style={styles.fieldGroup}>
             <Field label="Applied" value={formatDate(application.appliedDate)} />
             <Field label="Source" value={application.source} />
@@ -175,11 +215,6 @@ export default function ApplicationDetailScreen() {
                   <ThemedText type="small" themeColor="textSecondary">
                     {engineApplication.data.status}
                   </ThemedText>
-                  {actionError ? (
-                    <ThemedText type="small" themeColor="danger">
-                      {actionError}
-                    </ThemedText>
-                  ) : null}
                   <ThemedView style={styles.actionRow}>
                     {engineApplication.data.status === 'pending' ? (
                       <Pressable

@@ -122,7 +122,11 @@ async function toDocx(p) {
 function toPdf(p) {
   const PDFDocument = require("pdfkit");
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 50, info: { Title: p.personalInfo?.name || "Resume" } });
+    // This is deliberately the one renderer used by both the untouched
+    // original and approved tailored exports. It receives only the parsed
+    // profile, so layout work can never add, omit or rewrite resume facts.
+    const margin = 54;
+    const doc = new PDFDocument({ size: "A4", margins: { top: margin, bottom: margin, left: margin, right: margin }, info: { Title: p.personalInfo?.name || "Resume", Author: "TrackTrail" } });
     const chunks = [];
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
@@ -132,15 +136,50 @@ function toPdf(p) {
     // set can't be drawn with a built-in font, so it is replaced with "?"
     // to keep the file valid rather than failing.
     const safe = (s) => s.replace(/[^\u0009\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201A\u201C\u201D\u201E\u2020\u2021\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]/g, "?");
+    const pageBottom = () => doc.page.height - margin;
+    const ensureSpace = (height) => { if (doc.y + height > pageBottom()) doc.addPage(); };
+    const write = (text, options = {}) => {
+      const value = safe(text);
+      const height = doc.heightOfString(value, options);
+      ensureSpace(height);
+      doc.text(value, options);
+    };
+    const rule = () => {
+      ensureSpace(7);
+      doc.moveTo(margin, doc.y + 2).lineTo(doc.page.width - margin, doc.y + 2).lineWidth(0.7).strokeColor("#94A3B8").stroke();
+      doc.moveDown(0.34);
+    };
     for (const b of toBlocks(p)) {
       switch (b.type) {
-        case "name": doc.font("Helvetica-Bold").fontSize(18).text(safe(b.text)); break;
-        case "contact": doc.font("Helvetica").fontSize(9.5).text(safe(b.text)); break;
-        case "heading": doc.moveDown(0.6).font("Helvetica-Bold").fontSize(11).text(safe(b.text.toUpperCase())); doc.moveTo(50, doc.y).lineTo(545, doc.y).lineWidth(0.5).stroke(); doc.moveDown(0.2); break;
-        case "entryHeader": doc.moveDown(0.3).font("Helvetica-Bold").fontSize(10).text(safe(b.text)); break;
-        case "bullet": doc.font("Helvetica").fontSize(10).text(`\u2022 ${safe(b.text)}`, { indent: 10 }); break;
-        case "gap": doc.moveDown(0.2); break;
-        default: doc.font("Helvetica").fontSize(10).text(safe(b.text));
+        case "name":
+          doc.font("Helvetica-Bold").fontSize(20).fillColor("#0F172A");
+          write(b.text, { align: "center", lineGap: 1 });
+          doc.moveDown(0.12);
+          break;
+        case "contact":
+          doc.font("Helvetica").fontSize(9.2).fillColor("#334155");
+          write(b.text, { align: "center", lineGap: 1 });
+          break;
+        case "heading":
+          doc.moveDown(0.62);
+          doc.font("Helvetica-Bold").fontSize(10.5).fillColor("#0F4C5C");
+          ensureSpace(doc.currentLineHeight() + 14);
+          write(b.text.toUpperCase(), { characterSpacing: 0.65, lineGap: 1 });
+          rule();
+          break;
+        case "entryHeader":
+          doc.moveDown(0.24);
+          doc.font("Helvetica-Bold").fontSize(10.1).fillColor("#172033");
+          write(b.text, { lineGap: 1 });
+          break;
+        case "bullet":
+          doc.font("Helvetica").fontSize(9.7).fillColor("#243041");
+          write(`\u2022  ${b.text}`, { indent: 11, continued: false, lineGap: 2, paragraphGap: 1 });
+          break;
+        case "gap": doc.moveDown(0.16); break;
+        default:
+          doc.font("Helvetica").fontSize(9.7).fillColor("#243041");
+          write(b.text, { lineGap: 2, paragraphGap: 1 });
       }
     }
     doc.end();

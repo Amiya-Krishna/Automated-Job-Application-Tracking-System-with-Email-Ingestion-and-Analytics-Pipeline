@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/use-auth';
 import {
   applyToEngineJob,
   createTrackedJob,
+  deleteTrackedJob,
   getAppliedJobs,
   getEngineApplications,
   recordEngineOutcome,
@@ -146,6 +147,27 @@ export function useUpdateApplication() {
       }
       return invalidateApplicationEffects(queryClient);
     },
+  });
+}
+
+/**
+ * Deletes a tracked job/application (`DELETE /api/jobs/:id`). Same
+ * invalidation shape as create/update — analytics counts and the
+ * applications list both need refreshing once a row disappears.
+ */
+export function useDeleteApplication() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (trackedJobId: number) => deleteTrackedJob(trackedJobId),
+    onSuccess: () =>
+      Promise.all([
+        invalidateApplicationEffects(queryClient),
+        // The application may also be the row an engine-applications query
+        // resolved to; drop it too so a stale "Automation status" section
+        // can't linger on a screen that navigates away after delete.
+        queryClient.invalidateQueries({ queryKey: ['applications', 'engine'] }),
+      ]),
   });
 }
 

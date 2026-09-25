@@ -83,6 +83,7 @@ function RootNavigator() {
   return (
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
         <Stack.Protected guard={status === 'authenticated'}>
           {/* The drawer-wrapped tab area (Home/Jobs/Analytics/Notifications/
               Profile) plus the drawer's own static screens — see

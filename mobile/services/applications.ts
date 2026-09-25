@@ -51,6 +51,17 @@ export async function updateTrackedJob(
 }
 
 /**
+ * DELETE /api/jobs/:id — deletes a manually/extension/Gmail-tracked
+ * application (jobRoutes.js scopes the delete to `userId: req.user.id`,
+ * so this can only ever remove the signed-in user's own job — same
+ * backend ownership check every other job mutation here relies on).
+ * Mirrors the web client's `api.delete(`/jobs/${id}`)` in AppliedJobs.jsx.
+ */
+export async function deleteTrackedJob(trackedJobId: number): Promise<void> {
+  await api.delete(`/jobs/${trackedJobId}`);
+}
+
+/**
  * GET /api/applications — the apply-engine's own record, already scoped
  * server-side to jobs this user has tracked (see applyRoutes.js's
  * ownsApplicationJob/GET "/" — SECURITY FIX comment, verified by reading

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import { emitNotificationEvent } from "../services/notificationEvents";
 
 function Profile() {
   const [form, setForm] = useState({
@@ -58,6 +59,11 @@ function Profile() {
           .filter(Boolean),
         experienceYears: form.experienceYears ? Number(form.experienceYears) : null,
       });
+      // Mirrors mobile's useUpdateProfile (use-profile.ts): only a
+      // non-empty resume text counts as a real "resume updated" event.
+      if (form.resumeText.trim().length > 0) {
+        emitNotificationEvent({ type: "resume_updated" });
+      }
       toast.success("Profile saved");
     } catch (err) {
       toast.error(err.response?.data?.message || "Failed to save profile");

@@ -51,12 +51,19 @@
   .pick button[aria-checked="true"] { border-color: #0891b2; box-shadow: 0 0 0 1px #0891b2 inset; }
   .pick .pickName { font-weight: 700; word-break: break-word; }
   .pick .pickMeta { color: #64748b; font-size: 11px; }
+  .manual { margin: 10px 0; }
+  .manual input, .manual textarea { width: 100%; box-sizing: border-box; margin-top: 6px; border: 1px solid #cbd5e1; border-radius: 12px; padding: 8px 10px; font: inherit; color: inherit; background: transparent; }
+  .manual textarea { resize: vertical; }
   a.link { color: #0e7490; font-weight: 700; cursor: pointer; text-decoration: underline; }
   `;
 
   const STAGE_LABELS = [
-    ["analyzing_resume", "Analyzing Resume…"], ["analyzing_jd", "Analyzing Job Description…"], ["matching", "Matching Requirements…"],
-    ["generating", "Generating Tailored Resume…"], ["validating", "Validating Changes…"], ["ready", "Resume Ready"],
+    ["analyzing_resume", "Analyzing Resume…"],
+    ["analyzing_jd", "Analyzing Job Description…"],
+    ["matching", "Matching Requirements…"],
+    ["generating", "Generating Tailored Resume…"],
+    ["validating", "Validating Changes…"],
+    ["ready", "Resume Ready"],
   ];
   const ICON = { MATCHED: "✓", PARTIAL_MATCH: "⚠", NOT_FOUND: "✕" };
   const MAX_CHIPS = 12;
@@ -79,7 +86,24 @@
     panel.setAttribute("aria-label", "TrackTrail");
     shadow.append(style, panel);
 
-    let st = { busy: null, detected: null, analysis: null, stage: null, version: null, saved: null, error: null, webUrl: null, cancelled: false, resumes: null, activeResumeId: null, resumeId: null, resumeConfirmed: false, selecting: false, pickId: null };
+    let st = {
+      busy: null,
+      detected: null,
+      analysis: null,
+      stage: null,
+      version: null,
+      saved: null,
+      error: null,
+      webUrl: null,
+      cancelled: false,
+      resumes: null,
+      activeResumeId: null,
+      resumeId: null,
+      resumeConfirmed: false,
+      selecting: false,
+      pickId: null,
+      manual: { title: "", company: "", description: "" },
+    };
 
     const el = (tag, cls, txt) => {
       const n = doc.createElement(tag);
@@ -87,7 +111,11 @@
       if (txt !== undefined) n.textContent = txt;
       return n;
     };
-    const button = (label, onClick, { secondary = false, disabled = false } = {}) => {
+    const button = (
+      label,
+      onClick,
+      { secondary = false, disabled = false } = {},
+    ) => {
       const b = el("button", `btn${secondary ? " secondary" : ""}`, label);
       b.type = "button";
       b.disabled = disabled;
@@ -98,16 +126,37 @@
     const send = (message) =>
       new Promise((resolve) => {
         try {
-          if (!chromeApi.runtime?.id) return resolve({ ok: false, error: "The extension was updated. Reload this page.", code: "context_invalidated" });
-          chromeApi.runtime.sendMessage(message, (r) => resolve(r || { ok: false, error: "No response from the extension." }));
+          if (!chromeApi.runtime?.id)
+            return resolve({
+              ok: false,
+              error: "The extension was updated. Reload this page.",
+              code: "context_invalidated",
+            });
+          chromeApi.runtime.sendMessage(message, (r) =>
+            resolve(
+              r || { ok: false, error: "No response from the extension." },
+            ),
+          );
         } catch (e) {
-          resolve({ ok: false, error: "The extension was updated. Reload this page.", code: "context_invalidated" });
+          resolve({
+            ok: false,
+            error: "The extension was updated. Reload this page.",
+            code: "context_invalidated",
+          });
         }
       });
 
-    const fail = (r) => { st.error = { message: r.error || "Something went wrong.", code: r.code || null }; st.busy = null; render(); };
+    const fail = (r) => {
+      st.error = {
+        message: r.error || "Something went wrong.",
+        code: r.code || null,
+      };
+      st.busy = null;
+      render();
+    };
     const webUrl = async () => {
-      if (!st.webUrl) st.webUrl = (await send({ type: "GET_WEB_URL" })).url || null;
+      if (!st.webUrl)
+        st.webUrl = (await send({ type: "GET_WEB_URL" })).url || null;
       return st.webUrl;
     };
     const openWeb = async (path) => {
@@ -116,86 +165,170 @@
     };
 
     // ---------------------------------------------------------- actions
-    const detect = () => { st.detected = extract.detectJob(doc, root.location); return st.detected; };
+    const detect = () => {
+      st.detected = extract.detectJob(doc, root.location);
+      return st.detected;
+    };
+    const currentJob = () => {
+      const detected = st.detected || detect();
+      const manualDescription = st.manual.description.trim();
+      if (!manualDescription) return extract.toApiJob(detected);
+      return {
+        title: st.manual.title.trim() || detected.role || "",
+        company: st.manual.company.trim() || detected.company || "",
+        description: manualDescription,
+        sourceName: "manual",
+      };
+    };
 
     // ------------------------------------------------- resume selection
     // The BACKEND owns resumes. The panel only lists them (RESUME_LIST) and passes the chosen id along.
     async function ensureResumes() {
       if (st.resumes) return st.resumes;
       const r = await send({ type: "RESUME_LIST" });
-      if (!r.ok) { fail(r); return null; }
-      if (!r.resumes || !Array.isArray(r.resumes.resumes)) { fail({ error: "Unexpected response from TrackTrail. Please try again." }); return null; }
+      if (!r.ok) {
+        fail(r);
+        return null;
+      }
+      if (!r.resumes || !Array.isArray(r.resumes.resumes)) {
+        fail({
+          error: "Unexpected response from TrackTrail. Please try again.",
+        });
+        return null;
+      }
       st.resumes = r.resumes.resumes;
       st.activeResumeId = r.resumes.activeResumeId;
       return st.resumes;
     }
-    const resumeById = (id) => (st.resumes || []).find((r) => r.id === id) || null;
-    const selectedResume = () => resumeById(st.resumeId) || (st.resumes && st.resumes.length === 1 ? st.resumes[0] : null);
+    const resumeById = (id) =>
+      (st.resumes || []).find((r) => r.id === id) || null;
+    const selectedResume = () =>
+      resumeById(st.resumeId) ||
+      (st.resumes && st.resumes.length === 1 ? st.resumes[0] : null);
 
     async function changeResume() {
-      st.busy = "resumes"; st.error = null; render();
+      st.busy = "resumes";
+      st.error = null;
+      render();
       const list = await ensureResumes();
       st.busy = null;
       if (!list) return;
-      st.selecting = true; st.pickId = st.resumeId || st.activeResumeId; render();
+      st.selecting = true;
+      st.pickId = st.resumeId || st.activeResumeId;
+      render();
     }
 
     async function continueWithSelection() {
       if (!st.pickId) return;
-      st.resumeId = st.pickId; st.resumeConfirmed = true; st.selecting = false;
-      await analyze();                       // Select Resume -> Continue to Analysis ...
+      st.resumeId = st.pickId;
+      st.resumeConfirmed = true;
+      st.selecting = false;
+      await analyze(); // Select Resume -> Continue to Analysis ...
       if (st.analysis && !st.error) await runTailoring(); // ... -> Tailor Resume
     }
 
     async function saveJob() {
       const d = detect();
-      st.busy = "save"; st.error = null; render();
-      const r = await send({ type: "SAVE_JOB", job: extract.toSaveJob(d, hostname) });
+      st.busy = "save";
+      st.error = null;
+      render();
+      const r = await send({
+        type: "SAVE_JOB",
+        job: extract.toSaveJob(d, hostname),
+      });
       if (!r.ok) return fail(r);
-      st.saved = { duplicate: Boolean(r.duplicate) }; st.busy = null; render();
+      st.saved = { duplicate: Boolean(r.duplicate) };
+      st.busy = null;
+      render();
     }
 
     async function analyze() {
-      const d = detect();
-      st.busy = "analyze"; st.error = null; st.analysis = null; st.version = null; render();
-      const r = await send({ type: "RESUME_ANALYZE", job: extract.toApiJob(d), ...(st.resumeId ? { resumeId: st.resumeId } : {}) });
+      const d = currentJob();
+      st.busy = "analyze";
+      st.error = null;
+      st.analysis = null;
+      st.version = null;
+      render();
+      const r = await send({
+        type: "RESUME_ANALYZE",
+        job: d,
+        ...(st.resumeId ? { resumeId: st.resumeId } : {}),
+      });
       if (!r.ok) return fail(r);
-      st.analysis = r.analysis; st.busy = null; render();
+      st.analysis = r.analysis;
+      st.busy = null;
+      render();
     }
 
     // "Tailor Resume": 0 resumes -> ask the user to add one; 1 -> use it; several -> Select Resume first.
     async function tailor() {
-      st.error = null; st.busy = "resumes"; render();
+      st.error = null;
+      st.busy = "resumes";
+      render();
       const list = await ensureResumes();
       st.busy = null;
       if (!list) return;
-      if (!list.length) return fail({ error: "Upload your resume before tailoring.", code: "no_resume" });
-      if (list.length === 1) { st.resumeId = list[0].id; st.resumeConfirmed = true; }
-      if (list.length > 1 && !st.resumeConfirmed) { st.selecting = true; st.pickId = st.resumeId || st.activeResumeId; render(); return; }
+      if (!list.length)
+        return fail({
+          error: "Upload your resume before tailoring.",
+          code: "no_resume",
+        });
+      if (list.length === 1) {
+        st.resumeId = list[0].id;
+        st.resumeConfirmed = true;
+      }
+      if (list.length > 1 && !st.resumeConfirmed) {
+        st.selecting = true;
+        st.pickId = st.resumeId || st.activeResumeId;
+        render();
+        return;
+      }
       await runTailoring();
     }
 
     async function runTailoring() {
-      const d = detect();
-      st.busy = "tailor"; st.error = null; st.version = null; st.stage = "analyzing_resume"; st.cancelled = false; render();
-      const started = await send({ type: "RESUME_TAILOR", job: extract.toApiJob(d), ...(st.resumeId ? { resumeId: st.resumeId } : {}) });
+      const d = currentJob();
+      st.busy = "tailor";
+      st.error = null;
+      st.version = null;
+      st.stage = "analyzing_resume";
+      st.cancelled = false;
+      render();
+      const started = await send({
+        type: "RESUME_TAILOR",
+        job: d,
+        ...(st.resumeId ? { resumeId: st.resumeId } : {}),
+      });
       if (!started.ok) return fail(started);
-      if (!started.session || !started.session.id) return fail({ error: "Unexpected response from TrackTrail. Please try again." });
+      if (!started.session || !started.session.id)
+        return fail({
+          error: "Unexpected response from TrackTrail. Please try again.",
+        });
       let session = started.session;
       const t0 = Date.now();
       while (session.status !== "succeeded" && session.status !== "failed") {
         if (st.cancelled) return;
-        if (Date.now() - t0 > 180000) return fail({ error: "This is taking longer than expected. Please try again.", code: "timeout" });
+        if (Date.now() - t0 > 180000)
+          return fail({
+            error: "This is taking longer than expected. Please try again.",
+            code: "timeout",
+          });
         await sleep(1000);
         const p = await send({ type: "RESUME_SESSION", id: session.id });
         if (!p.ok) return fail(p);
         session = p.session;
-        st.stage = session.stage; render();
+        st.stage = session.stage;
+        render();
       }
-      if (session.status === "failed") return fail({ error: session.error, code: session.errorCode });
+      if (session.status === "failed")
+        return fail({ error: session.error, code: session.errorCode });
       const v = await send({ type: "RESUME_VERSION", id: session.versionId });
       if (!v.ok) return fail(v);
-      st.version = v.version; st.analysis = v.version.analysis; st.busy = null; st.stage = "ready"; render();
+      st.version = v.version;
+      st.analysis = v.version.analysis;
+      st.busy = null;
+      st.stage = "ready";
+      render();
     }
 
     // ----------------------------------------------------------- render
@@ -204,14 +337,48 @@
       const head = el("div", "head");
       head.append(el("span", "brand", "TrackTrail"));
       const x = button("×", () => api.close(), { secondary: true });
-      x.className = "x"; x.setAttribute("aria-label", "Close");
+      x.className = "x";
+      x.setAttribute("aria-label", "Close");
       head.append(x);
       panel.append(head);
 
       const d = st.detected || detect();
       panel.append(el("p", "title", d.role || "Job detected"));
       panel.append(el("p", "sub", d.company || "Company not detected"));
-      if (!d.description) panel.append(el("p", "note", "The job description isn't visible on this page yet. Open the full posting so it can be analysed."));
+      if (!d.description)
+        panel.append(
+          el(
+            "p",
+            "note",
+            "The job description isn't visible on this page yet. Open the full posting so it can be analysed.",
+          ),
+        );
+
+      const manual = el("div", "manual");
+      manual.append(el("div", "label", "Paste job description"));
+      const title = el("input");
+      title.type = "text";
+      title.placeholder = "Job title (optional)";
+      title.value = st.manual.title;
+      title.addEventListener("input", (e) => {
+        st.manual.title = e.target.value;
+      });
+      const company = el("input");
+      company.type = "text";
+      company.placeholder = "Company (optional)";
+      company.value = st.manual.company;
+      company.addEventListener("input", (e) => {
+        st.manual.company = e.target.value;
+      });
+      const desc = el("textarea");
+      desc.rows = 5;
+      desc.placeholder = "Paste the full job description here…";
+      desc.value = st.manual.description;
+      desc.addEventListener("input", (e) => {
+        st.manual.description = e.target.value;
+      });
+      manual.append(title, company, desc);
+      panel.append(manual);
 
       // which resume this job will use (chosen from the backend's list)
       const chosen = selectedResume();
@@ -235,14 +402,42 @@
           b.setAttribute("role", "radio");
           b.setAttribute("aria-checked", String(st.pickId === r.id));
           b.append(el("div", "pickName", r.name));
-          b.append(el("div", "pickMeta", [r.fileType ? r.fileType.toUpperCase() : null, r.createdAt ? new Date(r.createdAt).toLocaleDateString() : null, r.isActive ? "Active" : null].filter(Boolean).join(" · ")));
-          b.addEventListener("click", () => { st.pickId = r.id; render(); });
+          b.append(
+            el(
+              "div",
+              "pickMeta",
+              [
+                r.fileType ? r.fileType.toUpperCase() : null,
+                r.createdAt ? new Date(r.createdAt).toLocaleDateString() : null,
+                r.isActive ? "Active" : null,
+              ]
+                .filter(Boolean)
+                .join(" · "),
+            ),
+          );
+          b.addEventListener("click", () => {
+            st.pickId = r.id;
+            render();
+          });
           pick.append(b);
         });
         panel.append(pick);
         const sel = el("div", "row");
-        sel.append(button("Continue to Analysis", continueWithSelection, { disabled: !st.pickId }));
-        sel.append(button("Cancel", () => { st.selecting = false; render(); }, { secondary: true }));
+        sel.append(
+          button("Continue to Analysis", continueWithSelection, {
+            disabled: !st.pickId,
+          }),
+        );
+        sel.append(
+          button(
+            "Cancel",
+            () => {
+              st.selecting = false;
+              render();
+            },
+            { secondary: true },
+          ),
+        );
         panel.append(sel);
         return;
       }
@@ -250,22 +445,49 @@
       const busy = Boolean(st.busy);
       const row = el("div", "row");
       row.append(
-        button(st.busy === "save" ? "Saving…" : st.saved ? (st.saved.duplicate ? "Already saved" : "✓ Saved") : "Save Job", saveJob, { secondary: true, disabled: busy }),
-        button(st.busy === "analyze" ? "Analyzing…" : "Analyze JD", analyze, { secondary: true, disabled: busy }),
+        button(
+          st.busy === "save"
+            ? "Saving…"
+            : st.saved
+              ? st.saved.duplicate
+                ? "Already saved"
+                : "✓ Saved"
+              : "Save Job",
+          saveJob,
+          { secondary: true, disabled: busy },
+        ),
+        button(st.busy === "analyze" ? "Analyzing…" : "Analyze JD", analyze, {
+          secondary: true,
+          disabled: busy,
+        }),
         button("Tailor Resume", tailor, { disabled: busy }),
       );
       panel.append(row);
 
       if (st.busy === "tailor") {
         const ol = el("ol", "steps");
-        const idx = Math.max(0, STAGE_LABELS.findIndex(([k]) => k === st.stage));
-        STAGE_LABELS.slice(0, 5).forEach(([k, label], i) => ol.append(el("li", i < idx ? "done" : i === idx ? "active" : "", (i < idx ? "✓ " : "") + label)));
+        const idx = Math.max(
+          0,
+          STAGE_LABELS.findIndex(([k]) => k === st.stage),
+        );
+        STAGE_LABELS.slice(0, 5).forEach(([k, label], i) =>
+          ol.append(
+            el(
+              "li",
+              i < idx ? "done" : i === idx ? "active" : "",
+              (i < idx ? "✓ " : "") + label,
+            ),
+          ),
+        );
         panel.append(ol);
       }
       if (st.error) {
         const e = el("div", "err");
         e.append(el("div", "", st.error.message));
-        if (st.error.code === "no_resume" || st.error.code === "resume_unreadable") {
+        if (
+          st.error.code === "no_resume" ||
+          st.error.code === "resume_unreadable"
+        ) {
           const a = el("a", "link", "Add your resume in TrackTrail");
           a.addEventListener("click", () => openWeb("/resumes"));
           e.append(a);
@@ -276,26 +498,74 @@
       const a = st.analysis;
       if (a) {
         panel.append(el("div", "label", "Resume match"));
-        panel.append(el("div", "score", a.matchScore === null || a.matchScore === undefined ? "—" : `${a.matchScore}%`));
+        panel.append(
+          el(
+            "div",
+            "score",
+            a.matchScore === null || a.matchScore === undefined
+              ? "—"
+              : `${a.matchScore}%`,
+          ),
+        );
         const chips = el("div", "chips");
         a.requirements.slice(0, MAX_CHIPS).forEach((r) => {
-          const c = el("span", `chip ${r.state}`, `${ICON[r.state]} ${r.requirement}`);
+          const c = el(
+            "span",
+            `chip ${r.state}`,
+            `${ICON[r.state]} ${r.requirement}`,
+          );
           c.title = r.label;
           chips.append(c);
         });
         panel.append(chips);
-        if (a.requirements.length > MAX_CHIPS) panel.append(el("p", "note", `+${a.requirements.length - MAX_CHIPS} more in the full analysis`));
-        panel.append(el("p", "note", "Skills marked ✕ aren't on your resume, so they are never added to it."));
+        if (a.requirements.length > MAX_CHIPS)
+          panel.append(
+            el(
+              "p",
+              "note",
+              `+${a.requirements.length - MAX_CHIPS} more in the full analysis`,
+            ),
+          );
+        panel.append(
+          el(
+            "p",
+            "note",
+            "Skills marked ✕ aren't on your resume, so they are never added to it.",
+          ),
+        );
         const links = el("div", "row");
-        links.append(button("View Full Analysis", () => openWeb(st.version ? `/tailor?version=${st.version.id}` : `/tailor?analysis=${encodeURIComponent(a.jobKey)}${a.resumeId ? `&resume=${a.resumeId}` : ""}`), { secondary: true }));
+        links.append(
+          button(
+            "View Full Analysis",
+            () =>
+              openWeb(
+                st.version
+                  ? `/tailor?version=${st.version.id}`
+                  : `/tailor?analysis=${encodeURIComponent(a.jobKey)}${a.resumeId ? `&resume=${a.resumeId}` : ""}`,
+              ),
+            { secondary: true },
+          ),
+        );
         panel.append(links);
       }
       if (st.version) {
         const n = st.version.changes.length;
         const ok = el("div", "ok");
-        ok.append(el("div", "", n ? `${n} suggested change${n === 1 ? "" : "s"} are ready. Nothing is applied until you review them.` : "No safe improvements were found. Your resume is unchanged."));
+        ok.append(
+          el(
+            "div",
+            "",
+            n
+              ? `${n} suggested change${n === 1 ? "" : "s"} are ready. Nothing is applied until you review them.`
+              : "No safe improvements were found. Your resume is unchanged.",
+          ),
+        );
         panel.append(ok);
-        panel.append(button("Review in TrackTrail", () => openWeb(`/tailor?version=${st.version.id}`)));
+        panel.append(
+          button("Review in TrackTrail", () =>
+            openWeb(`/tailor?version=${st.version.id}`),
+          ),
+        );
       }
     }
 
@@ -305,12 +575,36 @@
       state: () => st,
       open() {
         if (!host.isConnected) doc.body.appendChild(host);
-        chromeApi.storage?.local?.get?.(["tracktrail_theme"], (r) => { panel.classList.toggle("dark", r?.tracktrail_theme === "dark"); });
+        chromeApi.storage?.local?.get?.(["tracktrail_theme"], (r) => {
+          panel.classList.toggle("dark", r?.tracktrail_theme === "dark");
+        });
         render();
       },
-      close() { st.cancelled = true; host.remove(); },
+      close() {
+        st.cancelled = true;
+        host.remove();
+      },
       // the visible posting changed (SPA navigation): forget stale results
-      reset() { st = { ...st, busy: null, analysis: null, version: null, saved: null, error: null, stage: null, detected: null, cancelled: true, resumes: null, resumeId: null, resumeConfirmed: false, selecting: false, pickId: null }; if (host.isConnected) render(); },
+      reset() {
+        st = {
+          ...st,
+          busy: null,
+          analysis: null,
+          version: null,
+          saved: null,
+          error: null,
+          stage: null,
+          detected: null,
+          cancelled: true,
+          resumes: null,
+          resumeId: null,
+          resumeConfirmed: false,
+          selecting: false,
+          pickId: null,
+          manual: { title: "", company: "", description: "" },
+        };
+        if (host.isConnected) render();
+      },
       isOpen: () => host.isConnected,
     };
     return api;

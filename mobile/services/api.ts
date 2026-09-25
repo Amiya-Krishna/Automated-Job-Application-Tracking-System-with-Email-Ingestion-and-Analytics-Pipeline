@@ -118,6 +118,24 @@ api.interceptors.response.use(
     return response;
   },
   (error: AxiosError<ApiErrorResponse>) => {
+    // A request made with `responseType: 'arraybuffer'` (the resume
+    // download/export endpoints — see services/resume.ts) gets its error
+    // body back as raw bytes too, not parsed JSON, so `error.response.data`
+    // would otherwise be an ArrayBuffer instead of `{ message, code }` and
+    // every branch below that reads `data?.message`/`data?.code` would see
+    // nothing. Decode it back to JSON here, once, generically, so this
+    // interceptor keeps working for any current or future binary endpoint
+    // without each caller re-implementing the same decode.
+    if (error.response?.data instanceof ArrayBuffer) {
+      try {
+        const text = String.fromCharCode(...new Uint8Array(error.response.data));
+        error.response.data = JSON.parse(text) as ApiErrorResponse;
+      } catch {
+        // Not JSON (e.g. an HTML error page from a proxy) — leave as-is;
+        // the generic fallback messages below still apply.
+      }
+    }
+
     // --- TEMP DIAGNOSTIC (dev-only) — remove once the mobile login issue
     // is confirmed fixed. Logs exactly the fields needed to tell "never
     // left the device" (no error.request) apart from "sent but no reply"

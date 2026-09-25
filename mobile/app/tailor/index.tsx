@@ -1,4 +1,3 @@
-import * as WebBrowser from 'expo-web-browser';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Share, StyleSheet, TextInput, View } from 'react-native';
@@ -10,7 +9,16 @@ import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useApproveVersion, useJobAnalysis, usePreviewVersion, useResumes, useTailoring, useVersion } from '@/hooks/use-resume';
+import {
+    useApproveVersion,
+    useCachedMatchAnalysis,
+    useDownloadResumeExport,
+    useJobAnalysis,
+    usePreviewVersion,
+    useResumes,
+    useTailoring,
+    useVersion,
+} from '@/hooks/use-resume';
 import { useTheme } from '@/hooks/use-theme';
 import { STAGES, jobFromKey } from '@/services/resume';
 import { ApiError } from '@/types/api';
@@ -88,29 +96,51 @@ function ChangeCard({ change, decision, reviewMode, readOnly, onDecide }: {
 
 export default function TailorScreen() {
   const theme = useTheme();
-  const { jobKey, versionId: versionParam } = useLocalSearchParams<{ jobKey?: string; versionId?: string }>();
+  const {
+    jobKey,
+    versionId: versionParam,
+    analysisKey: analysisParam,
+    resumeId: resumeParam,
+  } = useLocalSearchParams<{ jobKey?: string; versionId?: string; analysisKey?: string; resumeId?: string }>();
 
   const [versionId, setVersionId] = useState<number | null>(versionParam ? Number(versionParam) : null);
-  const [activeJob, setActiveJob] = useState<ResumeJobInput | null>(() => (versionParam ? null : jobFromKey(jobKey)));
+  const [activeJob, setActiveJob] = useState<ResumeJobInput | null>(() =>
+    versionParam || analysisParam ? null : jobFromKey(jobKey),
+  );
   const [paste, setPaste] = useState({ title: '', company: '', description: '' });
+  const [selectedResumeId, setSelectedResumeId] = useState<number | null>(resumeParam ? Number(resumeParam) : null);
   const [reviewMode, setReviewMode] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, ReviewDecision>>({});
   const [previewText, setPreviewText] = useState<string | null>(null);
 
   const resumesQ = useResumes();
-  const analysisQ = useJobAnalysis(activeJob);
+  useEffect(() => {
+    if (selectedResumeId !== null) return;
+    if (resumesQ.data?.activeResumeId) setSelectedResumeId(resumesQ.data.activeResumeId);
+  }, [resumesQ.data?.activeResumeId, selectedResumeId]);
+
+  const analysisQ = useJobAnalysis(activeJob, selectedResumeId ?? undefined);
+  // Read-only entry point (mirrors the web client's `?analysis=&resume=`
+  // deep link — see ResumeTailoring.jsx): re-use the server's already
+  // computed, deterministic analysis for a job instead of paying for a
+  // fresh `POST /resume/analyze` run.
+  const cachedAnalysisQ = useCachedMatchAnalysis(analysisParam ?? null, selectedResumeId ?? (resumeParam ? Number(resumeParam) : undefined));
   const versionQ = useVersion(versionId);
   const tailoring = useTailoring();
   const approve = useApproveVersion();
   const preview = usePreviewVersion();
+  const exportVersion = useDownloadResumeExport();
 
   const version = versionQ.data ?? null;
   // the resume this job is tailored with: the version's own resume, else the backend's active one
-  const usedResume = (version ? resumesQ.data?.resumes.find((r) => r.id === version.resumeId) : resumesQ.data?.resumes.find((r) => r.isActive)) ?? null;
-  const analysis = version?.analysis ?? analysisQ.data ?? null;
+  const usedResume = (version ? resumesQ.data?.resumes.find((r) => r.id === version.resumeId) : resumesQ.data?.resumes.find((r) => r.id === (selectedResumeId ?? resumesQ.data?.activeResumeId))) ?? null;
+  const analysis = version?.analysis ?? analysisQ.data ?? cachedAnalysisQ.data ?? null;
   const draft = version?.status === 'draft';
-  const apiCode = (analysisQ.error instanceof ApiError ? analysisQ.error.apiCode : null) ?? (tailoring.error?.apiCode ?? null);
-  const errorMessage = (analysisQ.error as Error | null)?.message ?? tailoring.error?.message ?? null;
+  const apiCode =
+    (analysisQ.error instanceof ApiError ? analysisQ.error.apiCode : null) ??
+    (cachedAnalysisQ.error instanceof ApiError ? cachedAnalysisQ.error.apiCode : null) ??
+    (tailoring.error?.apiCode ?? null);
+  const errorMessage = (analysisQ.error as Error | null)?.message ?? (cachedAnalysisQ.error as Error | null)?.message ?? tailoring.error?.message ?? null;
 
   // Live preview while reviewing: the SERVER applies the decisions (the app never re-implements it).
   const previewMutate = preview.mutate;
@@ -122,13 +152,25 @@ export default function TailorScreen() {
 
   const jobForTailoring = useMemo<ResumeJobInput | null>(() => {
     if (activeJob) return activeJob;
-    if (!version) return null;
-    return jobFromKey(version.jobKey) ?? {
-      title: version.targetTitle,
-      company: version.targetCompany,
-      description: version.analysis.jd.description,
-    };
-  }, [activeJob, version]);
+    if (version) {
+      return jobFromKey(version.jobKey) ?? {
+        title: version.targetTitle,
+        company: version.targetCompany,
+        description: version.analysis.jd.description,
+      };
+    }
+    // Ad-hoc job reached via the cached-analysis deep link (analysisKey):
+    // re-use the JD text the server already stored with that analysis.
+    if (analysisParam && cachedAnalysisQ.data?.jd) {
+      const { title, company, location, description } = cachedAnalysisQ.data.jd;
+      return { title, company, location, description, sourceName: 'extension' };
+    }
+    return null;
+  }, [activeJob, version, analysisParam, cachedAnalysisQ.data]);
+
+  const currentResumeId = selectedResumeId ?? resumesQ.data?.activeResumeId ?? null;
+  const chooseableResumes = resumesQ.data?.resumes ?? [];
+  const canChooseResume = chooseableResumes.length > 0;
 
   const submitPaste = () => {
     const description = paste.description.trim();
@@ -138,7 +180,7 @@ export default function TailorScreen() {
 
   const generate = async (regenerate = false) => {
     if (!jobForTailoring) return;
-    const id = await tailoring.run(jobForTailoring, regenerate);
+    const id = await tailoring.run(jobForTailoring, regenerate, currentResumeId ?? undefined);
     if (id !== null) {
       setVersionId(id);
       setDecisions({});
@@ -168,6 +210,7 @@ export default function TailorScreen() {
   const needsResume = apiCode === 'no_resume' || apiCode === 'resume_unreadable';
 
   if (versionParam && versionQ.isLoading) return <LoadingState label="Loading tailored resume…" />;
+  if (!versionParam && analysisParam && cachedAnalysisQ.isLoading) return <LoadingState label="Loading analysis…" />;
 
   return (
     <ThemedView style={styles.container}>
@@ -187,6 +230,34 @@ export default function TailorScreen() {
                 Resume: {usedResume.name} <ThemedText type="linkPrimary">Change</ThemedText>
               </ThemedText>
             </Pressable>
+          ) : null}
+
+          {canChooseResume && !version ? (
+            <Section title="Select resume for this job">
+              <ThemedText type="small" themeColor="textSecondary">
+                The backend will analyze and tailor only the resume you choose here.
+              </ThemedText>
+              <View style={styles.resumeList}>
+                {chooseableResumes.map((resume) => {
+                  const selected = (selectedResumeId ?? resumesQ.data?.activeResumeId) === resume.id;
+                  return (
+                    <Pressable
+                      key={resume.id}
+                      accessibilityRole="button"
+                      onPress={() => setSelectedResumeId(resume.id)}
+                      style={[
+                        styles.resumeOption,
+                        { borderColor: selected ? theme.tint : theme.border, backgroundColor: selected ? `${theme.tint}14` : 'transparent' },
+                      ]}>
+                      <ThemedText type="smallBold">{resume.name}</ThemedText>
+                      <ThemedText type="small" themeColor="textSecondary">
+                        {[resume.fileType ? resume.fileType.toUpperCase() : null, resume.isActive ? 'Active' : 'Available'].filter(Boolean).join(' · ')}
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Section>
           ) : null}
 
           {analysisQ.isFetching && !analysis ? <ActivityIndicator color={theme.tint} /> : null}
@@ -351,7 +422,21 @@ export default function TailorScreen() {
                 <Section title="Export">
                   <View style={styles.row}>
                     <Button label="Share as text" onPress={() => Share.share({ title: version.label, message: version.resumeText })} />
-                    {WEB_URL ? <Button label="PDF / Word on web" variant="secondary" onPress={() => WebBrowser.openBrowserAsync(`${WEB_URL}/tailor?version=${version.id}`)} /> : null}
+                    {(['pdf', 'docx', 'txt'] as const).map((format) => (
+                      <Button
+                        key={format}
+                        label={format.toUpperCase()}
+                        variant="secondary"
+                        loading={exportVersion.isPending && exportVersion.variables?.format === format}
+                        disabled={exportVersion.isPending}
+                        onPress={() =>
+                          exportVersion.mutate(
+                            { id: version.id, format },
+                            { onError: (e) => Alert.alert('Export failed', e instanceof ApiError ? e.message : 'Please try again.') },
+                          )
+                        }
+                      />
+                    ))}
                     <Button label="Regenerate" variant="ghost" onPress={() => generate(true)} loading={tailoring.isRunning} />
                   </View>
                 </Section>
@@ -372,6 +457,8 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: Spacing.two, paddingVertical: Spacing.half },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  resumeList: { gap: Spacing.two },
+  resumeOption: { borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, gap: Spacing.half },
   steps: { gap: Spacing.one },
   banner: { borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, backgroundColor: 'transparent' },
   input: { borderWidth: 1, borderRadius: Spacing.two, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },

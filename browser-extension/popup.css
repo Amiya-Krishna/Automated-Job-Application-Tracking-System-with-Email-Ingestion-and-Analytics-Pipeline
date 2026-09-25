@@ -359,6 +359,25 @@ button.secondary:hover {
   color: var(--muted);
   margin-top: 4px;
   line-height: 1.4;
+  cursor: pointer;
+}
+
+.jobItem-notes-text:hover {
+  text-decoration: underline;
+}
+
+.jobItem-notes-input {
+  width: 100%;
+  font: inherit;
+  font-size: 11px;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.jobItem-notes-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .jobItem-actions {

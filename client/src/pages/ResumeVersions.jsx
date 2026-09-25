@@ -118,11 +118,8 @@ function ResumeVersions() {
                     {r.isActive && [["pdf", "PDF"], ["docx", "Word"], ["txt", "Text"]].map(([f, l]) => (
                       <button key={f} onClick={() => exportOriginal(f)} className="rounded-full border border-slate-200 dark:border-slate-700 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200 hover:border-cyan-400">{l}</button>
                     ))}
-                    {r.sourceType === "profile_text" ? (
-                      <Link to="/profile" className="ml-auto text-xs font-semibold text-cyan-700 dark:text-cyan-400 hover:underline">Edit profile text →</Link>
-                    ) : (
-                      <button onClick={() => remove(r)} className="ml-auto rounded-full border border-rose-300 px-3.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950">Delete</button>
-                    )}
+                    {r.sourceType === "profile_text" && <Link to="/profile" className="text-xs font-semibold text-cyan-700 dark:text-cyan-400 hover:underline">Edit profile text →</Link>}
+                    <button onClick={() => remove(r)} className="ml-auto rounded-full border border-rose-300 px-3.5 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950">Delete</button>
                   </div>
                 </article>
               ))}

@@ -59,6 +59,11 @@ export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl }) {
       return json("/upload", { method: "POST", body: form });
     },
     getVersion: (id) => json(`/tailored/${id}`),
+    // Flat, all-resumes view (GET /api/resume/versions) — distinct from the
+    // per-resume `resumes[].versions` already nested in listResumes(), which
+    // is what each resume card's "Versions" toggle renders. This one powers
+    // a single "Recent tailored versions" list across every resume.
+    listVersions: () => json("/versions"),
     exportVersion: (id, format) => blob(`/versions/${id}/export`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ format }) }),
     downloadOriginal: (id) => blob(`/original/file?resumeId=${id}`),
   };

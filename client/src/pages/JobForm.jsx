@@ -4,6 +4,7 @@ import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 import { parseJobEmail } from "../utils/emailParser";
+import { emitNotificationEvent } from "../services/notificationEvents";
 
 const STATUS_OPTIONS = ["Applied", "Interview", "Offer", "Rejected"];
 
@@ -127,9 +128,31 @@ function JobForm() {
       if (isEditMode) {
         await api.put(`/jobs/${id}`, form);
         toast.success("Job updated");
+        // Real event, not a fabricated one: fires from the actual edit the
+        // user just saved, with the actual role/company/status they set —
+        // mirrors mobile's useUpdateApplication (use-applications.ts),
+        // which emits under the same condition (status+role+company all
+        // present together, i.e. a full record edit, not a partial
+        // engine-application status update).
+        if (form.status && form.role && form.company) {
+          emitNotificationEvent({
+            type: "application_status_changed",
+            role: form.role,
+            company: form.company,
+            status: form.status,
+            interviewDate: form.interviewDate || null,
+            trackedJobId: Number(id),
+          });
+        }
       } else {
-        await api.post("/jobs", form);
+        const { data } = await api.post("/jobs", form);
         toast.success("Job added to your pipeline");
+        emitNotificationEvent({
+          type: "application_submitted",
+          role: form.role,
+          company: form.company,
+          trackedJobId: data.id,
+        });
       }
 
       navigate("/dashboard");

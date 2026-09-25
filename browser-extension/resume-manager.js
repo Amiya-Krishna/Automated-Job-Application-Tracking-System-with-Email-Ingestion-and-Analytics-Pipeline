@@ -42,8 +42,9 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
     list: $("resumesList"), empty: $("resumesEmpty"), error: $("resumesError"), msg: $("resumesMsg"),
     uploadBtn: $("resumeUploadBtn"), fileInput: $("resumeFileInput"), refresh: $("resumesRefresh"),
     viewer: $("resumeViewer"), viewerTitle: $("resumeViewerTitle"), viewerMeta: $("resumeViewerMeta"), viewerBody: $("resumeViewerBody"), viewerActions: $("resumeViewerActions"), viewerClose: $("resumeViewerClose"),
+    allVersionsList: $("allVersionsList"), allVersionsEmpty: $("allVersionsEmpty"),
   };
-  const state = { data: null, expanded: new Set(), busy: false };
+  const state = { data: null, allVersions: null, expanded: new Set(), busy: false };
 
   const el = (tag, cls, text) => {
     const n = doc.createElement(tag);
@@ -111,13 +112,28 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
     });
   }
 
+  async function exportOriginalPdf() {
+    await guarded(async () => {
+      saveBlob(...(await api.exportVersion("original", "pdf")));
+      message("Exported the active original resume as PDF.");
+    });
+  }
+
   // ------------------------------------------------------------ actions
   const activate = (r) => guarded(async () => { state.data = await api.activate(r.id); message(`“${r.name}” will now be used for tailoring.`); });
   const remove = (r) => {
     const n = r.versionCount;
     const ok = confirmFn(`Delete “${r.name}”?${n ? ` This also deletes its ${n} tailored version${n === 1 ? "" : "s"}.` : ""} This cannot be undone.`);
     if (!ok) return undefined;
-    return guarded(async () => { const out = await api.remove(r.id); state.data = out; message(`Deleted “${r.name}”${out.deletedVersions ? ` and ${out.deletedVersions} tailored version(s)` : ""}.`); });
+    return guarded(async () => {
+      const out = await api.remove(r.id);
+      state.data = out;
+      // The resume's versions were deleted server-side too — drop them from
+      // the flat "Recent tailored versions" list rather than waiting for a
+      // manual refresh to notice they're gone.
+      if (state.allVersions) state.allVersions = { ...state.allVersions, versions: state.allVersions.versions.filter((v) => v.resumeId !== r.id) };
+      message(`Deleted “${r.name}”${out.deletedVersions ? ` and ${out.deletedVersions} tailored version(s)` : ""}.`);
+    });
   };
   const toggleVersions = (r) => { state.expanded.has(r.id) ? state.expanded.delete(r.id) : state.expanded.add(r.id); render(); };
 
@@ -139,6 +155,24 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
     return row;
   }
 
+  // Flat, cross-resume row for the "Recent tailored versions" list (state.allVersions,
+  // from GET /api/resume/versions) — same actions as versionRow, plus which resume it
+  // came from, since that context isn't implicit here the way it is inside a resume card.
+  function flatVersionRow(v, resumeName) {
+    const row = versionRow(v);
+    const title = row.querySelector(".resumeVersionTitle");
+    if (title && resumeName) title.textContent = `${resumeName} · ${title.textContent}`;
+    return row;
+  }
+
+  function renderAllVersions() {
+    if (!els.allVersionsList) return;
+    const versions = state.allVersions?.versions || [];
+    const nameOf = (resumeId) => state.data?.resumes.find((r) => r.id === resumeId)?.name;
+    els.allVersionsList.replaceChildren(...versions.map((v) => flatVersionRow(v, nameOf(v.resumeId))));
+    if (els.allVersionsEmpty) els.allVersionsEmpty.classList.toggle("hidden", state.allVersions === null || versions.length > 0);
+  }
+
   function card(r) {
     const c = el("article", `resumeCard${r.isActive ? " resumeCardActive" : ""}`);
     c.dataset.resumeId = String(r.id);
@@ -156,9 +190,9 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
     const actions = el("div", "resumeActions");
     actions.append(btn("View", () => viewResume(r)));
     actions.append(btn(r.isActive ? "In use for tailoring" : "Use for Tailoring", () => activate(r), { disabled: r.isActive, cls: r.isActive ? "ghost-btn" : "ghost-btn ghost-btn-primary" }));
+    if (r.isActive) actions.append(btn("Export PDF", exportOriginalPdf));
     actions.append(btn(`${state.expanded.has(r.id) ? "Hide" : "Versions"}${r.versionCount ? ` (${r.versionCount})` : ""}`, () => toggleVersions(r)));
-    const isText = r.sourceType === "profile_text";
-    actions.append(btn("Delete", () => remove(r), { cls: "ghost-btn ghost-btn-danger", disabled: isText, title: isText ? "This resume comes from your Profile text. Edit or clear it in Profile." : undefined }));
+    actions.append(btn("Delete", () => remove(r), { cls: "ghost-btn ghost-btn-danger" }));
     c.append(actions);
 
     if (state.expanded.has(r.id)) {
@@ -181,10 +215,15 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
     els.empty.classList.toggle("hidden", !state.data || resumes.length > 0);
     els.uploadBtn.disabled = state.busy;
     els.refresh.disabled = state.busy;
+    renderAllVersions();
   }
 
   async function load() {
-    await guarded(async () => { state.data = await api.listResumes(); });
+    await guarded(async () => {
+      const [resumes, allVersions] = await Promise.all([api.listResumes(), api.listVersions ? api.listVersions() : Promise.resolve(null)]);
+      state.data = resumes;
+      state.allVersions = allVersions;
+    });
   }
 
   // ------------------------------------------------------------- wiring

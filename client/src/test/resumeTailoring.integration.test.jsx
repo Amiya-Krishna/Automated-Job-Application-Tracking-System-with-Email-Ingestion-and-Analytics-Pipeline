@@ -42,6 +42,7 @@ function makePdf(resumeText) {
 let ResumeTailoring;
 let ResumeVersions;
 let ThemeProvider;
+let NotificationProvider;
 const servers = [];
 
 async function boot(opts = {}, { resume = fx.RICH_RESUME, job = fx.STRUCTURED_JD } = {}) {
@@ -56,19 +57,22 @@ async function boot(opts = {}, { resume = fx.RICH_RESUME, job = fx.STRUCTURED_JD
   ({ default: ResumeTailoring } = await import("../pages/ResumeTailoring.jsx"));
   ({ default: ResumeVersions } = await import("../pages/ResumeVersions.jsx"));
   ({ ThemeProvider } = await import("../context/ThemeContext.jsx"));
+  ({ NotificationProvider } = await import("../context/NotificationContext.jsx"));
   return { app, tracked };
 }
 
 const mount = (path) =>
   render(
     <ThemeProvider>
-      <MemoryRouter initialEntries={[path]}>
-        <Routes>
-          <Route path="/tailor" element={<ResumeTailoring />} />
-          <Route path="/resumes" element={<ResumeVersions />} />
-          <Route path="/profile" element={<div>profile</div>} />
-        </Routes>
-      </MemoryRouter>
+      <NotificationProvider>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/tailor" element={<ResumeTailoring />} />
+            <Route path="/resumes" element={<ResumeVersions />} />
+            <Route path="/profile" element={<div>profile</div>} />
+          </Routes>
+        </MemoryRouter>
+      </NotificationProvider>
     </ThemeProvider>,
   );
 
@@ -267,8 +271,8 @@ describe("Same backend resumes everywhere (web)", () => {
     await user.click(within(cardEl).getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByTestId(`resume-${meera.id}`)).toBeNull());
     expect(app.repo._db.resumes).toHaveLength(1);
-    // the profile-text resume has no Delete button (edit the profile text instead)
-    expect(within(screen.getAllByTestId(/^resume-\d+$/)[0]).queryByRole("button", { name: "Delete" })).toBeNull();
+    // profile-text resumes are removable too; the underlying profile text is preserved.
+    expect(within(screen.getAllByTestId(/^resume-\d+$/)[0]).getByRole("button", { name: "Delete" })).not.toBeNull();
     confirm.mockRestore();
   });
 

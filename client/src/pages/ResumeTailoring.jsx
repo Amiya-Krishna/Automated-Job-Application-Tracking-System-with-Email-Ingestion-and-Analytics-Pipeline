@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import Navbar from "../components/Navbar";
 import { EmptyState, ErrorState, LoadingSkeleton } from "../components/StateViews";
+import { emitNotificationEvent } from "../services/notificationEvents";
 import {
   STAGES,
   analyzeJob,
@@ -230,6 +231,11 @@ function ResumeTailoring() {
       const session = await startTailoring({ job: jobPayload(), regenerate: regenerate || undefined, ...(resumeParam ? { resumeId: resumeParam } : {}) });
       const done = await waitForSession(session.id, { onUpdate: (s) => setStage(s.stage), signal: ctrl.signal });
       setNotes(done.warnings || []);
+      // Real event: fires once the session has an actual tailored version
+      // to show, same condition mobile's useTailoring (use-resume.ts) uses.
+      if (done.versionId !== null && done.versionId !== undefined) {
+        emitNotificationEvent({ type: "resume_tailored", versionId: done.versionId });
+      }
       const v = await getVersion(done.versionId);
       setVersion(v);
       setAnalysis(v.analysis);

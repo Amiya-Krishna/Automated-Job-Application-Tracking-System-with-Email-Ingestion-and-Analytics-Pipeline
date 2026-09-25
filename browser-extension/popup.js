@@ -36,6 +36,7 @@ const registerBtn = document.getElementById("registerBtn");
 const registerError = document.getElementById("registerError");
 const toggleAuthMode = document.getElementById("toggleAuthMode");
 const authHint = document.getElementById("authHint");
+const forgotPasswordLink = document.getElementById("forgotPasswordLink");
 
 // ---------- state ----------
 let allJobs = [];
@@ -179,12 +180,52 @@ function renderJobs() {
     top.appendChild(badge);
     li.appendChild(top);
 
-    if (job.notes) {
-      const notes = document.createElement("div");
-      notes.className = "jobItem-notes";
-      notes.textContent = job.notes;
-      li.appendChild(notes);
-    }
+    // Notes: click to edit inline (same UPDATE_JOB message the status
+    // select already uses — no new backend/message type needed).
+    const notesWrap = document.createElement("div");
+    notesWrap.className = "jobItem-notes";
+    const notesText = document.createElement("span");
+    notesText.className = "jobItem-notes-text";
+    notesText.textContent = job.notes || "+ Add note";
+    notesText.title = "Click to edit";
+    notesWrap.appendChild(notesText);
+    notesWrap.addEventListener("click", () => {
+      const textarea = document.createElement("textarea");
+      textarea.className = "jobItem-notes-input";
+      textarea.value = job.notes || "";
+      textarea.rows = 2;
+      const saveBtn = document.createElement("button");
+      saveBtn.type = "button";
+      saveBtn.className = "ghost-btn";
+      saveBtn.textContent = "Save";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.type = "button";
+      cancelBtn.className = "ghost-btn";
+      cancelBtn.textContent = "Cancel";
+      const row = document.createElement("div");
+      row.className = "jobItem-notes-actions";
+      row.append(saveBtn, cancelBtn);
+      notesWrap.replaceChildren(textarea, row);
+      textarea.focus();
+
+      cancelBtn.addEventListener("click", () => {
+        notesWrap.replaceChildren(notesText);
+      });
+      saveBtn.addEventListener("click", async () => {
+        const value = textarea.value.trim();
+        saveBtn.disabled = true;
+        const result = await sendMessage({ type: "UPDATE_JOB", id: job.id, updates: { notes: value } });
+        saveBtn.disabled = false;
+        if (result?.ok) {
+          job.notes = value;
+          notesText.textContent = value || "+ Add note";
+          notesWrap.replaceChildren(notesText);
+        } else {
+          jobsError.textContent = result?.error || "Couldn't save note.";
+        }
+      });
+    });
+    li.appendChild(notesWrap);
 
     const actions = document.createElement("div");
     actions.className = "jobItem-actions";
@@ -342,6 +383,16 @@ function renderStats() {
 // ---------- open full dashboard ----------
 openDashboardBtn?.addEventListener("click", () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html") });
+});
+
+// Password reset isn't duplicated here — it reuses the web app's existing
+// /forgot-password -> email link -> /reset-password flow (see
+// client/src/pages/ForgotPassword.jsx and ResetPassword.jsx), the same
+// backend endpoints (POST /api/auth/forgot-password, /reset-password)
+// the web client already calls. The extension just opens that page.
+forgotPasswordLink?.addEventListener("click", async () => {
+  const { url } = await sendMessage({ type: "GET_WEB_URL" });
+  chrome.tabs.create({ url: `${(url || "").replace(/\/+$/, "")}/forgot-password` });
 });
 
 // ---------- session / login / logout ----------

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { clearStoredToken } from "../utils/auth";
 import toast from "react-hot-toast";
 import ThemeToggle from "./ThemeToggle";
+import NotificationBell from "./NotificationBell";
 
 // Nav restructured around the user's workflow (Overview / Job Discovery /
 // Matched Jobs / Applied Jobs / Companies / Sources / Analytics / Profile)
@@ -151,6 +152,8 @@ function Navbar() {
 
           <ThemeToggle className="ml-1" />
 
+          <NotificationBell />
+
           <button
             onClick={logout}
             className="ml-1 rounded-full border border-slate-200 dark:border-slate-700 px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-300 transition hover:border-red-200 dark:hover:border-red-900 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400"
@@ -161,6 +164,7 @@ function Navbar() {
 
         <div className="flex items-center gap-2 sm:hidden">
           <ThemeToggle />
+          <NotificationBell />
           <button
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700"
             onClick={() => setMenuOpen((prev) => !prev)}

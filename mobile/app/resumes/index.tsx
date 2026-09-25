@@ -11,7 +11,7 @@ import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { useActivateResume, useDeleteResume, useResumes, useUploadResume } from '@/hooks/use-resume';
+import { useActivateResume, useDeleteResume, useDownloadOriginalResume, useDownloadResumeExport, useResumeDetail, useResumes, useUploadResume } from '@/hooks/use-resume';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
 import type { ResumeListItem, VersionSummary } from '@/types/resume';
@@ -43,6 +43,11 @@ function VersionRow({ v }: { v: VersionSummary }) {
 function ResumeCard({ r, busy, onUse, onDelete }: { r: ResumeListItem; busy: boolean; onUse: () => void; onDelete: () => void }) {
   const theme = useTheme();
   const [open, setOpen] = useState(false);
+  const [viewingText, setViewingText] = useState(false);
+  const detail = useResumeDetail(viewingText ? r.id : null);
+  const download = useDownloadOriginalResume();
+  const exportOriginal = useDownloadResumeExport();
+
   return (
     <Card style={[styles.card, r.isActive ? { borderColor: theme.tint, borderWidth: 1 } : null]}>
       <View style={styles.headRow}>
@@ -59,13 +64,45 @@ function ResumeCard({ r, busy, onUse, onDelete }: { r: ResumeListItem; busy: boo
 
       <View style={styles.row}>
         <Button label={r.isActive ? 'In use for tailoring' : 'Use for tailoring'} variant={r.isActive ? 'secondary' : 'primary'} disabled={r.isActive || busy} onPress={onUse} />
+        <Button label={`${viewingText ? 'Hide text' : 'View text'}`} variant="ghost" onPress={() => setViewingText((v) => !v)} />
+        {r.hasFile ? (
+          <Button
+            label={download.isPending ? 'Preparing…' : 'Download original'}
+            variant="ghost"
+            disabled={download.isPending}
+            onPress={() => download.mutate(r.id, { onError: (e) => Alert.alert('Download failed', errMsg(e)) })}
+          />
+        ) : null}
+        {r.isActive ? (
+          <Button
+            label={exportOriginal.isPending ? 'Preparing PDF…' : 'Export PDF'}
+            variant="ghost"
+            disabled={exportOriginal.isPending}
+            onPress={() => exportOriginal.mutate({ id: 'original', format: 'pdf' }, { onError: (e) => Alert.alert('Export failed', errMsg(e)) })}
+          />
+        ) : null}
         <Button label={`${open ? 'Hide' : 'Versions'}${r.versionCount ? ` (${r.versionCount})` : ''}`} variant="ghost" onPress={() => setOpen((v) => !v)} />
-        {r.sourceType === 'profile_text' ? (
-          <Button label="Edit profile text" variant="ghost" onPress={() => router.push('/account/edit')} />
-        ) : (
-          <Button label="Delete" variant="danger" disabled={busy} onPress={onDelete} />
-        )}
+        {r.sourceType === 'profile_text' ? <Button label="Edit profile text" variant="ghost" onPress={() => router.push('/account/edit')} /> : null}
+        <Button label="Delete" variant="danger" disabled={busy} onPress={onDelete} />
       </View>
+
+      {viewingText ? (
+        <ThemedView type="backgroundElement" style={styles.textPreview}>
+          {detail.isLoading ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              Loading…
+            </ThemedText>
+          ) : detail.isError ? (
+            <ThemedText type="small" themeColor="danger">
+              {errMsg(detail.error)}
+            </ThemedText>
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary">
+              {detail.data?.resumeText || 'No parsed text available.'}
+            </ThemedText>
+          )}
+        </ThemedView>
+      ) : null}
 
       {open ? (
         <View style={styles.versions}>
@@ -178,5 +215,6 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', gap: Spacing.two, alignItems: 'flex-start' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   versions: { gap: Spacing.two },
+  textPreview: { borderRadius: Spacing.two, padding: Spacing.three },
   versionRow: { borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, gap: Spacing.one },
 });
