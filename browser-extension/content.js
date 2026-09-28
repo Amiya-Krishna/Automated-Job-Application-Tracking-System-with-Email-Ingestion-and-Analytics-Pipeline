@@ -17,6 +17,31 @@
 // TrackTrail" button plus the new Resume Match panel launcher.
 const detectJob = () => TrackTrailExtract.detectJob(document, window.location);
 
+// Lets the popup ask "is there a job on the tab the user currently has
+// open?" without duplicating any extraction logic — same detectJob() the
+// on-page button uses, just returned over the message channel instead of
+// rendered into a floating button. Only registered on pages this content
+// script actually runs on (see manifest.json's content_scripts.matches),
+// so a non-job-site tab simply has no listener and the popup treats that
+// as chrome.runtime.lastError / "unsupported page" rather than faking a result.
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === "TT_GET_DETECTED_JOB") {
+    const live = detectJob();
+    // Same "is there actually a job here" check injectButton() uses — an
+    // empty company AND role means nothing was found on this page, so the
+    // popup should show its own empty state rather than a fabricated one.
+    const found = Boolean(live.company || live.role);
+    sendResponse({
+      ok: true,
+      found,
+      job: found ? live : null,
+      saveJob: found ? TrackTrailExtract.toSaveJob(live, window.location.hostname) : null,
+    });
+    return false; // synchronous response, no need to keep the channel open
+  }
+  return false;
+});
+
 let panel = null;
 
 function injectPanelLauncher() {

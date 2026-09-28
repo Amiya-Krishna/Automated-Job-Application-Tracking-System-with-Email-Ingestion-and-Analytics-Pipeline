@@ -68,33 +68,51 @@ function Companies() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    <th className="px-5 py-3">Company</th>
-                    <th className="px-5 py-3">Domain</th>
-                    <th className="px-5 py-3 text-right">Jobs scraped</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {companies.map((c) => (
-                    <tr
-                      key={c.id}
-                      className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/60"
-                    >
-                      <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-slate-100">{c.name}</td>
-                      <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{c.domain || "—"}</td>
-                      <td className="px-5 py-3.5 text-right">
-                        <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
-                          {c.jobCount}
-                        </span>
-                      </td>
+            <>
+              {/* Mobile: card list */}
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 sm:hidden">
+                {companies.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{c.name}</p>
+                      <p className="truncate text-sm text-slate-500 dark:text-slate-400">{c.domain || "—"}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                      {c.jobCount}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto sm:block">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      <th className="px-5 py-3">Company</th>
+                      <th className="px-5 py-3">Domain</th>
+                      <th className="px-5 py-3 text-right">Jobs scraped</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {companies.map((c) => (
+                      <tr
+                        key={c.id}
+                        className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/60"
+                      >
+                        <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-slate-100">{c.name}</td>
+                        <td className="px-5 py-3.5 text-slate-500 dark:text-slate-400">{c.domain || "—"}</td>
+                        <td className="px-5 py-3.5 text-right">
+                          <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                            {c.jobCount}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
 

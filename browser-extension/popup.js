@@ -31,6 +31,12 @@ const tabPanels = document.querySelectorAll(".tabPanel");
 
 const openDashboardBtn = document.getElementById("openDashboardBtn");
 
+const detectedJobCard = document.getElementById("detectedJobCard");
+const detectedJobTitle = document.getElementById("detectedJobTitle");
+const detectedJobSub = document.getElementById("detectedJobSub");
+const detectedJobSaveBtn = document.getElementById("detectedJobSaveBtn");
+const detectedJobHint = document.getElementById("detectedJobHint");
+
 const registerForm = document.getElementById("registerForm");
 const registerBtn = document.getElementById("registerBtn");
 const registerError = document.getElementById("registerError");
@@ -392,7 +398,61 @@ openDashboardBtn?.addEventListener("click", () => {
 // the web client already calls. The extension just opens that page.
 forgotPasswordLink?.addEventListener("click", async () => {
   const { url } = await sendMessage({ type: "GET_WEB_URL" });
-  chrome.tabs.create({ url: `${(url || "").replace(/\/+$/, "")}/forgot-password` });
+  // ?source=extension tells the web Forgot/Reset Password pages (and,
+  // via the forgot-password request they make, the backend — see
+  // server/routes/authRoutes.js) that this request started in the
+  // extension, so the emailed link comes back branded "TrackTrail
+  // Extension · Reset Password" with copy that sends the user back here
+  // afterward, instead of the plain web flow.
+  chrome.tabs.create({ url: `${(url || "").replace(/\/+$/, "")}/forgot-password?source=extension` });
+});
+
+// ---------- detected job (current tab) ----------
+let currentDetectedSaveJob = null;
+
+async function loadDetectedJob() {
+  detectedJobCard.classList.add("hidden");
+  detectedJobHint.classList.add("hidden");
+  currentDetectedSaveJob = null;
+
+  const result = await sendMessage({ type: "GET_DETECTED_JOB" });
+
+  if (!result?.ok || !result.supported) {
+    detectedJobHint.textContent = "Open a LinkedIn or Indeed job page to add it here in one tap.";
+    detectedJobHint.classList.remove("hidden");
+    return;
+  }
+
+  if (!result.found || !result.job) {
+    detectedJobHint.textContent = "No job detected on this page yet — open a specific listing.";
+    detectedJobHint.classList.remove("hidden");
+    return;
+  }
+
+  currentDetectedSaveJob = result.saveJob;
+  detectedJobTitle.textContent = result.job.role || "Untitled role";
+  detectedJobSub.textContent = result.job.company ? `at ${result.job.company}` : "Company not detected";
+  detectedJobCard.classList.remove("hidden");
+  detectedJobCard.classList.remove("saved");
+  detectedJobSaveBtn.disabled = false;
+  detectedJobSaveBtn.textContent = "Add job";
+}
+
+detectedJobSaveBtn.addEventListener("click", async () => {
+  if (!currentDetectedSaveJob) return;
+  detectedJobSaveBtn.disabled = true;
+  detectedJobSaveBtn.textContent = "Adding...";
+
+  const result = await sendMessage({ type: "SAVE_JOB", job: currentDetectedSaveJob });
+
+  if (result?.ok) {
+    detectedJobSaveBtn.textContent = result.duplicate ? "Already added" : "✓ Added";
+    detectedJobCard.classList.add("saved");
+    await loadJobs();
+  } else {
+    detectedJobSaveBtn.disabled = false;
+    detectedJobSaveBtn.textContent = "Try again";
+  }
 });
 
 // ---------- session / login / logout ----------
@@ -405,6 +465,7 @@ async function render() {
     userChip.textContent = session.user?.name || session.user?.email || "";
     userChip.title = session.user?.email || "";
     await loadJobs();
+    loadDetectedJob(); // independent of the jobs list — never blocks it
   } else {
     loggedOutView.classList.remove("hidden");
     loggedInView.classList.add("hidden");

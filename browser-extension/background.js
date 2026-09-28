@@ -228,6 +228,27 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: true, loggedIn: Boolean(token), user: user || null });
           break;
         }
+        case "GET_DETECTED_JOB": {
+          // Ask the active tab's content script (jd-extract.js + content.js,
+          // only present on the LinkedIn/Indeed job pages manifest.json
+          // matches) what it can see. A tab with no listener there — any
+          // other site, or a page that hasn't finished loading the content
+          // script yet — rejects instead of responding, which we treat as
+          // "nothing to detect here" rather than surfacing an error, since
+          // that's simply most tabs most of the time.
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (!tab?.id) {
+            sendResponse({ ok: true, supported: false, found: false });
+            break;
+          }
+          try {
+            const reply = await chrome.tabs.sendMessage(tab.id, { type: "TT_GET_DETECTED_JOB" });
+            sendResponse({ ok: true, supported: true, found: Boolean(reply?.found), job: reply?.job || null, saveJob: reply?.saveJob || null });
+          } catch (e) {
+            sendResponse({ ok: true, supported: false, found: false });
+          }
+          break;
+        }
         case "SAVE_JOB": {
           const job = await saveJob(message.job);
           sendResponse({ ok: true, job, duplicate: Boolean(job.duplicate) });

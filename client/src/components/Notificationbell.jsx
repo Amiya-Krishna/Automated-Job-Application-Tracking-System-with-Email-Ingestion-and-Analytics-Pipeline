@@ -64,7 +64,7 @@ function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 max-h-96 overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl">
+        <div className="fixed inset-x-4 top-16 z-50 max-h-[70vh] overflow-y-auto rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-2 shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:max-h-96 sm:w-80">
           <div className="flex items-center justify-between px-2 py-1">
             <span className="text-sm font-bold text-slate-900 dark:text-slate-100">Notifications</span>
             {unreadCount > 0 && (
@@ -113,7 +113,7 @@ function NotificationBell() {
                     type="button"
                     onClick={() => remove(n.id)}
                     aria-label="Delete notification"
-                    className="text-slate-400 opacity-0 transition hover:text-slate-700 dark:hover:text-slate-200 group-hover:opacity-100"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center text-slate-400 opacity-70 transition hover:text-slate-700 dark:hover:text-slate-200 sm:opacity-0 sm:group-hover:opacity-100"
                   >
                     ✕
                   </button>

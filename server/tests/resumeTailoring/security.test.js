@@ -82,7 +82,7 @@ test("mobile networking goes only through the shared TrackTrail API client (no d
   const offenders = grep(files, /\bfetch\(\s*['"`]https?:|new XMLHttpRequest|axios\.(get|post)\(\s*['"`]https?:/);
   assert.deepEqual(offenders, []);
   const svc = fs.readFileSync(path.join(ROOT, "mobile/services/resume.ts"), "utf8");
-  assert.match(svc, /from '@\/services\/api'/);
+  assert.match(svc, /from ['"]@\/services\/api['"]/);
   assert.doesNotMatch(svc, /https?:\/\//);
 });
 

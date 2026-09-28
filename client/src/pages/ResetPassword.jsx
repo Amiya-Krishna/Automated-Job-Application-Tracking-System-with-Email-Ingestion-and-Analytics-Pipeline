@@ -8,13 +8,19 @@ function ResetPassword() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token") || "";
+  // Set server-side only for a reset email that originated from the
+  // extension's "Forgot password" (server/routes/authRoutes.js) — flips
+  // the copy/branding and what happens after a successful reset. It is
+  // never used as a redirect target, just a label.
+  const isExtension = searchParams.get("source") === "extension";
 
   // Web and Mobile reset flows are completely isolated: the web app
   // never sends `source`/`redirectUri` to /forgot-password, so this page
-  // only ever sees a web-issued token. There is deliberately no mobile
-  // handoff, deep-link button, or mobile-browser detection here — mobile
-  // gets its OWN reset email pointed straight at its own
-  // mobile://reset-password deep link (see
+  // only ever sees a web-issued token (plain, or `source=extension` for
+  // the extension's share of this same page — see above). There is
+  // deliberately no mobile handoff, deep-link button, or mobile-browser
+  // detection here — mobile gets its OWN reset email pointed straight at
+  // its own mobile://reset-password deep link (see
   // mobile/app/(auth)/forgot-password.tsx), so this page never needs to
   // know or care whether a mobile app exists.
 
@@ -22,6 +28,7 @@ function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [resetDone, setResetDone] = useState(false);
 
   const validate = () => {
     const nextErrors = {};
@@ -54,7 +61,17 @@ function ResetPassword() {
       setIsSubmitting(true);
       const res = await api.post("/auth/reset-password", { token, password });
       toast.success(res.data.message);
-      navigate("/login");
+      // The extension can't be handed the new session from this tab (no
+      // reliable, installation-independent way to message an unknown
+      // extension ID from a web page — see the backend's comment on why
+      // this page is reused rather than a chrome-extension:// link), so
+      // instead of navigating into the web app, tell the person to go
+      // back to where they started and sign in there.
+      if (isExtension) {
+        setResetDone(true);
+      } else {
+        navigate("/login");
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || "Could not reset password");
     } finally {
@@ -64,7 +81,7 @@ function ResetPassword() {
 
   return (
     <AuthShell
-      badge="Reset Password"
+      badge={isExtension ? "TrackTrail Extension · Reset Password" : "Reset Password"}
       title="Set a new password."
       subtitle="Choose a new password for your account below."
       panelTitle="Almost there."
@@ -87,10 +104,23 @@ function ResetPassword() {
             This reset link is missing or invalid. Request a new one.
           </div>
           <Link
-            to="/forgot-password"
+            to={isExtension ? "/forgot-password?source=extension" : "/forgot-password"}
             className="block w-full rounded-2xl bg-slate-950 px-5 py-3.5 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
           >
             Request new link
+          </Link>
+        </div>
+      ) : resetDone ? (
+        <div className="max-w-xl space-y-5">
+          <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-4 text-sm text-emerald-900 dark:text-emerald-300">
+            Your TrackTrail password has been reset. You can close this tab and sign in again from
+            the extension with your new password.
+          </div>
+          <Link
+            to="/login"
+            className="block w-full rounded-2xl border border-slate-200 dark:border-slate-700 px-5 py-3.5 text-center text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
+          >
+            Or sign in on the web instead
           </Link>
         </div>
       ) : (

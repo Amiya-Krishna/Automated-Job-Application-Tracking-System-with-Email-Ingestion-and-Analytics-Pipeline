@@ -163,44 +163,46 @@ function AppliedJobs() {
           from the browser extension, or imported from Gmail — in one place.
         </p>
 
-        <div className="mt-6 flex flex-wrap gap-3 rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm">
+        <div className="mt-6 flex flex-col gap-3 rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4 shadow-sm sm:flex-row sm:flex-wrap">
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search title, company, or location"
-            className="min-w-[220px] flex-1 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 dark:focus:ring-cyan-900"
+            className="min-h-[44px] w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 dark:focus:ring-cyan-900 sm:min-w-[220px] sm:flex-1"
           />
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500"
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
-          <select
-            value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500"
-          >
-            <option value="">All sources</option>
-            {availableSources.map((s) => (
-              <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>
-            ))}
-          </select>
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500"
-          >
-            <option value="date-desc">Newest first</option>
-            <option value="date-asc">Oldest first</option>
-            <option value="score-desc">Best match first</option>
-            <option value="company">Company A–Z</option>
-          </select>
+          <div className="grid grid-cols-2 gap-2 sm:contents">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="min-h-[44px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 sm:px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500"
+            >
+              <option value="">All statuses</option>
+              {STATUS_OPTIONS.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <select
+              value={sourceFilter}
+              onChange={(e) => setSourceFilter(e.target.value)}
+              className="min-h-[44px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 sm:px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500"
+            >
+              <option value="">All sources</option>
+              {availableSources.map((s) => (
+                <option key={s} value={s}>{SOURCE_LABELS[s] || s}</option>
+              ))}
+            </select>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="col-span-2 min-h-[44px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 sm:px-4 py-2 text-sm text-slate-900 dark:text-slate-100 outline-none focus:border-cyan-500 sm:col-span-1"
+            >
+              <option value="date-desc">Newest first</option>
+              <option value="date-asc">Oldest first</option>
+              <option value="score-desc">Best match first</option>
+              <option value="company">Company A–Z</option>
+            </select>
+          </div>
         </div>
 
         <div className="mt-4 overflow-hidden rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
@@ -235,7 +237,76 @@ function AppliedJobs() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <>
+              {/* Mobile: card list */}
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 md:hidden">
+                {visibleJobs.map((job) => (
+                  <div key={job.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        {job.sourceUrl ? (
+                          <a
+                            href={job.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-semibold text-slate-900 dark:text-slate-100 hover:text-cyan-700 dark:hover:text-cyan-400 hover:underline"
+                          >
+                            {job.title}
+                          </a>
+                        ) : (
+                          <p className="font-semibold text-slate-900 dark:text-slate-100">{job.title}</p>
+                        )}
+                        <p className="text-sm text-slate-600 dark:text-slate-300">{job.company}</p>
+                        <p className="text-xs text-slate-400 dark:text-slate-500">{job.location || "—"}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-bold ${scoreStyle(job.matchScore)}`}>
+                        {job.matchScore !== null && job.matchScore !== undefined ? `${Math.round(job.matchScore)}%` : "—"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${SOURCE_STYLES[job.source] || SOURCE_STYLES.manual}`}>
+                        {SOURCE_LABELS[job.source] || job.source}
+                      </span>
+                      <span className="text-xs text-slate-400 dark:text-slate-500">Applied {formatDate(job.appliedDate)}</span>
+                      {job.engineApplicationStatus && (
+                        <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
+                          engine: {job.engineApplicationStatus}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex items-center gap-2">
+                      <select
+                        value={job.status}
+                        disabled={savingId === job.trackedJobId}
+                        onChange={(e) => updateStatus(job, e.target.value)}
+                        className={`min-h-[40px] flex-1 rounded-xl border-0 px-3 text-sm font-bold outline-none disabled:opacity-60 ${STATUS_STYLES[job.status] || STATUS_STYLES.Applied}`}
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      <Link
+                        to={`/tailor?job=tracked-${job.trackedJobId}`}
+                        className="min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-400"
+                      >
+                        Tailor
+                      </Link>
+                    </div>
+                    <button
+                      onClick={() => removeJob(job)}
+                      disabled={deletingId === job.trackedJobId}
+                      className="mt-2 min-h-[40px] w-full rounded-xl border border-rose-200 dark:border-rose-900/50 text-sm font-semibold text-rose-600 dark:text-rose-400 disabled:opacity-60"
+                    >
+                      {deletingId === job.trackedJobId ? "Removing..." : "Remove"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden overflow-x-auto md:block">
               <table className="w-full min-w-[900px] text-left text-sm">
                 <thead>
                   <tr className="border-b border-slate-100 dark:border-slate-800 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
@@ -315,7 +386,8 @@ function AppliedJobs() {
                   ))}
                 </tbody>
               </table>
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

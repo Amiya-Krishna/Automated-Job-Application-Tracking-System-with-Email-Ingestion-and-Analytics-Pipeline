@@ -66,7 +66,7 @@ function Navbar() {
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-1 sm:flex">
+        <nav className="hidden items-center gap-1 xl:flex">
           {primaryLinks.map((link) => (
             <Link
               key={link.to}
@@ -162,7 +162,7 @@ function Navbar() {
           </button>
         </nav>
 
-        <div className="flex items-center gap-2 sm:hidden">
+        <div className="flex items-center gap-2 xl:hidden">
           <ThemeToggle />
           <NotificationBell />
           <button
@@ -176,7 +176,7 @@ function Navbar() {
       </div>
 
       {menuOpen && (
-        <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 sm:hidden">
+        <div className="border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-4 py-3 xl:hidden">
           <div className="flex flex-col gap-1">
             <Link
               to="/add-job"

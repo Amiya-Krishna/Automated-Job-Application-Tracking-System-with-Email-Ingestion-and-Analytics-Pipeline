@@ -56,7 +56,7 @@ export type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>;
 // Mirrors client/src/pages/ResetPassword.jsx's validate() exactly, plus
 // a required `token` field — web reads that from the URL query string
 // automatically; mobile has the user paste it in (see
-// app/(auth)/reset-password.tsx for why).
+// app/reset-password.tsx for why).
 export const resetPasswordSchema = z
   .object({
     token: z.string().trim().min(1, 'Paste the reset code from your email'),

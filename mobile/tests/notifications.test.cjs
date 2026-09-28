@@ -47,7 +47,7 @@ test('application events carry the real trackedJobId (not a placeholder) so the 
 
 test('a completed tailoring run emits a deep-linkable notification carrying the real versionId', () => {
   const hook = read('hooks/use-resume.ts');
-  assert.match(hook, /emitNotificationEvent\(\{\s*type:\s*'resume_tailored',\s*versionId:\s*done\.versionId\s*\}\)/);
+  assert.match(hook, /emitNotificationEvent\(\{\s*type:\s*['"]resume_tailored['"],\s*versionId:\s*done\.versionId,?\s*\}\)/);
 });
 
 test('notification dismissal/removal is unchanged: the list still wires onDelete to remove(id)', () => {

@@ -192,39 +192,41 @@ function Dashboard() {
           <StatCard title="Rejected" value={analytics.rejected} accent="text-rose-600" />
         </div>
 
-        <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1.3fr_1fr]">
           {/* TABLE */}
-          <div className="rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
-            <div className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-800 p-5 sm:flex-row sm:items-center">
+          <div className="min-w-0 rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-100 dark:border-slate-800 p-4 sm:p-5 sm:flex-row sm:items-center">
               <input
                 type="text"
                 placeholder="Search company or role..."
-                className="w-full rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
+                className="w-full min-h-[44px] rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-4 py-2.5 text-sm outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
 
-              <select
-                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2.5 text-sm outline-none"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="All">All Status</option>
-                <option value="Applied">Applied</option>
-                <option value="Interview">Interview</option>
-                <option value="Offer">Offer</option>
-                <option value="Rejected">Rejected</option>
-              </select>
+              <div className="flex gap-3">
+                <select
+                  className="min-h-[44px] flex-1 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2.5 text-sm outline-none sm:flex-none"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="All">All Status</option>
+                  <option value="Applied">Applied</option>
+                  <option value="Interview">Interview</option>
+                  <option value="Offer">Offer</option>
+                  <option value="Rejected">Rejected</option>
+                </select>
 
-              <select
-                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2.5 text-sm outline-none"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-              >
-                <option value="newest">Newest first</option>
-                <option value="oldest">Oldest first</option>
-                <option value="company">Company A–Z</option>
-              </select>
+                <select
+                  className="min-h-[44px] flex-1 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2.5 text-sm outline-none sm:flex-none"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                >
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="company">Company A–Z</option>
+                </select>
+              </div>
             </div>
 
             {isLoading ? (
@@ -253,79 +255,145 @@ function Dashboard() {
                 )}
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      <th className="px-5 py-3">Company</th>
-                      <th className="px-5 py-3">Role</th>
-                      <th className="px-5 py-3">Status</th>
-                      <th className="px-5 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredJobs.map((job) => {
-                      const style = STATUS_STYLES[job.status] || STATUS_STYLES.Applied;
-                      return (
-                        <tr key={job.id} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
-                          <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-slate-100">
-                            {job.company}
-                          </td>
-                          <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{job.role}</td>
-                          <td className="px-5 py-3.5">
-                            <select
-                              value={job.status}
-                              onChange={(e) => updateStatus(job.id, e.target.value)}
-                              className={`rounded-full border-0 px-3 py-1 text-xs font-semibold outline-none ${style.badge}`}
-                            >
-                              <option value="Applied">Applied</option>
-                              <option value="Interview">Interview</option>
-                              <option value="Offer">Offer</option>
-                              <option value="Rejected">Rejected</option>
-                            </select>
-                          </td>
-                          <td className="px-5 py-3.5">
-                            <div className="flex justify-end gap-2">
-                              <button
-                                onClick={() =>
-                                  navigate(`/edit-job/${job.id}`, { state: { job } })
-                                }
-                                className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
-                              >
-                                Edit
-                              </button>
+              <>
+                {/* Mobile: card list (no horizontal scroll, comfortable touch targets) */}
+                <div className="divide-y divide-slate-100 dark:divide-slate-800 sm:hidden">
+                  {filteredJobs.map((job) => {
+                    const style = STATUS_STYLES[job.status] || STATUS_STYLES.Applied;
+                    return (
+                      <div key={job.id} className="p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{job.company}</p>
+                            <p className="truncate text-sm text-slate-600 dark:text-slate-300">{job.role}</p>
+                          </div>
+                          <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${style.badge}`}>
+                            {job.status}
+                          </span>
+                        </div>
 
-                              {confirmDeleteId === job.id ? (
-                                <div className="flex gap-1">
-                                  <button
-                                    onClick={() => deleteJob(job.id)}
-                                    className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
-                                  >
-                                    Confirm
-                                  </button>
-                                  <button
-                                    onClick={() => setConfirmDeleteId(null)}
-                                    className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
+                        <div className="mt-3 flex items-center gap-2">
+                          <select
+                            value={job.status}
+                            onChange={(e) => updateStatus(job.id, e.target.value)}
+                            className="min-h-[40px] flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 text-sm font-medium outline-none"
+                          >
+                            <option value="Applied">Applied</option>
+                            <option value="Interview">Interview</option>
+                            <option value="Offer">Offer</option>
+                            <option value="Rejected">Rejected</option>
+                          </select>
+                          <button
+                            onClick={() => navigate(`/edit-job/${job.id}`, { state: { job } })}
+                            className="min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200"
+                          >
+                            Edit
+                          </button>
+                        </div>
+
+                        {confirmDeleteId === job.id ? (
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              onClick={() => deleteJob(job.id)}
+                              className="min-h-[40px] flex-1 rounded-xl bg-rose-600 text-sm font-semibold text-white"
+                            >
+                              Confirm delete
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="min-h-[40px] flex-1 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDeleteId(job.id)}
+                            className="mt-2 min-h-[40px] w-full rounded-xl border border-rose-200 dark:border-rose-900/50 text-sm font-semibold text-rose-600 dark:text-rose-400"
+                          >
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Desktop/tablet: table */}
+                <div className="hidden overflow-x-auto sm:block">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        <th className="px-5 py-3">Company</th>
+                        <th className="px-5 py-3">Role</th>
+                        <th className="px-5 py-3">Status</th>
+                        <th className="px-5 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredJobs.map((job) => {
+                        const style = STATUS_STYLES[job.status] || STATUS_STYLES.Applied;
+                        return (
+                          <tr key={job.id} className="border-b border-slate-50 dark:border-slate-800/60 last:border-0 hover:bg-slate-50/60 dark:hover:bg-slate-800/60">
+                            <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-slate-100">
+                              {job.company}
+                            </td>
+                            <td className="px-5 py-3.5 text-slate-600 dark:text-slate-300">{job.role}</td>
+                            <td className="px-5 py-3.5">
+                              <select
+                                value={job.status}
+                                onChange={(e) => updateStatus(job.id, e.target.value)}
+                                className={`rounded-full border-0 px-3 py-1 text-xs font-semibold outline-none ${style.badge}`}
+                              >
+                                <option value="Applied">Applied</option>
+                                <option value="Interview">Interview</option>
+                                <option value="Offer">Offer</option>
+                                <option value="Rejected">Rejected</option>
+                              </select>
+                            </td>
+                            <td className="px-5 py-3.5">
+                              <div className="flex justify-end gap-2">
                                 <button
-                                  onClick={() => setConfirmDeleteId(job.id)}
-                                  className="rounded-xl border border-rose-200 dark:border-rose-900/50 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 transition hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  onClick={() =>
+                                    navigate(`/edit-job/${job.id}`, { state: { job } })
+                                  }
+                                  className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
                                 >
-                                  Delete
+                                  Edit
                                 </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+
+                                {confirmDeleteId === job.id ? (
+                                  <div className="flex gap-1">
+                                    <button
+                                      onClick={() => deleteJob(job.id)}
+                                      className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
+                                    >
+                                      Confirm
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteId(null)}
+                                      className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => setConfirmDeleteId(job.id)}
+                                    className="rounded-xl border border-rose-200 dark:border-rose-900/50 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 transition hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                                  >
+                                    Delete
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
 

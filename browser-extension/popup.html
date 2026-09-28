@@ -73,6 +73,16 @@
 
         <!-- ---- JOBS TAB ---- -->
         <section id="jobsTab" class="tabPanel">
+          <div id="detectedJobCard" class="detectedCard hidden">
+            <span class="detectedCard-icon" aria-hidden="true">📍</span>
+            <div class="detectedCard-info">
+              <p class="detectedCard-title" id="detectedJobTitle"></p>
+              <p class="detectedCard-sub" id="detectedJobSub"></p>
+            </div>
+            <button type="button" id="detectedJobSaveBtn" class="detectedCard-save">Add job</button>
+          </div>
+          <p id="detectedJobHint" class="detectedHint hidden"></p>
+
           <div class="toolbar">
             <input type="search" id="searchInput" placeholder="Search company or role..." />
             <button id="refreshJobsBtn" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">⟳</button>

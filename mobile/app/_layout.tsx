@@ -84,6 +84,10 @@ function RootNavigator() {
     <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
+        {/* Password-reset deep link target. Deliberately OUTSIDE both Stack.Protected
+            branches: the emailed link must open this screen whether or not a session
+            is stored on the device. */}
+        <Stack.Screen name="reset-password" />
         <Stack.Protected guard={status === 'authenticated'}>
           {/* The drawer-wrapped tab area (Home/Jobs/Analytics/Notifications/
               Profile) plus the drawer's own static screens — see

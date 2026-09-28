@@ -1,10 +1,20 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import api from "../api";
 import AuthShell from "../components/AuthShell";
 import toast from "react-hot-toast";
 
 function ForgotPassword() {
+  const [searchParams] = useSearchParams();
+  // The browser extension opens this exact page (see browser-extension/
+  // popup.js's "Forgot password" link) with ?source=extension appended —
+  // there's no separate extension-hosted forgot-password UI, just this
+  // page with a flag that tells the backend which branded reset link to
+  // email (server/routes/authRoutes.js) and tells this page which copy
+  // to show. Anything else (no param, or an unrecognized one) is the
+  // plain web flow, unchanged.
+  const isExtension = searchParams.get("source") === "extension";
+
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -21,7 +31,8 @@ function ForgotPassword() {
 
     try {
       setIsSubmitting(true);
-      const res = await api.post("/auth/forgot-password", { email: email.trim() });
+      const payload = isExtension ? { email: email.trim(), source: "extension" } : { email: email.trim() };
+      const res = await api.post("/auth/forgot-password", payload);
       toast.success(res.data.message);
       setSent(true);
     } catch (err) {
@@ -33,9 +44,13 @@ function ForgotPassword() {
 
   return (
     <AuthShell
-      badge="Reset Password"
+      badge={isExtension ? "TrackTrail Extension · Reset Password" : "Reset Password"}
       title="Forgot your password? No problem."
-      subtitle="Enter the email on your account and we'll send you a link to reset it."
+      subtitle={
+        isExtension
+          ? "Enter the email on your TrackTrail account. We'll email you a reset link — come back here to finish, then sign in again from the extension."
+          : "Enter the email on your account and we'll send you a link to reset it."
+      }
       panelTitle="Get back into your dashboard fast."
       panelText="The reset link expires in 30 minutes, so grab it from your inbox right away."
       stats={[
@@ -55,6 +70,7 @@ function ForgotPassword() {
           <div className="rounded-2xl border border-emerald-100 dark:border-emerald-900/50 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-4 text-sm text-emerald-900 dark:text-emerald-300">
             If an account exists for <strong>{email}</strong>, a reset link is on its way.
             Check your inbox (and spam folder).
+            {isExtension ? " Open it here in your browser, then head back to the extension to sign in." : ""}
           </div>
           <Link
             to="/login"

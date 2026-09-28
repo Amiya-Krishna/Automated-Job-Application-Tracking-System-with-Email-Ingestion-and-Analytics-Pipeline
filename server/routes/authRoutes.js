@@ -1,11 +1,16 @@
 const router = require("express").Router();
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { sendPasswordResetEmail } = require("../services/emailService");
-const { isAllowedMobileRedirect } = require("../utils/mobileRedirect");
+const { isAllowedResetRedirect } = require("../utils/mobileRedirect");
 
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
+
+function passwordFingerprint(hash) {
+  return crypto.createHash("sha256").update(String(hash || "")).digest("hex").slice(0, 16);
+}
 
 // REGISTER
 router.post("/register", async (req, res) => {
@@ -141,12 +146,15 @@ router.post("/forgot-password", async (req, res) => {
     // redirect. An invalid/missing redirectUri for source=mobile fails
     // the request outright rather than silently falling back to the web
     // link, so a broken mobile client can't end up emailing itself a
-    // web link it didn't ask for.
+    // web link it didn't ask for. `source: "extension"` shares the web
+    // page too (see the resetUrl branch below) — it isn't a separate
+    // redirect destination, just a flag the web page reads to show
+    // extension-appropriate copy.
     let redirectDestination = null;
     if (source === "mobile") {
-      if (!isAllowedMobileRedirect(redirectUri)) {
+      if (!isAllowedResetRedirect(redirectUri)) {
         return res.status(400).json({
-          message: "A valid redirectUri (mobile:// or exp://) is required when source=mobile",
+          message: "A valid mobile redirectUri is required when source=mobile",
         });
       }
       redirectDestination = redirectUri;
@@ -164,8 +172,11 @@ router.post("/forgot-password", async (req, res) => {
       return res.json({ message: genericMessage });
     }
 
+    // `pv` fingerprints the password hash the token was issued against, so
+    // the token stops working the moment the password changes — this makes
+    // it effectively single-use without adding any column or table.
     const resetToken = jwt.sign(
-      { id: user.id, purpose: "password_reset" },
+      { id: user.id, purpose: "password_reset", pv: passwordFingerprint(user.password) },
       process.env.JWT_SECRET,
       { expiresIn: "30m" }
     );
@@ -179,8 +190,17 @@ router.post("/forgot-password", async (req, res) => {
       const sep = redirectDestination.includes("?") ? "&" : "?";
       resetUrl = `${redirectDestination}${sep}token=${resetToken}`;
     } else {
+      // Web AND Extension both land on the same web Reset Password page —
+      // there is no stable, installation-independent extension ID this
+      // server could safely build a chrome-extension:// link from (the
+      // dev/unpacked extension ID differs per machine, and this project
+      // isn't published to a store yet), so rather than invent one, the
+      // extension gets the same trusted web destination with a `source`
+      // flag the page uses only to adjust its own copy/branding — never
+      // as a redirect target. Nothing here trusts a client-supplied URL.
       const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "";
-      resetUrl = `${clientUrl}/reset-password?token=${resetToken}`;
+      const suffix = source === "extension" ? "&source=extension" : "";
+      resetUrl = `${clientUrl}/reset-password?token=${resetToken}${suffix}`;
     }
 
     await sendPasswordResetEmail({ to: user.email, resetUrl });
@@ -212,6 +232,11 @@ router.post("/reset-password", async (req, res) => {
     }
 
     if (decoded.purpose !== "password_reset") {
+      return res.status(400).json({ message: "Reset link is invalid or has expired" });
+    }
+
+    const existing = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!existing || decoded.pv !== passwordFingerprint(existing.password)) {
       return res.status(400).json({ message: "Reset link is invalid or has expired" });
     }
 

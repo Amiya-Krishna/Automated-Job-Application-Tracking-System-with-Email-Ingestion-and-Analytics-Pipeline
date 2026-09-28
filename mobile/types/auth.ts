@@ -81,7 +81,7 @@ export interface ForgotPasswordResponse {
  * mobile app's scheme without changing what every platform's reset
  * email links to). The mobile Reset Password screen therefore has the
  * user paste in the token from that email manually — see
- * app/(auth)/reset-password.tsx for the full explanation of why a true
+ * app/reset-password.tsx for the full explanation of why a true
  * one-tap deep link isn't implemented here without a scoped-in backend/
  * native-config decision.
  */

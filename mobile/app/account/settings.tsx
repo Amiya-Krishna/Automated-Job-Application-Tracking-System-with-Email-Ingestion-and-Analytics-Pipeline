@@ -1,7 +1,5 @@
-import * as Linking from 'expo-linking';
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
 
 import { Card } from '@/components/card';
 import { ErrorState } from '@/components/error-state';
@@ -12,52 +10,31 @@ import { ThemedView } from '@/components/themed-view';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
+import { useGmailStatus } from '@/hooks/use-gmail-status';
 import { useNotificationPreferences } from '@/hooks/use-notification-preferences';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { forgotPassword } from '@/services/auth';
-import { ApiError } from '@/types/api';
 
 /**
  * Settings screen, reached from the Profile tab and the drawer.
- * Registered as a sibling of `edit` inside the `account` Stack
+ * Registered as a sibling of `edit`/`gmail` inside the `account` Stack
  * (app/account/_layout.tsx).
  *
- * Appearance and Notifications are new (backed by ThemeContext and
- * useNotificationPreferences — both device-local, see those files'
- * comments for exactly what each toggle actually gates). Account and
- * App sections build on what already existed here.
+ * Deliberately does NOT contain "Edit profile" or "Change password":
+ * Edit profile lives directly on the Profile tab (app/(drawer)/(tabs)/profile.tsx)
+ * rather than being duplicated here, and there is no separate "change
+ * password while logged in" concept in this app — the only password
+ * recovery path is Sign in → Forgot password (app/(auth)/forgot-password.tsx),
+ * which already reuses the same backend endpoint a "change password"
+ * button here would have called, so keeping both would only be two
+ * doors to the same room.
  */
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const profile = useProfile();
+  const gmail = useGmailStatus();
   const { preferences, update } = useNotificationPreferences();
-
-  const [isSendingReset, setIsSendingReset] = useState(false);
-
-  const displayName = profile.data?.full_name || user?.name || 'Your account';
-  const displayEmail = profile.data?.email || user?.email || null;
-
-  const handleChangePassword = async () => {
-    if (!displayEmail) return;
-    setIsSendingReset(true);
-    try {
-      // Reuses the exact same backend flow as the logged-out "Forgot
-      // password" screen (app/(auth)/forgot-password.tsx) — there is no
-      // separate "change password while logged in" endpoint (verified
-      // by reading server/routes/authRoutes.js: only register/login/
-      // forgot-password/reset-password exist), so this sends a reset
-      // link to the account's own email instead of pretending otherwise.
-      const redirectUri = Linking.createURL('reset-password');
-      const { message } = await forgotPassword({ email: displayEmail, source: 'mobile', redirectUri });
-      Alert.alert('Check your email', message);
-    } catch (err) {
-      Alert.alert('Something went wrong', err instanceof ApiError ? err.message : 'Please try again.');
-    } finally {
-      setIsSendingReset(false);
-    }
-  };
 
   if (profile.isLoading) {
     return <LoadingState label="Loading settings…" />;
@@ -66,15 +43,44 @@ export default function SettingsScreen() {
     return <ErrorState error={profile.error} onRetry={profile.refetch} />;
   }
 
+  const displayName = profile.data?.full_name || 'Your account';
+  const displayEmail = profile.data?.email || null;
+  const gmailConnected = Boolean(gmail.data?.connected);
+
   return (
     <ScrollView contentContainerStyle={styles.scrollContent}>
       <ThemedView style={styles.section}>
-        <SectionHeader title="Appearance" />
-        <ThemeToggle />
+        <SectionHeader title="Account" />
+        <Card style={styles.card}>
+          <ThemedText type="smallBold">{displayName}</ThemedText>
+          {displayEmail ? (
+            <ThemedText type="small" themeColor="textSecondary">
+              {displayEmail}
+            </ThemedText>
+          ) : null}
+        </Card>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.push('/account/gmail')}
+          style={[styles.row, { borderColor: theme.border }]}>
+          <ThemedView style={styles.rowText}>
+            <ThemedText type="default">Gmail Integration</ThemedText>
+            <ThemedText type="small" themeColor={gmailConnected ? 'tint' : 'textSecondary'}>
+              {gmailConnected ? 'Connected' : 'Not connected'}
+            </ThemedText>
+          </ThemedView>
+          <ThemedText type="small" themeColor="textSecondary">
+            ›
+          </ThemedText>
+        </Pressable>
       </ThemedView>
 
       <ThemedView style={styles.section}>
-        <SectionHeader title="Notifications" />
+        <SectionHeader title="Preferences" />
+        <Card style={styles.card}>
+          <ThemedText type="smallBold">Appearance</ThemedText>
+          <ThemeToggle />
+        </Card>
         <Card style={styles.togglesCard}>
           <ToggleRow
             label="Push notifications"
@@ -104,38 +110,7 @@ export default function SettingsScreen() {
       </ThemedView>
 
       <ThemedView style={styles.section}>
-        <SectionHeader title="Account" />
-        <Card style={styles.card}>
-          <ThemedText type="smallBold">{displayName}</ThemedText>
-          {displayEmail ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              {displayEmail}
-            </ThemedText>
-          ) : null}
-        </Card>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => router.push('/account/edit')}
-          style={[styles.row, { borderColor: theme.border }]}>
-          <ThemedText type="default">Edit profile</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            ›
-          </ThemedText>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={isSendingReset || !displayEmail}
-          onPress={handleChangePassword}
-          style={[styles.row, { borderColor: theme.border, opacity: isSendingReset ? 0.6 : 1 }]}>
-          <ThemedText type="default">Change password</ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            {isSendingReset ? 'Sending…' : '›'}
-          </ThemedText>
-        </Pressable>
-      </ThemedView>
-
-      <ThemedView style={styles.section}>
-        <SectionHeader title="App" />
+        <SectionHeader title="Support" />
         <Pressable
           accessibilityRole="button"
           onPress={() => router.push('/about')}
@@ -232,6 +207,10 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
     paddingHorizontal: Spacing.three,
     minHeight: 48,
+  },
+  rowText: {
+    gap: 2,
+    backgroundColor: 'transparent',
   },
   logoutButton: {
     borderWidth: 1,

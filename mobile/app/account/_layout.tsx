@@ -28,6 +28,7 @@ export default function AccountLayout() {
       }}>
       <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
+      <Stack.Screen name="gmail" options={{ title: 'Gmail Integration' }} />
     </Stack>
   );
 }
