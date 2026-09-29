@@ -3,10 +3,10 @@ name: CI
 # Lint, typecheck and the critical-path tests for the mobile app and the API it depends on.
 on:
   pull_request:
-    paths: ['mobile/**', 'server/**', '.github/workflows/ci.yml']
+    paths: ['client/**', 'mobile/**', 'server/**', '.github/workflows/ci.yml']
   push:
     branches: [main]
-    paths: ['mobile/**', 'server/**', '.github/workflows/ci.yml']
+    paths: ['client/**', 'mobile/**', 'server/**', '.github/workflows/ci.yml']
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,6 +16,27 @@ permissions:
   contents: read
 
 jobs:
+  client:
+    name: Web lint, critical tests, production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+        env:
+          VITE_API_BASE_URL: https://api.example.com
+
   server:
     name: Server tests (auth, sessions, notifications, resume)
     runs-on: ubuntu-latest

@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import api from "../api";
 import AuthShell from "../components/AuthShell";
-import { getStoredToken } from "../utils/auth";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
 function Register() {
@@ -16,12 +16,13 @@ function Register() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+  const { status } = useAuth();
 
   useEffect(() => {
-    if (getStoredToken()) {
+    if (status === "authenticated") {
       navigate("/dashboard");
     }
-  }, [navigate]);
+  }, [navigate, status]);
 
   const passwordStrength = password.length >= 10
     ? "Strong"

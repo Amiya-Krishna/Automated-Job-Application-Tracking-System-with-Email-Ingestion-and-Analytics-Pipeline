@@ -1,6 +1,5 @@
 import { useState } from "react";
 import api from "../api";
-import { getStoredToken } from "../utils/auth";
 
 function AddJob() {
 
@@ -11,13 +10,7 @@ function AddJob() {
 
     try {
 
-      const token = getStoredToken();
-
-      await api.post(
-        "/jobs",
-        { company, role },
-        { headers: { token } }
-      );
+      await api.post("/jobs", { company, role });
 
       alert("Job Added Successfully");
 

@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import api from "../api";
 import AuthShell from "../components/AuthShell";
-import { getStoredToken, storeToken } from "../utils/auth";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 
 function Login() {
@@ -14,12 +14,13 @@ function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
+  const { status, login } = useAuth();
 
   useEffect(() => {
-    if (getStoredToken()) {
+    if (status === "authenticated") {
       navigate("/dashboard");
     }
-  }, [navigate]);
+  }, [navigate, status]);
 
   const validateLogin = () => {
     const nextErrors = {};
@@ -50,10 +51,11 @@ function Login() {
 
       const res = await api.post("/auth/login", {
         email: email.trim(),
-        password
+        password,
+        rememberMe,
       });
 
-      storeToken(res.data.token, rememberMe);
+      login(res.data);
 
       toast.success(`Welcome back, ${res.data.user.name}`);
 
@@ -100,10 +102,11 @@ function Login() {
       >
         <div className="grid gap-5">
           <div>
-            <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
+            <label htmlFor="login-email" className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-200">
               Email address
             </label>
             <input
+              id="login-email"
               className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.email ? "border-red-400 dark:border-red-500/60 bg-red-50 dark:bg-red-950/30" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               placeholder="you@example.com"
               value={email}
@@ -116,7 +119,7 @@ function Login() {
 
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
+              <label htmlFor="login-password" className="block text-sm font-semibold text-slate-700 dark:text-slate-200">
                 Password
               </label>
               <button
@@ -128,6 +131,7 @@ function Login() {
               </button>
             </div>
             <input
+              id="login-password"
               className={`w-full rounded-2xl border px-4 py-3 text-slate-900 dark:text-slate-100 outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-100 ${errors.password ? "border-red-400 dark:border-red-500/60 bg-red-50 dark:bg-red-950/30" : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900"}`}
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"

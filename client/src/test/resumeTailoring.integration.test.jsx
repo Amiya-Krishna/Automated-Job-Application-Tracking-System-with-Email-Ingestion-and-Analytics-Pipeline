@@ -43,6 +43,7 @@ let ResumeTailoring;
 let ResumeVersions;
 let ThemeProvider;
 let NotificationProvider;
+let setAccessToken;
 const servers = [];
 
 async function boot(opts = {}, { resume = fx.RICH_RESUME, job = fx.STRUCTURED_JD } = {}) {
@@ -50,10 +51,11 @@ async function boot(opts = {}, { resume = fx.RICH_RESUME, job = fx.STRUCTURED_JD
   servers.push(app);
   if (resume) app.repo._seedProfile(1, { resume_text: resume });
   const tracked = app.repo._seedTrackedJob(1, { company: "Google", role: "Software Engineer Intern", description: job });
-  localStorage.setItem("token", app.tokenFor(1));
   vi.stubEnv("VITE_API_BASE_URL", app.origin);
   // api.js reads the base URL at import time, so re-import per server
   vi.resetModules();
+  ({ setAccessToken } = await import("../utils/auth.js"));
+  setAccessToken(app.tokenFor(1));
   ({ default: ResumeTailoring } = await import("../pages/ResumeTailoring.jsx"));
   ({ default: ResumeVersions } = await import("../pages/ResumeVersions.jsx"));
   ({ ThemeProvider } = await import("../context/ThemeContext.jsx"));
@@ -85,7 +87,7 @@ beforeAll(() => {
   window.scrollTo = vi.fn();
   window.matchMedia ||= () => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
 });
-afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllEnvs(); });
+afterEach(() => { cleanup(); setAccessToken?.(null); localStorage.clear(); vi.unstubAllEnvs(); });
 afterAll(async () => { await Promise.all(servers.map((s) => s.close())); });
 
 describe("Resume Tailoring workspace (web)", () => {

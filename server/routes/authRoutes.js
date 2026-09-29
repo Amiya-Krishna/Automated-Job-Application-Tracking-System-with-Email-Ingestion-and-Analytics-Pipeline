@@ -19,12 +19,26 @@ const resetLimiter = createRateLimiter({ name: "auth-reset", windowMs: 60 * 60 *
 const refreshLimiter = createRateLimiter({ name: "auth-refresh", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_REFRESH_MAX) || 120 });
 const deleteLimiter = createRateLimiter({ name: "auth-delete", windowMs: 60 * 60 * 1000, max: 5 });
 
-// The mobile app opts in to short-lived access + rotating refresh tokens.
-// Web and the extension keep the legacy single 7-day token, unchanged.
+// Mobile opts in to rotating tokens in its JSON response. Web uses the same
+// session rows, but its refresh token stays in an HttpOnly cookie. The
+// extension retains its legacy header-token contract.
 function isMobileClient(req) {
   const h = String(req.header("x-client") || "").toLowerCase();
   return h === "mobile" || (req.body && req.body.client === "mobile");
 }
+function isWebClient(req) { return String(req.header("x-client") || "").toLowerCase() === "web"; }
+function readCookie(req, name) {
+  const match = String(req.headers.cookie || "").split(/;\s*/).find((part) => part.startsWith(`${name}=`));
+  return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
+}
+function refreshCookieOptions(req, rememberMe = true) {
+  const production = process.env.NODE_ENV === "production";
+  const options = { httpOnly: true, secure: production, sameSite: production ? "none" : "lax", path: "/api/auth" };
+  if (rememberMe) options.maxAge = (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60) * 86400 * 1000;
+  return options;
+}
+function setWebRefreshCookie(req, res, refreshToken, rememberMe = true) { res.cookie("tt_refresh", refreshToken, refreshCookieOptions(req, rememberMe)); }
+function clearWebRefreshCookie(req, res) { res.clearCookie("tt_refresh", refreshCookieOptions(req, false)); }
 function deviceInfo(req) {
   const b = (req.body && req.body.device) || {};
   return { deviceName: b.deviceName, platform: b.platform, appVersion: req.header("x-app-version") || b.appVersion };
@@ -154,6 +168,12 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
+    if (isWebClient(req)) {
+      const s = await sessions.issueSession(user, { deviceName: "Web browser", platform: "web" });
+      setWebRefreshCookie(req, res, s.refreshToken, req.body?.rememberMe !== false);
+      return res.json({ token: s.accessToken, accessToken: s.accessToken, accessTokenExpiresAt: s.accessTokenExpiresAt, expiresIn: s.expiresIn, user: publicUser(user) });
+    }
+
     // ✅ Generate token (web / extension: unchanged)
     const token = jwt.sign(
       { id: user.id },
@@ -176,7 +196,8 @@ router.post("/login", loginLimiter, async (req, res) => {
 // token (rotation). 401 means the session is over and the user must sign in.
 router.post("/refresh", refreshLimiter, async (req, res) => {
   try {
-    const { refreshToken } = req.body || {};
+    const web = isWebClient(req);
+    const refreshToken = web ? readCookie(req, "tt_refresh") : (req.body || {}).refreshToken;
     const r = await sessions.rotateSession(refreshToken, deviceInfo(req));
     if (!r.ok) {
       // `reused_recently` is a benign race (two requests refreshed at once):
@@ -184,6 +205,7 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
       const code = r.reason === "reused_recently" ? "refresh_in_progress" : "session_invalid";
       return res.status(401).json({ message: "Session expired. Please sign in again.", code });
     }
+    if (web) setWebRefreshCookie(req, res, r.refreshToken, true);
     res.json({
       token: r.accessToken,
       accessToken: r.accessToken,
@@ -211,10 +233,11 @@ router.get("/me", authMiddleware, async (req, res) => {
 // LOGOUT — revokes the refresh-token family. Idempotent; never fails the client.
 router.post("/logout", refreshLimiter, async (req, res) => {
   try {
-    await sessions.revokeByRefreshToken((req.body || {}).refreshToken);
+    await sessions.revokeByRefreshToken(isWebClient(req) ? readCookie(req, "tt_refresh") : (req.body || {}).refreshToken);
   } catch (error) {
     console.error("logout revoke failed:", error.message);
   }
+  if (isWebClient(req)) clearWebRefreshCookie(req, res);
   res.json({ message: "Signed out" });
 });
 
@@ -254,6 +277,7 @@ router.delete("/account", deleteLimiter, authMiddleware, async (req, res) => {
     }
 
     await prisma.user.delete({ where: { id: user.id } });
+    if (isWebClient(req)) clearWebRefreshCookie(req, res);
     res.json({ message: "Your account and data have been deleted." });
   } catch (error) {
     res.status(500).json({ message: error.message });

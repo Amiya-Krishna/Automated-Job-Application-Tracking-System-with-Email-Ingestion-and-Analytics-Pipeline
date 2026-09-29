@@ -39,6 +39,7 @@ app.use((req, res, next) => {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Content-Security-Policy": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'",
   });
   if (process.env.NODE_ENV === "production") {
     res.set("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
@@ -71,17 +72,19 @@ const allowedOrigins = (process.env.CLIENT_URL || "")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
+  throw new Error("CLIENT_URL must list one or more HTTPS frontend origins in production.");
+}
+
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow non-browser requests (e.g. curl/Postman) with no origin,
-      // allow any origin if none are configured (local dev fallback),
+      // In development, allow non-browser requests and an unset local origin.
       // and always allow the Chrome extension (its origin looks like
       // "chrome-extension://<random-id>", which can't be listed in
       // CLIENT_URL ahead of time).
       if (
-        !origin ||
-        allowedOrigins.length === 0 ||
+        (process.env.NODE_ENV !== "production" && (!origin || allowedOrigins.length === 0)) ||
         allowedOrigins.includes(origin) ||
         origin.startsWith("chrome-extension://")
       ) {
@@ -152,8 +155,10 @@ app.get("/health", (req, res) => {
 // client (like the browser extension's `res.json()`) then crashes with
 // "Unexpected token '<' ... is not valid JSON". Always answer in JSON.
 app.use((err, req, res, next) => {
-  console.error(err);
   const status = err.status || 500;
+  // Never stringify arbitrary errors here: provider errors can include request
+  // metadata or credentials. Route and status are sufficient for triage.
+  console.error(`[request-error] ${req.method} ${req.path} -> ${status}`);
   const safe = process.env.NODE_ENV === "production" && status >= 500;
   res.status(status).json({ message: safe ? "Server error. Please try again." : err.message || "Server error" });
 });

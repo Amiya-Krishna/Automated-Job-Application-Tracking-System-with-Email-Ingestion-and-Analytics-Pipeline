@@ -1,30 +1,31 @@
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
-import Landing from "./pages/Landing";
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
-import Dashboard from "./pages/Dashboard";
-import JobForm from "./pages/JobForm";
-import JobDiscovery from "./pages/JobDiscovery";
-import AppliedJobs from "./pages/AppliedJobs";
-import Integrations from "./pages/Integrations";
-import Profile from "./pages/Profile";
-import Analytics from "./pages/Analytics";
-import MatchedJobs from "./pages/MatchedJobs";
-import EngineApplications from "./pages/EngineApplications";
-import Companies from "./pages/Companies";
-import Sources from "./pages/Sources";
-import NotFound from "./pages/NotFound";
-import ResumeTailoring from "./pages/ResumeTailoring";
-import ResumeVersions from "./pages/ResumeVersions";
+const Landing = lazy(() => import("./pages/Landing"));
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const JobForm = lazy(() => import("./pages/JobForm"));
+const JobDiscovery = lazy(() => import("./pages/JobDiscovery"));
+const AppliedJobs = lazy(() => import("./pages/AppliedJobs"));
+const Integrations = lazy(() => import("./pages/Integrations"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Analytics = lazy(() => import("./pages/Analytics"));
+const MatchedJobs = lazy(() => import("./pages/MatchedJobs"));
+const EngineApplications = lazy(() => import("./pages/EngineApplications"));
+const Companies = lazy(() => import("./pages/Companies"));
+const Sources = lazy(() => import("./pages/Sources"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const ResumeTailoring = lazy(() => import("./pages/ResumeTailoring"));
+const ResumeVersions = lazy(() => import("./pages/ResumeVersions"));
 import ProtectedRoute from "./components/ProtectedRoute";
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
+      <Suspense fallback={<main className="grid min-h-screen place-items-center" aria-live="polite">Loading…</main>}><Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
@@ -153,7 +154,7 @@ function App() {
           }
         />
         <Route path="*" element={<NotFound />} />
-      </Routes>
+      </Routes></Suspense>
     </BrowserRouter>
   );
 }

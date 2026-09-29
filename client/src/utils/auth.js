@@ -1,19 +1,12 @@
-export function getStoredToken() {
-  return localStorage.getItem("token") || sessionStorage.getItem("token");
-}
+// Access tokens intentionally live only in memory. The durable credential is
+// the HttpOnly refresh cookie issued by the API, so XSS cannot read a session
+// credential from localStorage/sessionStorage.
+let accessToken = null;
 
-export function storeToken(token, rememberUser) {
-  if (rememberUser) {
-    localStorage.setItem("token", token);
-    sessionStorage.removeItem("token");
-    return;
-  }
-
-  sessionStorage.setItem("token", token);
-  localStorage.removeItem("token");
-}
-
-export function clearStoredToken() {
-  localStorage.removeItem("token");
-  sessionStorage.removeItem("token");
-}
+export const getAccessToken = () => accessToken;
+export const setAccessToken = (token) => {
+  accessToken = typeof token === "string" && token ? token : null;
+};
+export const clearAccessToken = () => {
+  accessToken = null;
+};

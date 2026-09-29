@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { clearStoredToken } from "../utils/auth";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 import ThemeToggle from "./ThemeToggle";
 import NotificationBell from "./NotificationBell";
@@ -34,9 +34,13 @@ function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [engineOpen, setEngineOpen] = useState(false);
   const engineRef = useRef(null);
+  // Isolated page tests render the navigation without the application root.
+  // The optional fallback only clears memory there; the real app always uses
+  // AuthProvider and performs the server-side session revocation.
+  const { logout: endSession } = useAuth(false);
 
-  const logout = () => {
-    clearStoredToken();
+  const logout = async () => {
+    await endSession();
     toast.success("Signed out");
     navigate("/login");
   };

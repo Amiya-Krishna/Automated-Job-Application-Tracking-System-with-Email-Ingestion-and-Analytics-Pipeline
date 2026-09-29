@@ -132,7 +132,7 @@ router.get("/callback", async (req, res) => {
 
     res.redirect(redirectTarget("connected", source, mobileRedirectUri));
   } catch (err) {
-    console.error(err);
+    console.error("[gmail-oauth] callback failed");
     res.redirect(redirectTarget("error", source, mobileRedirectUri));
   }
 });
@@ -270,7 +270,7 @@ router.get("/scan", auth, async (req, res) => {
 
     res.json({ messages: details });
   } catch (err) {
-    console.error(err);
+    console.error("[gmail] inbox scan failed");
     res.status(500).json({ message: err.message });
   }
 });
