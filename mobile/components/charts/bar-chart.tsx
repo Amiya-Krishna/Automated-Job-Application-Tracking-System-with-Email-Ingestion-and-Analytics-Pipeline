@@ -18,9 +18,18 @@ export interface BarChartDatum {
 interface BarChartProps {
   data: BarChartDatum[];
   height?: number;
+  /** Spoken name of the chart, e.g. "Applications per day, last 7 days". */
+  title?: string;
 }
 
-export function BarChart({ data, height = 160 }: BarChartProps) {
+/** Screen-reader text: the chart is drawn as SVG (invisible to assistive tech), so the same data is spoken instead. */
+export function describeBars(data: BarChartDatum[], title = 'Bar chart'): string {
+  const total = data.reduce((sum, d) => sum + d.value, 0);
+  if (total === 0) return `${title}: no data yet.`;
+  return `${title}. Total ${total}. ${data.map((d) => `${d.label} ${d.value}`).join(', ')}.`;
+}
+
+export function BarChart({ data, height = 160, title }: BarChartProps) {
   const theme = useTheme();
   const width = 320;
   const paddingBottom = 28;
@@ -31,8 +40,8 @@ export function BarChart({ data, height = 160 }: BarChartProps) {
   const barWidth = (width - barGap * (data.length - 1)) / data.length;
 
   return (
-    <View>
-      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+    <View accessible accessibilityRole="image" accessibilityLabel={describeBars(data, title)}>
+      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
         {data.map((d, index) => {
           const barHeight = maxValue > 0 ? (d.value / maxValue) * chartHeight : 0;
           const x = index * (barWidth + barGap);
@@ -52,6 +61,7 @@ export function BarChart({ data, height = 160 }: BarChartProps) {
                 x={x + barWidth / 2}
                 y={height - 8}
                 fontSize="11"
+                fontFamily="Inter_500Medium"
                 fill={theme.textSecondary}
                 textAnchor="middle">
                 {d.label}
@@ -61,7 +71,7 @@ export function BarChart({ data, height = 160 }: BarChartProps) {
                   x={x + barWidth / 2}
                   y={y - 6}
                   fontSize="11"
-                  fontWeight="700"
+                  fontFamily="Inter_700Bold"
                   fill={theme.text}
                   textAnchor="middle">
                   {d.value}

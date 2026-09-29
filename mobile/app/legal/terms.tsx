@@ -2,20 +2,23 @@
  * Template copy — replace with TrackTrail's actual terms of service
  * before shipping.
  */
-import { ScrollView, StyleSheet } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { TERMS_URL } from '@/services/config';
 
 export default function TermsScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="small" themeColor="textSecondary">
-          This is placeholder terms-of-service text — replace it with TrackTrail&apos;s actual
-          terms before release.
-        </ThemedText>
+        {TERMS_URL ? (
+          <Pressable accessibilityRole="link" accessibilityLabel="Open the full terms of service online" onPress={() => WebBrowser.openBrowserAsync(TERMS_URL)} style={styles.link}>
+            <ThemedText type="smallBold" themeColor="tint">Open the full terms of service online</ThemedText>
+          </Pressable>
+        ) : null}
         <ThemedText type="smallBold">Using TrackTrail</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           TrackTrail is provided to help you track and discover job opportunities. You are
@@ -43,4 +46,5 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.two,
   },
+  link: { minHeight: 44, justifyContent: 'center' },
 });

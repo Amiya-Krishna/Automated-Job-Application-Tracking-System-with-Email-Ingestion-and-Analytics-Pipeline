@@ -98,6 +98,9 @@ export default function CompaniesScreen() {
             refreshControl={
               <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.tint} />
             }
+            removeClippedSubviews
+            initialNumToRender={10}
+            windowSize={7}
             onEndReachedThreshold={0.4}
             onEndReached={() => {
               if (hasNextPage && !isFetchingNextPage) fetchNextPage();

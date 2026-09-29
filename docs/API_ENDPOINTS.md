@@ -870,3 +870,23 @@ limit. No other endpoint in this API is rate-limited.
 ---
 
 **Last Updated**: August 25, 2026
+
+
+## Mobile sessions, account & notifications (added for the mobile production release)
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | /api/auth/login | – | Send header `X-Client: mobile` (or body `client: "mobile"`) to receive `{ accessToken, accessTokenExpiresAt, expiresIn, refreshToken, user }` (15-min access token). Web/extension unchanged (7-day `token`). |
+| POST | /api/auth/refresh | – | `{ refreshToken }` -> new access token + **rotated** refresh token. 401 `session_invalid` = sign in again; 401 `refresh_in_progress` = benign race. Rate limited. |
+| GET | /api/auth/me | token | Current user + `gmailConnected`. 401 on missing/expired/invalid token. |
+| POST | /api/auth/logout | – | `{ refreshToken }` revokes that session family. Idempotent. |
+| POST | /api/auth/logout-all | token | Revokes every mobile session. Also triggered by a password reset. |
+| DELETE | /api/auth/account | token | `{ password }` permanently deletes the account and all its data (cascade) and revokes the Gmail grant. |
+| POST/DELETE | /api/notifications/devices | token | Register / remove an Expo push token `{ expoPushToken, platform, deviceName, appVersion, timezone }`. |
+| GET/PUT | /api/notifications/preferences | token | `{ pushEnabled, interviewReminders, applicationReminders, jobReminders, timezone, reminderHour }`. |
+| POST | /api/notifications/test | token | Sends a test push to the caller's devices. |
+| POST | /api/notifications/run-reminders | `x-cron-secret` | Runs one reminder pass (for external schedulers). 404 unless `CRON_SECRET` is set. |
+| GET | /.well-known/assetlinks.json, /.well-known/apple-app-site-association | – | Verified deep links; served only when the env vars in server/.env.example are set. |
+| GET | /app/reset-password?token= | – | Universal/App Link target; falls back to the web reset page when the app is not installed. |
+
+Invalid or expired tokens now return **401** (previously 400 for an invalid token).

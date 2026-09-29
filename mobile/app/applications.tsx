@@ -138,7 +138,7 @@ export default function ApplicationsScreen() {
 
         {isLoading ? (
           <LoadingState label="Loading your applications…" />
-        ) : isError ? (
+        ) : isError && !data ? (
           <ErrorState error={error} onRetry={refetch} />
         ) : (
           <FlatList<AppliedJob>
@@ -148,6 +148,10 @@ export default function ApplicationsScreen() {
             ItemSeparatorComponent={() => <ThemedView style={{ height: Spacing.two }} />}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
+            removeClippedSubviews
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={7}
             refreshControl={
               <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.tint} />
             }

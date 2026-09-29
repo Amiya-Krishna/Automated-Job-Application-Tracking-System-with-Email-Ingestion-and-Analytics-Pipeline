@@ -11,11 +11,11 @@ interface StatCardProps {
 
 export function StatCard({ label, value }: StatCardProps) {
   return (
-    <ThemedView type="backgroundElement" style={styles.card}>
-      <ThemedText type="title" style={styles.value}>
+    <ThemedView type="backgroundElement" style={styles.card} accessible accessibilityLabel={`${label}: ${value}`}>
+      <ThemedText type="display" style={styles.value} importantForAccessibility="no">
         {value}
       </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="small" themeColor="textSecondary" importantForAccessibility="no">
         {label}
       </ThemedText>
     </ThemedView>
@@ -23,15 +23,6 @@ export function StatCard({ label, value }: StatCardProps) {
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.half,
-  },
-  value: {
-    fontSize: 28,
-    lineHeight: 32,
-  },
+  card: { flexBasis: '47%', flexGrow: 1, borderRadius: Spacing.three, padding: Spacing.three, gap: Spacing.half },
+  value: { fontSize: 30, lineHeight: 36 },
 });

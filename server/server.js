@@ -27,6 +27,43 @@ prisma.$connect()
 
 const app = express();
 
+// Render/Vercel/most hosts terminate TLS at a proxy; without this req.ip (used
+// by the rate limiters) would be the proxy's address for every client.
+app.set("trust proxy", 1);
+app.disable("x-powered-by");
+
+// Baseline security headers (no extra dependency).
+app.use((req, res, next) => {
+  res.set({
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  });
+  if (process.env.NODE_ENV === "production") {
+    res.set("Strict-Transport-Security", "max-age=15552000; includeSubDomains");
+  }
+  next();
+});
+
+// Production-safe errors: routes still do `res.status(500).json({ message:
+// error.message })`, which can leak internals (SQL, stack fragments). In
+// production every 5xx body is replaced with a generic message; only the
+// method/path/status is logged (never the message: it can echo user data).
+if (process.env.NODE_ENV === "production") {
+  app.use((req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode >= 500 && body && typeof body === "object") {
+        console.error(`[server-error] ${req.method} ${req.path} -> ${res.statusCode}`);
+        body = { ...body, message: "Server error. Please try again." };
+      }
+      return json(body);
+    };
+    next();
+  });
+}
+
 // Only allow the configured frontend origin(s) to call the API.
 // CLIENT_URL can be a single URL or a comma-separated list.
 const allowedOrigins = (process.env.CLIENT_URL || "")
@@ -58,10 +95,12 @@ app.use(
   })
 );
 app.use(express.json());
+app.use(require("./routes/wellKnownRoutes"));
 app.use(express.static("public"));
 app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/jobs", require("./routes/jobRoutes"));
 app.use("/api/gmail", require("./routes/gmailRoutes"));
+app.use("/api/notifications", require("./routes/notificationRoutes")); // routes apply `auth` per-handler
 
 // --- Intelligent Job Application Engine ---
 // Everything in this app is now Postgres-backed — the manual tracker
@@ -114,11 +153,23 @@ app.get("/health", (req, res) => {
 // "Unexpected token '<' ... is not valid JSON". Always answer in JSON.
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(err.status || 500).json({ message: err.message || "Server error" });
+  const status = err.status || 500;
+  const safe = process.env.NODE_ENV === "production" && status >= 500;
+  res.status(status).json({ message: safe ? "Server error. Please try again." : err.message || "Server error" });
 });
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`Server Running on ${PORT}`);
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+    console.error("JWT_SECRET is not set — authentication will fail.");
+  }
+  // In-process reminder scheduler (set REMINDERS_ENABLED=false to disable, e.g.
+  // if you trigger POST /api/notifications/run-reminders from an external cron).
+  require("./services/reminderService").startReminderScheduler();
+  const purge = setInterval(() => {
+    require("./lib/sessions").purgeExpiredSessions().catch((e) => console.error("session purge failed:", e.message));
+  }, 24 * 60 * 60 * 1000);
+  if (purge.unref) purge.unref();
 });

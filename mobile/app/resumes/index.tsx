@@ -183,7 +183,7 @@ export default function MyResumesScreen() {
           <Card style={styles.card}>
             <ThemedText type="smallBold">Upload a resume</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              PDF or DOCX, up to 2 MB. It's uploaded straight to your TrackTrail account — the same backend record the web app and browser extension use — and becomes your active resume. Nothing is kept on this device.
+              PDF or DOCX, up to 2 MB. It&apos;s uploaded straight to your TrackTrail account — the same backend record the web app and browser extension use — and becomes your active resume. Nothing is kept on this device.
             </ThemedText>
             {resumes.length === 0 ? (
               <ThemedText type="small" themeColor="danger">

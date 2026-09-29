@@ -28,6 +28,7 @@ const server = path.resolve(root, "../server");
 const shims = {
   "@/services/tokenStore": path.join(__dirname, "shims/tokenStore.cjs"),
   "@/services/sessionEvents": path.join(__dirname, "shims/sessionEvents.cjs"),
+  "@/services/logger": path.join(__dirname, "shims/logger.cjs"),
   "expo-file-system/legacy": path.join(__dirname, "shims/expoFileSystem.cjs"),
   "expo-sharing": path.join(__dirname, "shims/expoSharing.cjs"),
 };

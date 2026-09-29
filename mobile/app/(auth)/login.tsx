@@ -15,10 +15,11 @@ import { ApiError } from '@/types/api';
 import { loginSchema, type LoginFormValues } from '@/utils/auth-validation';
 
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, sessionNotice, clearSessionNotice } = useAuth();
   const theme = useTheme();
   const { registeredEmail } = useLocalSearchParams<{ registeredEmail?: string }>();
-  const [formError, setFormError] = useState<string | null>(null);
+  // Pre-filled when the server ended the session (expired/revoked) so the user knows why they are here.
+  const [formError, setFormError] = useState<string | null>(sessionNotice);
 
   const {
     control,
@@ -31,6 +32,7 @@ export default function LoginScreen() {
 
   const onSubmit = async (values: LoginFormValues) => {
     setFormError(null);
+    clearSessionNotice();
     try {
       await login(values);
       // No explicit navigation call: the root layout's Stack.Protected

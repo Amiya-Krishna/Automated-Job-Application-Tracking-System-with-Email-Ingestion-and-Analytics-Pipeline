@@ -32,7 +32,19 @@ yarn-error.*
 
 # local env files
 .env
+.env.*
+!.env.example
 .env*.local
+
+# credentials / native service files (never commit)
+google-services.json
+GoogleService-Info.plist
+credentials.json
+*.keystore
+*.mobileprovision
+*.p8
+*.p12
+*.jks
 
 # typescript
 *.tsbuildinfo

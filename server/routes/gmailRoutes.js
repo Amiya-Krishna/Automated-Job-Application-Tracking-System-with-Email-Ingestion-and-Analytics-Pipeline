@@ -37,14 +37,15 @@ router.get("/auth-url", auth, (req, res) => {
         ? "mobile"
         : "web";
 
-    const statePayload = { id: req.user.id, source };
+    // `purpose` keeps this state token from ever being accepted as a login token.
+    const statePayload = { id: req.user.id, source, purpose: "gmail_oauth" };
 
     if (source === "mobile") {
       const redirectUri = req.query.redirectUri;
       if (!isAllowedMobileRedirect(redirectUri)) {
         return res.status(400).json({
           message:
-            "A valid redirectUri (mobile:// or exp://) is required when source=mobile",
+            "A valid redirectUri (tracktrail://, mobile:// or exp://) is required when source=mobile",
         });
       }
       statePayload.redirectUri = redirectUri;
@@ -105,6 +106,7 @@ router.get("/callback", async (req, res) => {
     }
 
     const decoded = jwt.verify(state, process.env.JWT_SECRET);
+    if (decoded.purpose !== "gmail_oauth") throw new Error("Invalid OAuth state");
     source =
       decoded.source === "extension"
         ? "extension"

@@ -1,83 +1,136 @@
 import * as SecureStore from 'expo-secure-store';
 
 /**
- * Token storage, backed by Expo SecureStore.
+ * Session storage, backed by Expo SecureStore (iOS Keychain / Android Keystore).
  *
- * The API client (api.ts) needs to read the current JWT on every request
- * and needs a way to be told "the token is gone" (on logout, or after a
- * 401) — it should not know or care *how* the token is persisted. This
- * module isolates that: everything else in the app imports getToken/
- * setToken/clearToken from here and never touches SecureStore directly.
+ * What is stored
+ *   - access token  (short-lived JWT, sent on every request)
+ *   - refresh token (opaque, rotated on every refresh; stored ONLY here)
+ *   - access-token expiry (ISO string, lets the API client refresh proactively)
+ *   - a minimal cached user { id, name, email } so a cold start can render before
+ *     the network answers (or while offline)
+ * Nothing here is ever written to AsyncStorage, files, logs or crash reports.
  *
- * SecureStore's API is async, but the Axios request interceptor needs a
- * synchronous value on every outgoing request (adding an await there
- * would slow down and complicate every single API call). The fix is an
- * in-memory copy that's the source of truth for reads, kept in sync with
- * SecureStore by every write:
+ * The API client needs the token synchronously on every request, so an
+ * in-memory copy is the source of truth for reads; every write updates memory
+ * first and then persists. `hydrateSession()` populates memory once at startup.
  *
- *   - `hydrateToken()` is called ONCE, at app startup (by AuthProvider),
- *     before anything else renders. It does the one necessary async
- *     SecureStore read and populates the in-memory copy.
- *   - `getToken()` is synchronous and only ever reads the in-memory copy.
- *   - `setToken`/`clearToken` update the in-memory copy synchronously
- *     (so `getToken()` reflects the change immediately) and persist to
- *     SecureStore asynchronously in the background.
- *
- * Per the mobile security rules, the JWT is never written to
- * AsyncStorage, localStorage, cookies, or a plain file — only
- * SecureStore.
+ * Legacy: builds before refresh tokens stored a single 7-day JWT under
+ * `auth_token`. It is still read as the access token, so an app update never
+ * signs anyone out; once it expires the user signs in again and gets a session.
  */
 
-const SECURE_STORE_KEY = 'auth_token';
+const OPTIONS: SecureStore.SecureStoreOptions = {
+  // Readable after first unlock (needed for background refresh) but never
+  // migrated to another device via backup.
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY,
+};
 
-let inMemoryToken: string | null = null;
+const KEY_ACCESS = 'auth_token'; // same key as older builds (legacy compatible)
+const KEY_REFRESH = 'auth_refresh_token';
+const KEY_EXPIRES = 'auth_access_expires_at';
+const KEY_USER = 'auth_user';
+
+export interface StoredUser {
+  id: number;
+  name: string;
+  email: string;
+}
+
+export interface SessionTokens {
+  accessToken: string;
+  refreshToken?: string | null;
+  accessTokenExpiresAt?: string | null;
+}
+
+let accessToken: string | null = null;
+let refreshToken: string | null = null;
+let expiresAt: number | null = null;
+let cachedUser: StoredUser | null = null;
 let hasHydrated = false;
 
-/**
- * Reads the persisted token (if any) from SecureStore into the in-memory
- * copy. Must be awaited exactly once, at startup, before any protected
- * screen or authenticated request is allowed to proceed — see
- * providers/AuthProvider.tsx, which is the only caller.
- *
- * Safe to call more than once (e.g. fast refresh during development):
- * subsequent calls are no-ops that return the already-hydrated value.
- */
+async function write(key: string, value: string | null): Promise<void> {
+  try {
+    if (value == null) await SecureStore.deleteItemAsync(key, OPTIONS);
+    else await SecureStore.setItemAsync(key, value, OPTIONS);
+  } catch {
+    // A failed persist must not crash the session; memory still holds the value
+    // for this run. (Never log the key's value.)
+  }
+}
+
+/** Reads the persisted session into memory. Safe to call repeatedly. */
+export async function hydrateSession(): Promise<{ hasSession: boolean }> {
+  if (!hasHydrated) {
+    try {
+      const [a, r, e, u] = await Promise.all([
+        SecureStore.getItemAsync(KEY_ACCESS, OPTIONS),
+        SecureStore.getItemAsync(KEY_REFRESH, OPTIONS),
+        SecureStore.getItemAsync(KEY_EXPIRES, OPTIONS),
+        SecureStore.getItemAsync(KEY_USER, OPTIONS),
+      ]);
+      accessToken = a ?? null;
+      refreshToken = r ?? null;
+      const parsed = e ? Date.parse(e) : NaN;
+      expiresAt = Number.isFinite(parsed) ? parsed : null;
+      try {
+        cachedUser = u ? (JSON.parse(u) as StoredUser) : null;
+      } catch {
+        cachedUser = null;
+      }
+    } catch {
+      accessToken = refreshToken = null;
+    }
+    hasHydrated = true;
+  }
+  return { hasSession: Boolean(accessToken || refreshToken) };
+}
+
+/** @deprecated kept for older imports; prefer hydrateSession(). */
 export async function hydrateToken(): Promise<string | null> {
-  if (hasHydrated) return inMemoryToken;
-  const stored = await SecureStore.getItemAsync(SECURE_STORE_KEY);
-  inMemoryToken = stored ?? null;
-  hasHydrated = true;
-  return inMemoryToken;
+  await hydrateSession();
+  return accessToken;
 }
 
-/**
- * Returns the current JWT, or `null` if there isn't one. Synchronous —
- * relies on `hydrateToken()` having already run. Before hydration
- * completes this always returns `null`, which is why AuthProvider holds
- * the app in a loading state until hydration finishes, rather than ever
- * treating "no token yet" as "logged out."
- */
-export function getToken(): string | null {
-  return inMemoryToken;
+export const isHydrated = () => hasHydrated;
+export const getToken = (): string | null => accessToken;
+export const getRefreshToken = (): string | null => refreshToken;
+/** Epoch ms when the current access token expires, if known. */
+export const getAccessExpiresAt = (): number | null => expiresAt;
+export const getCachedUser = (): StoredUser | null => cachedUser;
+
+/** Stores a full session (login / refresh). Memory first, then SecureStore. */
+export async function setSession(tokens: SessionTokens, user?: StoredUser | null): Promise<void> {
+  accessToken = tokens.accessToken;
+  if (tokens.refreshToken !== undefined) refreshToken = tokens.refreshToken ?? null;
+  const parsed = tokens.accessTokenExpiresAt ? Date.parse(tokens.accessTokenExpiresAt) : NaN;
+  expiresAt = Number.isFinite(parsed) ? parsed : null;
+  if (user) cachedUser = user;
+  await Promise.all([
+    write(KEY_ACCESS, accessToken),
+    tokens.refreshToken !== undefined ? write(KEY_REFRESH, refreshToken) : Promise.resolve(),
+    write(KEY_EXPIRES, tokens.accessTokenExpiresAt ?? null),
+    user ? write(KEY_USER, JSON.stringify(user)) : Promise.resolve(),
+  ]);
 }
 
-/** True once `hydrateToken()` has completed. */
-export function isHydrated(): boolean {
-  return hasHydrated;
+export async function setCachedUser(user: StoredUser): Promise<void> {
+  cachedUser = user;
+  await write(KEY_USER, JSON.stringify(user));
 }
 
-/** Stores the JWT after a successful login. */
+/** Back-compat: store just an access token. */
 export async function setToken(token: string): Promise<void> {
-  inMemoryToken = token;
-  await SecureStore.setItemAsync(SECURE_STORE_KEY, token);
+  await setSession({ accessToken: token });
 }
 
-/**
- * Clears the JWT — on logout, or when the API client observes a 401.
- * Clears the in-memory copy first (synchronously) so `getToken()`
- * reflects "logged out" immediately, then removes it from SecureStore.
- */
-export async function clearToken(): Promise<void> {
-  inMemoryToken = null;
-  await SecureStore.deleteItemAsync(SECURE_STORE_KEY);
+/** Clears everything, in memory first so getToken() reflects logout immediately. */
+export async function clearSession(): Promise<void> {
+  accessToken = refreshToken = null;
+  expiresAt = null;
+  cachedUser = null;
+  await Promise.all([KEY_ACCESS, KEY_REFRESH, KEY_EXPIRES, KEY_USER].map((k) => write(k, null)));
 }
+
+/** Back-compat alias. */
+export const clearToken = clearSession;

@@ -3,6 +3,7 @@ import { FlatList, Pressable, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/empty-state';
+import { PushPermissionBanner } from '@/components/push-permission-banner';
 import { NotificationItem } from '@/components/notification-item';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -10,6 +11,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useNotifications } from '@/hooks/use-notifications';
 import type { AppNotification } from '@/types/notifications';
+import { resolveNotificationTarget } from '@/utils/deep-links';
 
 export default function NotificationsScreen() {
   const { notifications, unreadCount, markAsRead, markAllAsRead, remove } = useNotifications();
@@ -23,9 +25,10 @@ export default function NotificationsScreen() {
   // left on this list, which is always a safe place to be.
   const openNotification = (item: AppNotification) => {
     markAsRead(item.id);
-    if (!item.target?.pathname) return;
+    const href = resolveNotificationTarget({ target: item.target });
+    if (!href) return;
     try {
-      router.push({ pathname: item.target.pathname as never, params: item.target.params });
+      router.push(href as never);
     } catch {
       // Fall back to staying on the Notifications list rather than crashing.
     }
@@ -53,6 +56,8 @@ export default function NotificationsScreen() {
           </ThemedText>
         ) : null}
 
+        <PushPermissionBanner />
+
         <FlatList<AppNotification>
           data={notifications}
           keyExtractor={(item) => item.id}
@@ -63,6 +68,9 @@ export default function NotificationsScreen() {
               onDelete={() => remove(item.id)}
             />
           )}
+          removeClippedSubviews
+          initialNumToRender={12}
+          windowSize={7}
           ItemSeparatorComponent={() => <ThemedView style={{ height: Spacing.two }} />}
           contentContainerStyle={styles.listContent}
           ListEmptyComponent={

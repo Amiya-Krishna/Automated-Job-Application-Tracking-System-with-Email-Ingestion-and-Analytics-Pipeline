@@ -9,7 +9,7 @@ export function LoadingState({ label = 'Loading…' }: { label?: string }) {
   const theme = useTheme();
 
   return (
-    <ThemedView style={styles.container}>
+    <ThemedView style={styles.container} accessible accessibilityRole="progressbar" accessibilityLabel={label} accessibilityLiveRegion="polite">
       <ActivityIndicator color={theme.tint} />
       <ThemedText type="small" themeColor="textSecondary">
         {label}

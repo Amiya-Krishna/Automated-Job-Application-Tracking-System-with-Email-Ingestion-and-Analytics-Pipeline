@@ -1,62 +1,54 @@
 /**
- * Device-local switches shown in Settings → Notifications. There is no
- * backend endpoint to persist these against the user's account (no
- * push-token registration route exists — see NotificationContext's
- * top comment), so they live in AsyncStorage on this device only, and
- * today they gate exactly one real thing: whether
- * services/notifications.ts's events turn into an in-app notification.
- * `pushEnabled` and `emailEnabled` are stored and surfaced honestly, but
- * have no wiring to an actual push/email pipeline yet — the UI does not
- * pretend otherwise (see the Settings screen's copy).
+ * Notification preferences, stored on the ACCOUNT (server) so reminders are
+ * honoured on every device and by the backend scheduler. Optimistic updates
+ * with rollback on failure. Turning push on also asks the OS for permission and
+ * registers this device; turning it off unregisters it.
  */
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-const STORAGE_KEY = '@tracktrail/notification-preferences';
+import { useAuth } from '@/hooks/use-auth';
+import { registerForPushIfPermitted, requestPushPermission, unregisterPushDevice } from '@/services/push';
+import { DEFAULT_REMOTE_PREFERENCES, fetchPreferences, savePreferences, type RemotePreferences } from '@/services/pushApi';
 
-export interface NotificationPreferences {
-  pushEnabled: boolean;
-  emailEnabled: boolean;
-  interviewReminders: boolean;
-  applicationReminders: boolean;
-}
-
-const DEFAULT_PREFERENCES: NotificationPreferences = {
-  pushEnabled: true,
-  emailEnabled: true,
-  interviewReminders: true,
-  applicationReminders: true,
-};
+export type NotificationPreferences = RemotePreferences;
+const KEY = ['notification-preferences'] as const;
 
 export function useNotificationPreferences() {
-  const [preferences, setPreferences] = useState<NotificationPreferences>(DEFAULT_PREFERENCES);
-  const [isReady, setIsReady] = useState(false);
+  const { status } = useAuth();
+  const qc = useQueryClient();
 
-  useEffect(() => {
-    let cancelled = false;
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (cancelled) return;
-      if (raw) {
-        try {
-          setPreferences({ ...DEFAULT_PREFERENCES, ...JSON.parse(raw) });
-        } catch {
-          // Ignore corrupt storage, keep defaults.
-        }
+  const query = useQuery({ queryKey: KEY, queryFn: fetchPreferences, enabled: status === 'authenticated', staleTime: 60_000 });
+
+  const mutation = useMutation({
+    mutationFn: async (patch: Partial<RemotePreferences>) => {
+      if (patch.pushEnabled === true) {
+        const permission = await requestPushPermission();
+        if (permission === 'denied') throw new Error('Notifications are blocked for TrackTrail. Enable them in your phone settings.');
       }
-      setIsReady(true);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      const saved = await savePreferences(patch);
+      if (patch.pushEnabled === true) await registerForPushIfPermitted();
+      if (patch.pushEnabled === false) await unregisterPushDevice();
+      return saved;
+    },
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: KEY });
+      const previous = qc.getQueryData<RemotePreferences>(KEY);
+      qc.setQueryData<RemotePreferences>(KEY, { ...(previous ?? DEFAULT_REMOTE_PREFERENCES), ...patch });
+      return { previous };
+    },
+    onError: (_e, _patch, ctx) => {
+      if (ctx?.previous) qc.setQueryData(KEY, ctx.previous);
+    },
+    onSuccess: (saved) => qc.setQueryData(KEY, saved),
+  });
 
-  const update = (patch: Partial<NotificationPreferences>) => {
-    setPreferences((prev) => {
-      const next = { ...prev, ...patch };
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      return next;
-    });
+  return {
+    preferences: query.data ?? DEFAULT_REMOTE_PREFERENCES,
+    update: (patch: Partial<RemotePreferences>) => mutation.mutate(patch),
+    isReady: !query.isLoading,
+    isError: query.isError,
+    error: mutation.error ?? query.error,
+    isSaving: mutation.isPending,
+    refetch: query.refetch,
   };
-
-  return { preferences, update, isReady };
 }

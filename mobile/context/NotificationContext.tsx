@@ -1,25 +1,23 @@
 /**
- * In-app notification center: list + unread badge count, persisted to
- * AsyncStorage per device (there is no backend endpoint for this — see
- * types/notifications.ts). Subscribes to services/notifications.ts so
- * real actions elsewhere in the app (submitting an application, an
- * outcome status change, a profile/resume update) surface here without
- * this file needing to know about applications, jobs, or profiles.
+ * In-app notification center: list + unread badge, persisted per device.
  *
- * Push delivery (a device actually buzzing while the app is closed)
- * needs `expo-notifications` plus a backend endpoint to store Expo push
- * tokens against a user — neither exists yet, so this intentionally
- * only covers the in-app list + local scheduled reminders (see
- * hooks/use-notification-preferences.ts for how Settings' toggles gate
- * this). Wiring real push is a backend + native-config task, not
- * something to fake with a client-only "ON/OFF" switch that does nothing.
+ * Sources:
+ *   - local events from real actions (services/notifications.ts emitters)
+ *   - remote pushes (reminders sent by the backend) received while the app is
+ *     open, or opened from the system tray (see components/notification-link-handler.tsx)
+ *
+ * The list contains company/role names, so it belongs to the signed-in user:
+ * it is cleared on sign-out. There is no seeded/demo content.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { onNotificationEvent, type NotificationEvent } from '@/services/notifications';
+import { isPushSupported } from '@/services/push';
 import type { AppNotification, NotificationKind } from '@/types/notifications';
+import { resolveNotificationTarget } from '@/utils/deep-links';
 
 const STORAGE_KEY = '@tracktrail/notifications';
 
@@ -27,41 +25,25 @@ function makeId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-// The three example notifications called for in the product spec —
-// shown once, on first launch, so the Notifications tab isn't empty
-// before the user has done anything yet. Clearly distinguishable from
-// real ones only by content, same as any other seeded demo data.
-function seedNotifications(): AppNotification[] {
-  const now = Date.now();
-  return [
-    {
-      id: makeId(),
-      kind: 'interview',
-      title: 'Interview tomorrow',
-      body: 'You have an interview coming up — check the Applications tab for details.',
-      createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
-      read: false,
-      target: { pathname: '/applications' },
-    },
-    {
-      id: makeId(),
-      kind: 'application',
-      title: 'Application submitted',
-      body: 'Your application was added to your pipeline.',
-      createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(),
-      read: false,
-      target: { pathname: '/applications' },
-    },
-    {
-      id: makeId(),
-      kind: 'resume',
-      title: 'Resume updated',
-      body: 'Your profile now reflects your latest resume details.',
-      createdAt: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
-      read: true,
-      target: { pathname: '/resumes' },
-    },
-  ];
+const MAX_ITEMS = 100;
+
+/** Turns a received push into a list item; the target is validated against the deep-link allow-list. */
+export function notificationFromPush(n: Notifications.Notification): AppNotification | null {
+  const { title, body, data } = n.request.content;
+  if (!title && !body) return null;
+  const type = (data as { type?: string } | null)?.type;
+  const kind: NotificationKind = type === 'interview' ? 'interview' : type === 'application' || type === 'job' ? 'application' : 'system';
+  const href = resolveNotificationTarget(data);
+  const rawTarget = (data as { target?: { pathname?: string; params?: Record<string, string> } } | null)?.target;
+  return {
+    id: `push-${n.request.identifier}`,
+    kind,
+    title: String(title ?? 'TrackTrail').slice(0, 200),
+    body: String(body ?? '').slice(0, 500),
+    createdAt: new Date(n.date).toISOString(),
+    read: false,
+    target: href && rawTarget?.pathname ? { pathname: rawTarget.pathname, params: rawTarget.params } : undefined,
+  };
 }
 
 function fromEvent(event: NotificationEvent): Omit<AppNotification, 'id' | 'createdAt' | 'read'> | null {
@@ -113,6 +95,8 @@ interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
   isReady: boolean;
+  /** Adds a notification the user opened from the system tray (deduped by id). */
+  addFromPush: (n: Notifications.Notification) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   remove: (id: string) => void;
@@ -138,10 +122,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         try {
           setNotifications(JSON.parse(raw));
         } catch {
-          setNotifications(seedNotifications());
+          setNotifications([]);
         }
-      } else {
-        setNotifications(seedNotifications());
       }
       setIsReady(true);
     });
@@ -158,22 +140,41 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return onNotificationEvent((event) => {
       const built = fromEvent(event);
       if (!built) return;
-      setNotifications((prev) => [
-        { id: makeId(), createdAt: new Date().toISOString(), read: false, ...built },
-        ...prev,
-      ]);
+      setNotifications((prev) => [{ id: makeId(), createdAt: new Date().toISOString(), read: false, ...built }, ...prev].slice(0, MAX_ITEMS));
     });
   }, []);
 
-  // Logging out clears nothing here on purpose — these are device
-  // notifications, not tied to the specific account's server data.
-  void status;
+  // Pushes that arrive while the app is open.
+  useEffect(() => {
+    if (!isPushSupported) return;
+    const sub = Notifications.addNotificationReceivedListener((n) => {
+      const item = notificationFromPush(n);
+      if (!item) return;
+      setNotifications((prev) => (prev.some((x) => x.id === item.id) ? prev : [item, ...prev].slice(0, MAX_ITEMS)));
+    });
+    return () => sub.remove();
+  }, []);
+
+  // The list holds the signed-in user's application details: clear it when they sign out
+  // (or their session ends) so the next person on this device never sees it.
+  const wasAuthenticated = useRef(false);
+  useEffect(() => {
+    if (status === 'authenticated') wasAuthenticated.current = true;
+    else if (status === 'unauthenticated' && wasAuthenticated.current) {
+      wasAuthenticated.current = false;
+      setNotifications([]);
+    }
+  }, [status]);
 
   const value = useMemo<NotificationContextValue>(
     () => ({
       notifications,
       unreadCount: notifications.filter((n) => !n.read).length,
       isReady,
+      addFromPush: (n) => {
+        const item = notificationFromPush(n);
+        if (item) setNotifications((prev) => (prev.some((x) => x.id === item.id) ? prev : [{ ...item, read: true }, ...prev].slice(0, MAX_ITEMS)));
+      },
       markAsRead: (id) =>
         setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n))),
       markAllAsRead: () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true }))),

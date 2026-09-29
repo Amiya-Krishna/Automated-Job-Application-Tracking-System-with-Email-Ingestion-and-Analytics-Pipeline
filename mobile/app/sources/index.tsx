@@ -68,7 +68,6 @@ function RunResultsSummary({ run }: { run: ScrapeRun }) {
 }
 
 function DiscoveryRunCard({ run, onDelete, deleting }: { run: ScrapeRun; onDelete: () => void; deleting: boolean }) {
-  const theme = useTheme();
   const live = useScrapeRunStatus(run.status === 'queued' || run.status === 'running' ? run.id : null);
   const current = live.data ?? run;
 

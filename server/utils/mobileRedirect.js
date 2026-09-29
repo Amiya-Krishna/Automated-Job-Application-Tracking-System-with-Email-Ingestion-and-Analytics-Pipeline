@@ -16,7 +16,7 @@
 // token in the query string, not an arbitrary open redirect to a
 // attacker-controlled domain (https/http are not in the allow-list).
 function isAllowedMobileRedirect(url) {
-  return typeof url === "string" && /^(mobile:\/\/|exp:\/\/)/.test(url);
+  return typeof url === "string" && url.length <= 500 && /^(tracktrail:\/\/|mobile:\/\/|exp:\/\/)/.test(url);
 }
 
 // ---------------------------------------------------------------------------
@@ -41,7 +41,9 @@ function isPrivateOrLoopbackHost(host) {
 
 function isAllowedResetRedirect(url, env = process.env) {
   if (typeof url !== "string" || url.length > 200) return false;
-  if (/^mobile:\/\/reset-password\/?$/.test(url)) return true;
+  // `tracktrail://` is the production scheme; `mobile://` is kept so builds
+  // shipped before the rename can still complete a reset.
+  if (/^(?:tracktrail|mobile):\/\/reset-password\/?$/.test(url)) return true;
   if (env.NODE_ENV === "production" && env.ALLOW_EXPO_GO_RESET_REDIRECT !== "true") return false;
   let u;
   try {

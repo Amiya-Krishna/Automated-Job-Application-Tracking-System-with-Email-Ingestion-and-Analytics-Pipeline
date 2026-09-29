@@ -1,56 +1,28 @@
 /**
- * Shared, backend-wide API types.
- *
- * Intentionally minimal at this stage: only the shapes the API client
- * itself needs to compile and to normalize errors consistently. Endpoint-
- * specific request/response types (TrackedJob, EngineJob, Profile, ...)
- * belong in their own feature files (e.g. types/applications.ts) once those
- * features are implemented, not here.
+ * Shared, backend-wide API types: the error body shape and the normalized
+ * ApiError every failed request is turned into by services/api.ts.
  */
 
-/**
- * The backend's error responses are consistently `{ message: string }`
- * across every route (auth, jobs, engine, applications, analytics, etc.)
- * — confirmed by inspecting server/routes/*.js. This is the only error
- * shape the API client needs to know about.
- */
+/** The backend's error responses are `{ message, code? }` across every route. */
 export interface ApiErrorResponse {
   message: string;
-  /**
-   * Optional machine-readable code (e.g. "no_resume", "jd_too_short"). Only
-   * the /api/resume/* routes send it; older routes never do.
-   */
+  /** Optional machine-readable code ("no_resume", "token_expired", "rate_limited", ...). */
   code?: string;
+  /** Sent with 429 responses by server/middleware/rateLimit.js. */
+  retryAfterSeconds?: number;
 }
 
-/**
- * Normalized error thrown by the API client for every failed request,
- * whether the failure came from the server (4xx/5xx with a JSON body),
- * the network (no response at all), or something else (request setup).
- *
- * Screens/hooks built in later phases can catch `ApiError` and rely on
- * `status` + `message` without needing to know anything about Axios.
- */
 export class ApiError extends Error {
-  /** HTTP status code, or `null` for network/timeout errors with no response. */
+  /** HTTP status code, or `null` for network/timeout/offline errors with no response. */
   status: number | null;
   /** True when the request never reached the server (offline, DNS, timeout). */
   isNetworkError: boolean;
-  /**
-   * The underlying Axios error code (e.g. 'ECONNABORTED' for our own
-   * client-side timeout, 'ERR_NETWORK' for a connection that failed
-   * outright), or `null` for HTTP error responses / unknown causes. Not
-   * shown to the user — for logging/diagnostics only, so a real
-   * connectivity problem can be told apart from a slow Render cold start
-   * without guessing. See services/api.ts.
-   */
+  /** Underlying Axios/client error code (ECONNABORTED, ERR_NETWORK, OFFLINE, ...). Diagnostics only. */
   code: string | null;
-  /**
-   * The backend's own error code from the response body (e.g. "no_resume"),
-   * for the few routes that send one (/api/resume/*). `null` otherwise. Unlike
-   * `code` above, this is safe to branch UI on.
-   */
+  /** The backend's own error code from the response body. Safe to branch UI on. */
   apiCode: string | null;
+  /** Seconds the server asked us to wait (429), when known. */
+  retryAfterSeconds: number | null;
 
   constructor(
     message: string,
@@ -58,6 +30,7 @@ export class ApiError extends Error {
     isNetworkError: boolean,
     code: string | null = null,
     apiCode: string | null = null,
+    retryAfterSeconds: number | null = null,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -65,5 +38,6 @@ export class ApiError extends Error {
     this.isNetworkError = isNetworkError;
     this.code = code;
     this.apiCode = apiCode;
+    this.retryAfterSeconds = retryAfterSeconds;
   }
 }

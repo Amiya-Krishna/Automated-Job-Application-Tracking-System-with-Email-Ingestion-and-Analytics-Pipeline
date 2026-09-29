@@ -16,11 +16,11 @@ async function seeded(opts) {
   return { ...app, job, A, B };
 }
 
-test("authentication: missing token -> 401, bad token -> 400 (existing middleware behaviour)", async (t) => {
+test("authentication: missing token -> 401, bad/expired token -> 401 (mobile refreshes on 401)", async (t) => {
   const app = await seeded(); t.after(app.close);
   assert.equal((await app.call("GET", "/versions")).status, 401);
   assert.equal((await app.call("POST", "/analyze", { body: {} })).status, 401);
-  assert.equal((await app.call("GET", "/versions", { token: "garbage" })).status, 400);
+  assert.equal((await app.call("GET", "/versions", { token: "garbage" })).status, 401);
 });
 
 test("error states: no resume, JD too short, invalid body", async (t) => {

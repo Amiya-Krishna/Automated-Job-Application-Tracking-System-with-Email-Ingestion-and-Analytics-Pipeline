@@ -9,6 +9,7 @@ import { FormTextInput } from '@/components/form-text-input';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { resetPassword } from '@/services/auth';
 import { ApiError } from '@/types/api';
@@ -37,7 +38,11 @@ import { resetPasswordSchema, type ResetPasswordFormValues } from '@/utils/auth-
  */
 export default function ResetPasswordScreen() {
   const theme = useTheme();
-  const { token: deepLinkToken } = useLocalSearchParams<{ token?: string }>();
+  const { token: rawToken } = useLocalSearchParams<{ token?: string | string[] }>();
+  // Query params can arrive as string | string[]; a malformed value is treated as "no token".
+  const candidate = Array.isArray(rawToken) ? rawToken[0] : rawToken;
+  const deepLinkToken = candidate && /^[A-Za-z0-9._-]{20,2000}$/.test(candidate) ? candidate : undefined;
+  const { status: authStatus, logout } = useAuth();
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -66,6 +71,10 @@ export default function ResetPasswordScreen() {
     try {
       const { message } = await resetPassword({ token: values.token.trim(), password: values.password });
       setSuccessMessage(message);
+      // The token is single-use and now spent: drop it from the route so it does not linger in navigation state.
+      router.setParams({ token: undefined });
+      // Every existing session was revoked by the server. If this device still holds one, end it cleanly.
+      if (authStatus === 'authenticated') await logout();
     } catch (err) {
       // Covers "Reset link is invalid or has expired" (400, from either
       // a bad token or the 30-minute window passing) as well as network/
@@ -100,7 +109,7 @@ export default function ResetPasswordScreen() {
               </ThemedView>
               <Pressable
                 accessibilityRole="button"
-                onPress={() => router.replace('/')}
+                onPress={() => router.replace('/login')}
                 style={[styles.submitButton, { backgroundColor: theme.tint }]}>
                 <ThemedText type="smallBold" style={styles.submitButtonText}>
                   Back to login
@@ -128,6 +137,7 @@ export default function ResetPasswordScreen() {
                       autoCapitalize="none"
                       autoCorrect={false}
                       editable={!deepLinkToken}
+                      accessibilityHint={deepLinkToken ? 'Filled in from the link you opened' : undefined}
                       style={deepLinkToken ? styles.readOnlyInput : undefined}
                       value={value}
                       onChangeText={onChange}

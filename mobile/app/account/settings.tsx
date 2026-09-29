@@ -1,5 +1,8 @@
+import * as Application from 'expo-application';
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet, Switch } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, TextInput } from 'react-native';
 
 import { Card } from '@/components/card';
 import { ErrorState } from '@/components/error-state';
@@ -14,6 +17,9 @@ import { useGmailStatus } from '@/hooks/use-gmail-status';
 import { useNotificationPreferences } from '@/hooks/use-notification-preferences';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
+import { DELETE_ACCOUNT_URL } from '@/services/config';
+import { sendTestPush } from '@/services/pushApi';
+import { ApiError } from '@/types/api';
 
 /**
  * Settings screen, reached from the Profile tab and the drawer.
@@ -31,10 +37,37 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export default function SettingsScreen() {
   const theme = useTheme();
-  const { logout } = useAuth();
+  const { logout, deleteAccount } = useAuth();
   const profile = useProfile();
   const gmail = useGmailStatus();
-  const { preferences, update } = useNotificationPreferences();
+  const { preferences, update, error: prefError } = useNotificationPreferences();
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [password, setPassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const onDelete = async () => {
+    if (!password) return setDeleteError('Enter your password to confirm.');
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteAccount(password); // signs out on success; the router switches to the login screen
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Could not delete your account. Please try again.');
+      setDeleting(false);
+    }
+  };
+
+  const onTestPush = async () => {
+    setTestMessage('Sending…');
+    try {
+      const r = await sendTestPush();
+      setTestMessage(r.sent > 0 ? 'Test notification sent.' : 'Could not deliver the test notification.');
+    } catch (err) {
+      setTestMessage(err instanceof ApiError ? err.message : 'Could not send the test notification.');
+    }
+  };
 
   if (profile.isLoading) {
     return <LoadingState label="Loading settings…" />;
@@ -88,25 +121,40 @@ export default function SettingsScreen() {
             onValueChange={(value) => update({ pushEnabled: value })}
           />
           <ToggleRow
-            label="Email notifications"
-            value={preferences.emailEnabled}
-            onValueChange={(value) => update({ emailEnabled: value })}
-          />
-          <ToggleRow
             label="Interview reminders"
             value={preferences.interviewReminders}
+            disabled={!preferences.pushEnabled}
             onValueChange={(value) => update({ interviewReminders: value })}
           />
           <ToggleRow
-            label="Application reminders"
+            label="Application follow-ups"
             value={preferences.applicationReminders}
+            disabled={!preferences.pushEnabled}
             onValueChange={(value) => update({ applicationReminders: value })}
           />
+          <ToggleRow
+            label="New job matches"
+            value={preferences.jobReminders}
+            disabled={!preferences.pushEnabled}
+            onValueChange={(value) => update({ jobReminders: value })}
+          />
         </Card>
+        {prefError ? (
+          <ThemedText type="small" themeColor="danger" accessibilityRole="alert">
+            {prefError instanceof Error ? prefError.message : 'Could not save your notification settings.'}
+          </ThemedText>
+        ) : null}
         <ThemedText type="small" themeColor="textSecondary">
-          These control the in-app Notifications tab today. Real push/email delivery needs a
-          connected backend service and isn&apos;t wired up yet.
+          Reminders are sent to this account&apos;s devices at {String(preferences.reminderHour).padStart(2, '0')}:00 in your local time.
         </ThemedText>
+        <Pressable accessibilityRole="button" onPress={onTestPush} style={[styles.row, { borderColor: theme.border }]}>
+          <ThemedText type="default">Send a test notification</ThemedText>
+        </Pressable>
+        {testMessage ? (
+          <ThemedText type="small" themeColor="textSecondary" accessibilityLiveRegion="polite">
+            {testMessage}
+          </ThemedText>
+        ) : null}
       </ThemedView>
 
       <ThemedView style={styles.section}>
@@ -148,6 +196,65 @@ export default function SettingsScreen() {
           Log out
         </ThemedText>
       </Pressable>
+
+      <ThemedView style={styles.section}>
+        <SectionHeader title="Delete account" />
+        <ThemedText type="small" themeColor="textSecondary">
+          Permanently deletes your account, applications, resumes, tailoring history and Gmail connection. This cannot be undone.
+        </ThemedText>
+        {confirmDelete ? (
+          <ThemedView style={styles.section}>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+              placeholder="Confirm with your password"
+              placeholderTextColor={theme.textSecondary}
+              accessibilityLabel="Password to confirm account deletion"
+              style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+            />
+            {deleteError ? (
+              <ThemedText type="small" themeColor="danger" accessibilityRole="alert">
+                {deleteError}
+              </ThemedText>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ disabled: deleting }}
+              disabled={deleting}
+              onPress={onDelete}
+              style={[styles.deleteButton, { backgroundColor: theme.danger, opacity: deleting ? 0.6 : 1 }]}>
+              {deleting ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.deleteText}>Permanently delete my account</ThemedText>}
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setConfirmDelete(false);
+                setPassword('');
+                setDeleteError(null);
+              }}
+              style={styles.cancelButton}>
+              <ThemedText type="smallBold" themeColor="textSecondary">Cancel</ThemedText>
+            </Pressable>
+          </ThemedView>
+        ) : (
+          <Pressable accessibilityRole="button" onPress={() => setConfirmDelete(true)} style={[styles.logoutButton, { borderColor: theme.danger }]}>
+            <ThemedText type="smallBold" themeColor="danger">Delete account…</ThemedText>
+          </Pressable>
+        )}
+        {DELETE_ACCOUNT_URL ? (
+          <Pressable accessibilityRole="link" onPress={() => WebBrowser.openBrowserAsync(DELETE_ACCOUNT_URL)} style={styles.cancelButton}>
+            <ThemedText type="small" themeColor="tint">Data deletion information</ThemedText>
+          </Pressable>
+        ) : null}
+      </ThemedView>
+
+      <ThemedText type="caption" themeColor="textSecondary" style={styles.version}>
+        TrackTrail {Application.nativeApplicationVersion ?? 'dev'} ({Application.nativeBuildVersion ?? '0'})
+      </ThemedText>
     </ScrollView>
   );
 }
@@ -156,16 +263,20 @@ function ToggleRow({
   label,
   value,
   onValueChange,
+  disabled,
 }: {
   label: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   const theme = useTheme();
   return (
-    <ThemedView style={styles.toggleRow}>
-      <ThemedText type="default">{label}</ThemedText>
+    <ThemedView style={[styles.toggleRow, disabled && { opacity: 0.5 }]}>
+      <ThemedText type="default" style={styles.toggleLabel}>{label}</ThemedText>
       <Switch
+        accessibilityLabel={label}
+        disabled={disabled}
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: theme.border, true: theme.tint }}
@@ -197,6 +308,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: 'transparent',
+    minHeight: 44,
   },
   row: {
     flexDirection: 'row',
@@ -208,6 +320,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     minHeight: 48,
   },
+  toggleLabel: { flexShrink: 1, paddingRight: Spacing.two },
+  input: { borderWidth: 1, borderRadius: Spacing.two, paddingHorizontal: Spacing.three, minHeight: 48, fontSize: 16 },
+  deleteButton: { minHeight: 48, borderRadius: Spacing.two, alignItems: 'center', justifyContent: 'center' },
+  deleteText: { color: '#ffffff' },
+  cancelButton: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
+  version: { textAlign: 'center' },
   rowText: {
     gap: 2,
     backgroundColor: 'transparent',

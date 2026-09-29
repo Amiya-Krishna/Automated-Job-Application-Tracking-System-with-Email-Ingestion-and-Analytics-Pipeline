@@ -1,0 +1,71 @@
+name: CI
+
+# Lint, typecheck and the critical-path tests for the mobile app and the API it depends on.
+on:
+  pull_request:
+    paths: ['mobile/**', 'server/**', '.github/workflows/ci.yml']
+  push:
+    branches: [main]
+    paths: ['mobile/**', 'server/**', '.github/workflows/ci.yml']
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  server:
+    name: Server tests (auth, sessions, notifications, resume)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      - run: npm test
+        env:
+          JWT_SECRET: ci-only-secret
+
+  mobile:
+    name: Mobile lint, typecheck, critical tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            mobile/package-lock.json
+            server/package-lock.json
+      # The resume integration test boots the real backend modules, so server deps are needed too.
+      - run: npm ci --no-audit --no-fund
+        working-directory: server
+      # NOTE: run `npm install` locally once after pulling this change and commit the updated
+      # mobile/package-lock.json; until then `npm ci` would reject the new dependencies.
+      - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:critical
+        env:
+          NODE_PATH: ${{ github.workspace }}/server/node_modules
+      - name: Expo config sanity (staging + production must resolve)
+        run: |
+          EXPO_PUBLIC_APP_ENV=staging EXPO_PUBLIC_API_URL=https://api.example.com npx expo config --type public > /dev/null
+          EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_URL=https://api.example.com npx expo config --type public > /dev/null

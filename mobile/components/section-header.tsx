@@ -12,10 +12,17 @@ interface SectionHeaderProps {
 export function SectionHeader({ title, actionLabel, onActionPress }: SectionHeaderProps) {
   return (
     <View style={styles.container}>
-      <ThemedText type="smallBold">{title}</ThemedText>
+      <ThemedText type="headline" accessibilityRole="header">
+        {title}
+      </ThemedText>
       {actionLabel ? (
-        <Pressable accessibilityRole="button" onPress={onActionPress} hitSlop={Spacing.two}>
-          <ThemedText type="small" themeColor="tint">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${actionLabel}: ${title}`}
+          onPress={onActionPress}
+          hitSlop={Spacing.two}
+          style={styles.action}>
+          <ThemedText type="smallBold" themeColor="tint">
             {actionLabel}
           </ThemedText>
         </Pressable>
@@ -25,9 +32,6 @@ export function SectionHeader({ title, actionLabel, onActionPress }: SectionHead
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  container: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  action: { minHeight: 44, minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
 });

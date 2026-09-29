@@ -1,8 +1,15 @@
+import { Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold, useFonts } from '@expo-google-fonts/inter';
+import * as Application from 'expo-application';
+import * as Device from 'expo-device';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { AppErrorBoundary } from '@/components/app-error-boundary';
+import { NotificationLinkHandler } from '@/components/notification-link-handler';
+import { OfflineBanner } from '@/components/offline-banner';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Colors } from '@/constants/theme';
@@ -12,14 +19,40 @@ import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { AuthProvider } from '@/providers/AuthProvider';
 import { QueryProvider } from '@/providers/QueryProvider';
+import { setAppInfo } from '@/services/config';
+import { initMonitoring, wrapRootComponent } from '@/services/monitoring';
+import { startNetworkMonitoring } from '@/services/network';
+import { configureNotificationHandler } from '@/services/push';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
+// Runs once, before the first render: crash reporting (no-op without a DSN),
+// app/device info for request headers, and the foreground notification behaviour.
+initMonitoring();
+setAppInfo({
+  version: Application.nativeApplicationVersion ?? 'dev',
+  platform: Platform.OS,
+  deviceName: Device.modelName ?? null,
+});
+configureNotificationHandler();
+
+function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({ Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold });
+  // Never block the app on fonts: after 3s fall back to the system font.
+  const [fontTimeout, setFontTimeout] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setFontTimeout(true), 3000);
+    return () => clearTimeout(t);
+  }, []);
+  useEffect(() => startNetworkMonitoring(), []);
+
+  const fontsReady = fontsLoaded || Boolean(fontError) || fontTimeout;
+
   return (
     // Required once, at the true app root, for the drawer's swipe
     // gesture (app/(drawer)/_layout.tsx) and any other
     // react-native-gesture-handler-based component in the tree.
+    <AppErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       {/* Outermost: resolves the light/dark/system choice everything
           else (including the two providers below and every themed
@@ -28,18 +61,22 @@ export default function RootLayout() {
       <ThemeContextProvider>
         <QueryProvider>
           <AuthProvider>
-            {/* Depends on useAuth() internally (it does not clear
-                notifications on logout — see its own comment — but does
-                read auth status), so it must nest inside AuthProvider. */}
+            {/* Reads auth status (clears its list on sign-out), so it must
+                nest inside AuthProvider. */}
             <NotificationProvider>
-              <RootNavigator />
+              <RootNavigator fontsReady={fontsReady} />
+              <NotificationLinkHandler />
+              <OfflineBanner />
             </NotificationProvider>
           </AuthProvider>
         </QueryProvider>
       </ThemeContextProvider>
     </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }
+
+export default wrapRootComponent(RootLayout);
 
 /**
  * Reads auth status and decides what to render:
@@ -57,18 +94,18 @@ export default function RootLayout() {
  *     exist in the navigator while `guard` is false, not because a
  *     screen chose to redirect them away from it.
  */
-function RootNavigator() {
+function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
   const { status } = useAuth();
   const scheme = useColorScheme();
   const colors = Colors[scheme];
 
   useEffect(() => {
-    if (status !== 'hydrating') {
+    if (status !== 'hydrating' && fontsReady) {
       SplashScreen.hideAsync();
     }
-  }, [status]);
+  }, [status, fontsReady]);
 
-  if (status === 'hydrating') {
+  if (status === 'hydrating' || !fontsReady) {
     return (
       <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
         <ThemedView style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>

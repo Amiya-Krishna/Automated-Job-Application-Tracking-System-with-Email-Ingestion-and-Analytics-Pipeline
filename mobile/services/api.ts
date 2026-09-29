@@ -1,239 +1,179 @@
 /**
- * Centralized API client for the existing Express backend.
+ * Centralized API client for the Express backend — the ONLY place that knows
+ * the base URL, the auth header convention, retry policy and error shape.
  *
- * This is the ONLY place in the mobile app that should:
- *   - know the API base URL
- *   - know the backend's auth header convention
- *   - construct an Axios instance
- *
- * Feature-specific request functions (e.g. `services/applications.ts`,
- * `services/jobs.ts`, once those features are built) should import `api`
- * from this file and call `api.get(...)`/`api.post(...)` — they should
- * never construct their own Axios instance or reach into env vars
- * themselves. That's what keeps auth/error handling in one place instead
- * of scattered across the app.
+ * Session handling
+ *   - Sends the access token in the backend's `token` header.
+ *   - Refreshes proactively shortly before expiry, and reactively on a 401
+ *     (single-flight, see services/session.ts), then replays the request once.
+ *   - Signs the user out ONLY when the server says the session is over
+ *     (refresh rejected, or a legacy token expired). A network failure while
+ *     refreshing keeps the session so the user is not logged out for being on a
+ *     train.
+ * Reliability
+ *   - Offline: fails immediately (no 45 s hang).
+ *   - GET/HEAD: up to 2 retries with exponential backoff + jitter on network
+ *     errors, timeouts (once), 502/503/504 and 429 (honouring Retry-After).
+ *   - Writes are never auto-retried (no duplicate applications).
+ * Security / privacy
+ *   - Never logs URLs' query strings, headers or bodies. 5xx bodies are never
+ *     shown to users (they can contain internals).
  */
-import axios, { AxiosError, type AxiosInstance } from 'axios';
+import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 
+import { API_BASE_URL, API_CONFIG_OK, API_TIMEOUT_MS, getAppInfo } from '@/services/config';
+import { isOffline } from '@/services/connectivity';
+import { reportError } from '@/services/logger';
+import { ensureFreshAccessToken, refreshSession } from '@/services/session';
 import { emitUnauthorized } from '@/services/sessionEvents';
-import { getToken, clearToken } from '@/services/tokenStore';
+import { clearSession, getRefreshToken, getToken } from '@/services/tokenStore';
 import { ApiError, type ApiErrorResponse } from '@/types/api';
 
-const rawBaseUrl = process.env.EXPO_PUBLIC_API_URL;
-
-if (!rawBaseUrl) {
-  // Fail loudly at startup rather than silently sending every request to
-  // `undefined` and producing a confusing network error later. See
-  // mobile/.env.example for how to set this per environment.
-  console.error(
-    '[api] EXPO_PUBLIC_API_URL is not set. Copy mobile/.env.example to ' +
-      'mobile/.env and set it for your environment (see the comments in ' +
-      'that file for emulator vs. physical device vs. production).',
-  );
+declare module 'axios' {
+  interface InternalAxiosRequestConfig {
+    _retryCount?: number;
+    _authRetried?: boolean;
+  }
 }
 
-// EXPO_PUBLIC_API_URL is the bare server root (e.g. http://10.0.2.2:5000),
-// matching the web client's VITE_API_BASE_URL convention exactly
-// (client/src/api.js) — every backend route is mounted under /api, so it's
-// appended once here rather than repeated in every service file's paths.
-const baseURL = `${(rawBaseUrl ?? '').replace(/\/+$/, '')}/api`;
+const MAX_RETRIES = 2;
+const MAX_RETRY_WAIT_MS = 10_000;
+// Endpoints where a 401 means "wrong/invalid input", never "session expired".
+const AUTH_PUBLIC = /\/auth\/(login|register|refresh|logout|forgot-password|reset-password)$/;
 
 export const api: AxiosInstance = axios.create({
-  baseURL,
-  // 60s, not 15s: the production API (see .env) runs on a Render free-tier
-  // web service, which spins down after 15 minutes idle and takes 30-60s
-  // to cold-start on the next request. A short timeout here was turning a
-  // slow-but-successful wake-up into a hard "could not reach the server"
-  // failure on the first request after inactivity.
-  timeout: 60000,
+  baseURL: API_BASE_URL,
+  timeout: API_TIMEOUT_MS,
 });
 
-// --- TEMP DIAGNOSTIC (dev-only) — remove once the mobile login issue is
-// confirmed fixed.
-//
-// Pings GET /health once when the app starts, from the SAME device/network
-// path a real login request would use, to answer "can this mobile runtime
-// reach Render at all" independently of the login route. Deliberately uses
-// a plain axios.get() with `rawBaseUrl` (NOT the `api` instance / `baseURL`
-// above) because /health is mounted at the server root in server.js, not
-// under /api — calling it through `api` would hit /api/health, get a 404,
-// and look like a failure that has nothing to do with real connectivity.
-if (__DEV__ && rawBaseUrl) {
-  const healthUrl = `${rawBaseUrl.replace(/\/+$/, '')}/health`;
-  const startedAt = Date.now();
-  axios
-    .get(healthUrl, { timeout: 60000 })
-    .then((res) => {
-      // eslint-disable-next-line no-console
-      console.log(`[api][diag] GET ${healthUrl} → ${res.status} in ${Date.now() - startedAt}ms`, res.data);
-    })
-    .catch((err: AxiosError) => {
-      // eslint-disable-next-line no-console
-      console.log(
-        `[api][diag] GET ${healthUrl} FAILED after ${Date.now() - startedAt}ms:`,
-        JSON.stringify({
-          code: err.code ?? null,
-          message: err.message,
-          hasResponse: Boolean(err.response),
-          hasRequest: Boolean(err.request),
-          status: err.response?.status ?? null,
-        }),
-      );
-    });
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const isIdempotent = (c?: InternalAxiosRequestConfig) => ['get', 'head', 'options'].includes((c?.method ?? 'get').toLowerCase());
+const backoff = (attempt: number) => Math.min(500 * 2 ** attempt, 4000) + Math.floor(Math.random() * 250);
+
+function parseRetryAfter(header: unknown, body?: ApiErrorResponse): number | null {
+  const fromBody = body?.retryAfterSeconds;
+  if (typeof fromBody === 'number' && fromBody > 0) return fromBody;
+  const n = Number(header);
+  if (Number.isFinite(n) && n > 0) return n;
+  const date = typeof header === 'string' ? Date.parse(header) : NaN;
+  return Number.isFinite(date) ? Math.max(1, Math.ceil((date - Date.now()) / 1000)) : null;
 }
 
-// --- Request: attach the backend's custom auth header -----------------
-//
-// The backend (server/middleware/authMiddleware.js) reads the JWT from a
-// plain `token` header, NOT the standard `Authorization: Bearer ...`.
-// This is a deliberate choice to avoid a backend change (see Phase-3
-// analysis) — every request goes through here, so this is the one and
-// only place that convention is encoded.
-api.interceptors.request.use((config) => {
+function decodeBinaryBody(buf: ArrayBuffer): ApiErrorResponse | null {
+  try {
+    const bytes = new Uint8Array(buf);
+    const text =
+      typeof TextDecoder !== 'undefined'
+        ? new TextDecoder().decode(bytes)
+        : Array.from(bytes, (b) => String.fromCharCode(b)).join('');
+    return JSON.parse(text) as ApiErrorResponse;
+  } catch {
+    return null; // not JSON (e.g. an HTML error page from a proxy)
+  }
+}
+
+// --- Request ------------------------------------------------------------
+api.interceptors.request.use(async (config) => {
+  if (!API_CONFIG_OK) {
+    // A release build without a valid https API URL. Fail loudly and safely.
+    throw new ApiError('This build is not configured correctly. Please update the app.', null, false, 'MISCONFIGURED');
+  }
+  if (isOffline()) {
+    throw new ApiError("You're offline. Check your connection and try again.", null, true, 'OFFLINE');
+  }
+
+  const url = config.url ?? '';
+  if (!AUTH_PUBLIC.test(url.split('?')[0]) && getRefreshToken()) {
+    await ensureFreshAccessToken(); // 'unavailable' is fine: the request below may still succeed or 401
+  }
+
   const token = getToken();
-  if (token) {
-    config.headers.set('token', token);
-  }
-
-  // --- TEMP DIAGNOSTIC (dev-only) — remove once the mobile login issue
-  // is confirmed fixed. Logs only routing info, never the body/headers
-  // (so no password, no token) — see the response-side logging below for
-  // the same rule.
-  if (__DEV__) {
-    const fullUrl = `${config.baseURL ?? ''}${config.url ?? ''}`;
-    // eslint-disable-next-line no-console
-    console.log(`[api][diag] → ${(config.method ?? '?').toUpperCase()} ${fullUrl} (timeout=${config.timeout}ms)`);
-  }
-
+  if (token) config.headers.set('token', token);
+  const info = getAppInfo();
+  config.headers.set('X-Client', 'mobile');
+  config.headers.set('X-App-Version', info.version);
+  config.headers.set('X-Platform', info.platform);
   return config;
 });
 
-// --- Response: normalize errors, react to 401 --------------------------
+// --- Response -----------------------------------------------------------
 api.interceptors.response.use(
-  (response) => {
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(`[api][diag] ← ${response.status} ${response.config.url}`);
-    }
-    return response;
-  },
-  (error: AxiosError<ApiErrorResponse>) => {
-    // A request made with `responseType: 'arraybuffer'` (the resume
-    // download/export endpoints — see services/resume.ts) gets its error
-    // body back as raw bytes too, not parsed JSON, so `error.response.data`
-    // would otherwise be an ArrayBuffer instead of `{ message, code }` and
-    // every branch below that reads `data?.message`/`data?.code` would see
-    // nothing. Decode it back to JSON here, once, generically, so this
-    // interceptor keeps working for any current or future binary endpoint
-    // without each caller re-implementing the same decode.
+  (response) => response,
+  async (error: AxiosError<ApiErrorResponse>) => {
+    const config = error.config as InternalAxiosRequestConfig | undefined;
+
+    // Already one of our own errors (thrown by the request interceptor).
+    if (error instanceof ApiError || !config) return Promise.reject(error);
+
     if (error.response?.data instanceof ArrayBuffer) {
-      try {
-        const text = String.fromCharCode(...new Uint8Array(error.response.data));
-        error.response.data = JSON.parse(text) as ApiErrorResponse;
-      } catch {
-        // Not JSON (e.g. an HTML error page from a proxy) — leave as-is;
-        // the generic fallback messages below still apply.
-      }
+      const decoded = decodeBinaryBody(error.response.data);
+      if (decoded) error.response.data = decoded;
     }
 
-    // --- TEMP DIAGNOSTIC (dev-only) — remove once the mobile login issue
-    // is confirmed fixed. Logs exactly the fields needed to tell "never
-    // left the device" (no error.request) apart from "sent but no reply"
-    // (error.request set, error.response not) apart from "got a real HTTP
-    // response" (error.response set) — never logs headers/body, so no
-    // token/password/secret ever reaches the console.
-    if (__DEV__) {
-      // eslint-disable-next-line no-console
-      console.log(
-        '[api][diag] request failed:',
-        JSON.stringify({
-          url: `${error.config?.baseURL ?? ''}${error.config?.url ?? ''}`,
-          method: error.config?.method,
-          timeout: error.config?.timeout,
-          code: error.code ?? null,
-          message: error.message,
-          hasResponse: Boolean(error.response),
-          hasRequest: Boolean(error.request),
-          status: error.response?.status ?? null,
-        }),
-      );
-    }
+    const attempt = config._retryCount ?? 0;
 
+    // ---- No response: offline / DNS / TLS / timeout ----
     if (!error.response) {
-      // Request never reached the server. This used to be collapsed into
-      // a single "must be Render waking up" message no matter the actual
-      // cause, which hid real problems (a bad EXPO_PUBLIC_API_URL, no
-      // internet, DNS failure, a mid-request crash) behind a message that
-      // told the developer to just "wait a moment" — see mobile/README or
-      // git history for the prior version if you need it.
-      //
-      // Axios sets `error.code` for this class of error (no HTTP response
-      // was ever received), and the two cases mean very different things:
-      //
-      //  - 'ECONNABORTED' means OUR OWN `timeout: 60000` above fired — the
-      //    connection was established and we gave up waiting on a
-      //    response. This is genuinely consistent with a Render free-tier
-      //    cold start (which can take 30-60s), so the "waking up" message
-      //    is accurate here.
-      //  - anything else ('ERR_NETWORK', or no code at all on older
-      //    engines) means the request failed before or without ever
-      //    getting that far — offline, DNS failure, connection refused,
-      //    TLS error, or a malformed baseURL (e.g. EXPO_PUBLIC_API_URL
-      //    unset, see the startup console.error above). None of those are
-      //    "the server is slow" — the server was never reached at all —
-      //    so they get a distinct, honest message instead.
-      if (__DEV__) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[api] Request failed with no response. code=${error.code ?? '(none)'} message="${error.message}" baseURL=${baseURL}`,
-        );
+      const isTimeout = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+      const canRetry = isIdempotent(config) && !isOffline() && attempt < (isTimeout ? 1 : MAX_RETRIES);
+      if (canRetry) {
+        config._retryCount = attempt + 1;
+        await sleep(backoff(attempt));
+        return api.request(config);
       }
-
-      const isTimeout = error.code === 'ECONNABORTED';
       const message = isTimeout
-        ? 'The server is taking longer than usual to respond — it may still be waking up after being idle. Please wait a moment and try again.'
+        ? 'The server is taking longer than usual to respond. It may be waking up — please try again in a moment.'
         : 'Unable to connect to the server. Check your internet connection and try again.';
-
       return Promise.reject(new ApiError(message, null, true, error.code ?? null));
     }
 
     const { status, data } = error.response;
+    const apiCode = data?.code ?? null;
 
-    if (status === 401) {
-      // The backend's authMiddleware.js returns 401 for both "no token"
-      // and an expired/invalid one. Either way, the stored token is no
-      // longer usable. clearToken() clears the in-memory token
-      // synchronously (its first line) before doing the async SecureStore
-      // delete, so getToken() reflects "logged out" immediately for any
-      // request that reads it next — we don't need to await the
-      // SecureStore write to finish before moving on. emitUnauthorized()
-      // lets AuthProvider (providers/AuthProvider.tsx) react and update
-      // auth state; this module deliberately does NOT redirect anywhere
-      // itself or touch auth state directly.
-      void clearToken();
+    // ---- 401: recover the session, or end it ----
+    if (status === 401 && !AUTH_PUBLIC.test((config.url ?? '').split('?')[0])) {
+      if (!config._authRetried && getRefreshToken()) {
+        const outcome = await refreshSession();
+        if (outcome === 'refreshed') {
+          config._authRetried = true;
+          config.headers.set('token', getToken() ?? '');
+          return api.request(config);
+        }
+        if (outcome === 'unavailable') {
+          return Promise.reject(new ApiError("Couldn't refresh your session right now. Check your connection and try again.", null, true, 'REFRESH_UNAVAILABLE'));
+        }
+      }
+      // Refresh rejected, no refresh token (legacy), or the replay still 401s.
+      await clearSession();
       emitUnauthorized();
+      return Promise.reject(new ApiError('Your session has expired. Please sign in again.', 401, false, null, apiCode ?? 'session_expired'));
     }
 
-    // For 400/401 the backend's own message is already user-facing (e.g.
-    // "Invalid Password", "User not found", "Token is not valid" — see
-    // server/routes/authRoutes.js and server/middleware/authMiddleware.js)
-    // and should be shown as-is. For 5xx, the backend's `message` is
-    // `error.message` straight from an exception (see server.js's catch-
-    // all handler and every route's `catch` block) — that can be an
-    // internal detail (a Postgres error, a stack fragment), so it's
-    // deliberately NOT shown to the user; a generic message is used
-    // instead, and the real one only goes to the dev console.
-    let message: string;
-    if (status >= 500) {
-      if (__DEV__ && data?.message) {
-        // eslint-disable-next-line no-console
-        console.error(`[api] Server error ${status}: ${data.message}`);
+    // ---- 429 / 502 / 503 / 504: retry idempotent requests ----
+    const retryAfter = status === 429 ? parseRetryAfter(error.response.headers?.['retry-after'], data) : null;
+    const transient = status === 429 || status === 502 || status === 503 || status === 504;
+    if (transient && isIdempotent(config) && attempt < MAX_RETRIES) {
+      const wait = retryAfter != null ? retryAfter * 1000 : backoff(attempt);
+      if (wait <= MAX_RETRY_WAIT_MS) {
+        config._retryCount = attempt + 1;
+        await sleep(wait);
+        return api.request(config);
       }
+    }
+
+    // ---- Final, user-safe message ----
+    let message: string;
+    if (status === 429) {
+      message = retryAfter
+        ? `Too many requests. Please wait ${retryAfter} second${retryAfter === 1 ? '' : 's'} and try again.`
+        : 'Too many requests. Please wait a moment and try again.';
+    } else if (status >= 500) {
+      reportError(new Error(`API ${status}`), { status, path: (config.url ?? '').split('?')[0] });
       message = 'Server error. Please try again.';
     } else {
+      // 4xx bodies are written to be user-facing ("Invalid email or password").
       message = data?.message || 'Something went wrong. Please try again.';
     }
-
-    return Promise.reject(new ApiError(message, status, false, error.code ?? null, data?.code ?? null));
+    return Promise.reject(new ApiError(message, status, false, error.code ?? null, apiCode, retryAfter));
   },
 );

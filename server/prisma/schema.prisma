@@ -26,6 +26,10 @@ model User {
   resumeAnalyses     ResumeAnalysis[]
   resumeVersions     ResumeVersion[]
   tailoringSessions  TailoringSession[]
+  sessions           UserSession[]
+  pushDevices        PushDevice[]
+  notificationPref   NotificationPreference?
+  notificationLogs   NotificationLog[]
 
   @@map("users")
 }
@@ -420,4 +424,82 @@ model TailoringSession {
 
   @@index([userId, createdAt(sort: Desc)], map: "idx_tailoring_sessions_user")
   @@map("tailoring_sessions")
+}
+
+/// ----------------------
+/// Mobile sessions: one row per refresh token. Refresh tokens are opaque random
+/// strings; only their SHA-256 hash is stored. `family_id` groups a rotation
+/// chain so that re-using an already-rotated token revokes the whole chain.
+/// ----------------------
+model UserSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           Int       @map("user_id")
+  familyId         String    @map("family_id") @db.Uuid
+  refreshTokenHash String    @unique @map("refresh_token_hash") @db.VarChar(64)
+  deviceName       String?   @map("device_name") @db.VarChar(120)
+  platform         String?   @db.VarChar(20)
+  appVersion       String?   @map("app_version") @db.VarChar(40)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt       DateTime  @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(6)
+  rotatedAt        DateTime? @map("rotated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_user_sessions_user")
+  @@index([familyId], map: "idx_user_sessions_family")
+  @@map("user_sessions")
+}
+
+/// Expo push tokens registered by a user's devices.
+model PushDevice {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  expoPushToken String    @unique @map("expo_push_token") @db.VarChar(255)
+  platform      String?   @db.VarChar(20)
+  deviceName    String?   @map("device_name") @db.VarChar(120)
+  appVersion    String?   @map("app_version") @db.VarChar(40)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  disabledAt    DateTime? @map("disabled_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_push_devices_user")
+  @@map("push_devices")
+}
+
+/// Per-user notification preferences (account-level, shared by all devices).
+model NotificationPreference {
+  userId               Int      @id @map("user_id")
+  pushEnabled          Boolean  @default(true) @map("push_enabled")
+  interviewReminders   Boolean  @default(true) @map("interview_reminders")
+  applicationReminders Boolean  @default(true) @map("application_reminders")
+  jobReminders         Boolean  @default(true) @map("job_reminders")
+  timezone             String   @default("UTC") @db.VarChar(64)
+  reminderHour         Int      @default(9) @map("reminder_hour")
+  updatedAt            DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+/// Every push the server has sent. `dedupe_key` makes reminders exactly-once.
+model NotificationLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  kind      String   @db.VarChar(30)
+  dedupeKey String   @map("dedupe_key") @db.VarChar(200)
+  title     String   @db.VarChar(200)
+  body      String   @db.VarChar(500)
+  data      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey], map: "uq_notification_log_user_key")
+  @@index([userId, createdAt(sort: Desc)], map: "idx_notification_log_user_created")
+  @@map("notification_log")
 }

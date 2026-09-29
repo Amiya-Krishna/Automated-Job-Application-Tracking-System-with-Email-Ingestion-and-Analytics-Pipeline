@@ -1,73 +1,79 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { Platform, StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { FontFamily, Fonts, ThemeColor, Typography, fontFamilyForWeight } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?:
+    | 'default'
+    | 'title'
+    | 'display'
+    | 'headline'
+    | 'small'
+    | 'smallBold'
+    | 'caption'
+    | 'overline'
+    | 'subtitle'
+    | 'link'
+    | 'linkPrimary'
+    | 'code';
   themeColor?: ThemeColor;
 };
 
-export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
+/**
+ * The single text primitive. Applies the Inter type scale (constants/theme.ts),
+ * then picks the Inter file that matches the FINAL fontWeight — including one a
+ * screen overrides in its own style — so weights render correctly on Android
+ * and iOS. `maxFontSizeMultiplier` keeps layouts intact at the largest system
+ * text sizes while still honouring the user's setting (accessibility).
+ */
+export function ThemedText({ style, type = 'default', themeColor, maxFontSizeMultiplier = 1.4, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 
-  return (
-    <Text
-      style={[
-        { color: theme[themeColor ?? 'text'] },
-        type === 'default' && styles.default,
-        type === 'title' && styles.title,
-        type === 'small' && styles.small,
-        type === 'smallBold' && styles.smallBold,
-        type === 'subtitle' && styles.subtitle,
-        type === 'link' && styles.link,
-        type === 'linkPrimary' && styles.linkPrimary,
-        type === 'code' && styles.code,
-        style,
-      ]}
-      {...rest}
-    />
-  );
+const merged = StyleSheet.flatten([
+  { color: theme[themeColor ?? 'text'] },
+  type === 'default' && styles.default,
+  type === 'title' && styles.title,
+  type === 'display' && styles.display,
+  type === 'headline' && styles.headline,
+  type === 'small' && styles.small,
+  type === 'smallBold' && styles.smallBold,
+  type === 'caption' && styles.caption,
+  type === 'overline' && styles.overline,
+  type === 'subtitle' && styles.subtitle,
+  type === 'link' && styles.link,
+  type === 'linkPrimary' && styles.linkPrimary,
+  type === 'code' && styles.code,
+  style,
+]) as TextStyle;
+
+  // Custom fonts are per-weight: choose the family from the resolved weight and
+  // drop fontWeight so Android does not synthesise bold on top of it.
+  const resolved =
+    type === 'code' || merged.fontFamily
+      ? merged
+      : { ...merged, fontFamily: fontFamilyForWeight(merged.fontWeight), fontWeight: undefined };
+
+  return <Text maxFontSizeMultiplier={maxFontSizeMultiplier} style={resolved} {...rest} />;
 }
 
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
-  },
-  subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
-  },
-  link: {
-    lineHeight: 30,
-    fontSize: 14,
-  },
-  linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
-  },
+  default: Typography.body,
+  title: Typography.title,
+  display: Typography.display,
+  headline: Typography.headline,
+  small: Typography.small,
+  smallBold: Typography.smallBold,
+  caption: Typography.caption,
+  overline: { ...Typography.overline, textTransform: 'uppercase' },
+  subtitle: Typography.subtitle,
+  link: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  linkPrimary: { fontSize: 14, lineHeight: 20, fontWeight: '500', color: '#2563eb' },
   code: {
     fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
+    fontWeight: Platform.select({ android: '700' }) ?? '500',
     fontSize: 12,
   },
 });
+
+export { FontFamily };

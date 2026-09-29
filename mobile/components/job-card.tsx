@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -20,13 +21,14 @@ interface JobCardProps {
   onToggleSaved?: () => void;
 }
 
-export function JobCard({ item, sourceName, appliedStatus, isSaved, onToggleSaved }: JobCardProps) {
+export const JobCard = memo(function JobCard({ item, sourceName, appliedStatus, isSaved, onToggleSaved }: JobCardProps) {
   const theme = useTheme();
   const score = item.match_scores[0]?.score ?? null;
 
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`${item.title}${item.companies?.name ? ` at ${item.companies.name}` : ''}${score != null ? `, match ${formatPercent(score)}` : ''}`}
       onPress={() => router.push({ pathname: '/job/[id]', params: { id: String(item.id) } })}>
       <ThemedView type="backgroundElement" style={styles.card}>
         <View style={styles.header}>
@@ -51,7 +53,8 @@ export function JobCard({ item, sourceName, appliedStatus, isSaved, onToggleSave
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={isSaved ? 'Remove from saved jobs' : 'Save job'}
-                hitSlop={8}
+                accessibilityState={{ selected: isSaved }}
+                hitSlop={12}
                 onPress={(e) => {
                   e.stopPropagation();
                   onToggleSaved();
@@ -79,7 +82,7 @@ export function JobCard({ item, sourceName, appliedStatus, isSaved, onToggleSave
       </ThemedView>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
@@ -106,8 +109,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   bookmarkButton: {
-    minWidth: 24,
-    minHeight: 24,
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

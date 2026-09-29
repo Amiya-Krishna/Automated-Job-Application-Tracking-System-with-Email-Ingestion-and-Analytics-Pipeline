@@ -20,9 +20,18 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
+  /** Mirrors accessToken (older builds read this). */
   token: string;
+  accessToken: string;
+  /** ISO timestamp; lets the client refresh before the token expires. */
+  accessTokenExpiresAt: string;
+  expiresIn: number;
+  refreshToken: string;
   user: AuthUser;
 }
+
+/** POST /api/auth/refresh { refreshToken } — same shape as login; the refresh token is ROTATED. */
+export type RefreshResponse = LoginResponse;
 
 export interface RegisterRequest {
   name: string;
@@ -63,6 +72,7 @@ export interface RegisterResponse {
 export interface ForgotPasswordRequest {
   email: string;
   source?: 'mobile';
+  /** The app's own deep link (tracktrail://reset-password); validated server-side. */
   redirectUri?: string;
 }
 

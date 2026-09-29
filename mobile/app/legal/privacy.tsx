@@ -3,20 +3,23 @@
  * shipping. Structure/sections are standard for an app that stores
  * account, profile, and (via optional Gmail sync) email-derived data.
  */
-import { ScrollView, StyleSheet } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
+import { PRIVACY_URL } from '@/services/config';
 
 export default function PrivacyPolicyScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <ThemedText type="small" themeColor="textSecondary">
-          This is placeholder policy text — replace it with TrackTrail&apos;s actual privacy
-          policy before release.
-        </ThemedText>
+        {PRIVACY_URL ? (
+          <Pressable accessibilityRole="link" accessibilityLabel="Open the full privacy policy online" onPress={() => WebBrowser.openBrowserAsync(PRIVACY_URL)} style={styles.link}>
+            <ThemedText type="smallBold" themeColor="tint">Open the full privacy policy online</ThemedText>
+          </Pressable>
+        ) : null}
         <ThemedText type="smallBold">What we collect</ThemedText>
         <ThemedText type="small" themeColor="textSecondary">
           Your account details (name, email), profile information you provide (resume text,
@@ -44,4 +47,5 @@ const styles = StyleSheet.create({
     padding: Spacing.four,
     gap: Spacing.two,
   },
+  link: { minHeight: 44, justifyContent: 'center' },
 });

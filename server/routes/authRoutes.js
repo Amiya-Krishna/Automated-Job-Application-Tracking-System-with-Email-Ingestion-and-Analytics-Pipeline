@@ -4,18 +4,45 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { sendPasswordResetEmail } = require("../services/emailService");
 const { isAllowedResetRedirect } = require("../utils/mobileRedirect");
+const authMiddleware = require("../middleware/authMiddleware");
+const { createRateLimiter } = require("../middleware/rateLimit");
+const sessions = require("../lib/sessions");
 
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
+
+// Brute-force / abuse protection (per client IP; per-instance memory).
+const loginLimiter = createRateLimiter({ name: "auth-login", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_LOGIN_MAX) || 20 });
+const registerLimiter = createRateLimiter({ name: "auth-register", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_REGISTER_MAX) || 15 });
+const forgotLimiter = createRateLimiter({ name: "auth-forgot", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_FORGOT_MAX) || 8 });
+const resetLimiter = createRateLimiter({ name: "auth-reset", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_RESET_MAX) || 30 });
+const refreshLimiter = createRateLimiter({ name: "auth-refresh", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_REFRESH_MAX) || 120 });
+const deleteLimiter = createRateLimiter({ name: "auth-delete", windowMs: 60 * 60 * 1000, max: 5 });
+
+// The mobile app opts in to short-lived access + rotating refresh tokens.
+// Web and the extension keep the legacy single 7-day token, unchanged.
+function isMobileClient(req) {
+  const h = String(req.header("x-client") || "").toLowerCase();
+  return h === "mobile" || (req.body && req.body.client === "mobile");
+}
+function deviceInfo(req) {
+  const b = (req.body && req.body.device) || {};
+  return { deviceName: b.deviceName, platform: b.platform, appVersion: req.header("x-app-version") || b.appVersion };
+}
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email });
 
 function passwordFingerprint(hash) {
   return crypto.createHash("sha256").update(String(hash || "")).digest("hex").slice(0, 16);
 }
 
 // REGISTER
-router.post("/register", async (req, res) => {
+router.post("/register", registerLimiter, async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
+
+    if (typeof name !== "string" || !name.trim() || typeof email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || typeof password !== "string" || password.length < 6 || password.length > 200) {
+      return res.status(400).json({ message: "Name, a valid email and a password of at least 6 characters are required" });
+    }
 
     // ✅ Check if user exists
     const existingUser = await prisma.user.findUnique({
@@ -81,18 +108,27 @@ router.post("/register", async (req, res) => {
 });
 
 // LOGIN
-router.post("/login", async (req, res) => {
+router.post("/login", loginLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+    const mobile = isMobileClient(req);
+
+    if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
+      return res.status(400).json({ message: "Email and password are required" });
+    }
 
     // ✅ Find user
     const user = await prisma.user.findUnique({
       where: { email },
     });
 
+    // Mobile gets one generic message (no account enumeration). Web keeps the
+    // specific "User not found" text its Login page uses to suggest signing up.
+    const generic = "Invalid email or password";
+
     if (!user) {
       return res.status(400).json({
-        message: "User not found",
+        message: mobile ? generic : "User not found",
       });
     }
 
@@ -101,11 +137,24 @@ router.post("/login", async (req, res) => {
 
     if (!validPassword) {
       return res.status(400).json({
-        message: "Invalid Password",
+        message: mobile ? generic : "Invalid Password",
       });
     }
 
-    // ✅ Generate token
+    if (mobile) {
+      const s = await sessions.issueSession(user, deviceInfo(req));
+      return res.json({
+        // `token` mirrors accessToken so older mobile builds keep working.
+        token: s.accessToken,
+        accessToken: s.accessToken,
+        accessTokenExpiresAt: s.accessTokenExpiresAt,
+        expiresIn: s.expiresIn,
+        refreshToken: s.refreshToken,
+        user: publicUser(user),
+      });
+    }
+
+    // ✅ Generate token (web / extension: unchanged)
     const token = jwt.sign(
       { id: user.id },
       process.env.JWT_SECRET,
@@ -114,11 +163,7 @@ router.post("/login", async (req, res) => {
 
     res.json({
       token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-      },
+      user: publicUser(user),
     });
   } catch (error) {
     res.status(500).json({
@@ -127,8 +172,96 @@ router.post("/login", async (req, res) => {
   }
 });
 
+// REFRESH — exchanges a refresh token for a new access token AND a new refresh
+// token (rotation). 401 means the session is over and the user must sign in.
+router.post("/refresh", refreshLimiter, async (req, res) => {
+  try {
+    const { refreshToken } = req.body || {};
+    const r = await sessions.rotateSession(refreshToken, deviceInfo(req));
+    if (!r.ok) {
+      // `reused_recently` is a benign race (two requests refreshed at once):
+      // tell the client to retry with the token it already received.
+      const code = r.reason === "reused_recently" ? "refresh_in_progress" : "session_invalid";
+      return res.status(401).json({ message: "Session expired. Please sign in again.", code });
+    }
+    res.json({
+      token: r.accessToken,
+      accessToken: r.accessToken,
+      accessTokenExpiresAt: r.accessTokenExpiresAt,
+      expiresIn: r.expiresIn,
+      refreshToken: r.refreshToken,
+      user: publicUser(r.user),
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// ME — who am I. Also the cheapest way for a client to validate its session.
+router.get("/me", authMiddleware, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(401).json({ message: "Account no longer exists", code: "token_invalid" });
+    res.json({ user: { ...publicUser(user), gmailConnected: Boolean(user.gmailRefreshToken), createdAt: user.createdAt } });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// LOGOUT — revokes the refresh-token family. Idempotent; never fails the client.
+router.post("/logout", refreshLimiter, async (req, res) => {
+  try {
+    await sessions.revokeByRefreshToken((req.body || {}).refreshToken);
+  } catch (error) {
+    console.error("logout revoke failed:", error.message);
+  }
+  res.json({ message: "Signed out" });
+});
+
+// LOGOUT ALL — revokes every mobile session for the signed-in user.
+router.post("/logout-all", authMiddleware, async (req, res) => {
+  try {
+    const count = await sessions.revokeAllForUser(req.user.id);
+    res.json({ message: "Signed out everywhere", revoked: count });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// DELETE ACCOUNT — permanently removes the account and everything tied to it
+// (tracked jobs, resumes, tailoring history, profile, sessions, push devices;
+// all relations cascade). Requires the current password. Also revokes the
+// stored Gmail grant at Google (best effort).
+router.delete("/account", deleteLimiter, authMiddleware, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    if (typeof password !== "string" || !password) {
+      return res.status(400).json({ message: "Password is required to delete your account" });
+    }
+    const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!user) return res.status(401).json({ message: "Account no longer exists", code: "token_invalid" });
+    if (!(await bcrypt.compare(password, user.password))) {
+      return res.status(400).json({ message: "Password is incorrect" });
+    }
+
+    if (user.gmailRefreshToken) {
+      try {
+        const { getOAuthClient } = require("../config/google");
+        await getOAuthClient().revokeToken(user.gmailRefreshToken);
+      } catch (e) {
+        console.error("Gmail revoke during account deletion failed");
+      }
+    }
+
+    await prisma.user.delete({ where: { id: user.id } });
+    res.json({ message: "Your account and data have been deleted." });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // FORGOT PASSWORD — sends a time-limited reset link to the user's email.
-router.post("/forgot-password", async (req, res) => {
+router.post("/forgot-password", forgotLimiter, async (req, res) => {
   try {
     const { email, source, redirectUri } = req.body;
 
@@ -187,8 +320,18 @@ router.post("/forgot-password", async (req, res) => {
       // in between, no "open in app" handoff, no mobile-browser
       // detection. Tapping it in Gmail hands straight to Expo Router's
       // reset-password screen (see mobile/app/reset-password.tsx).
-      const sep = redirectDestination.includes("?") ? "&" : "?";
-      resetUrl = `${redirectDestination}${sep}token=${resetToken}`;
+      // When APP_LINK_BASE_URL is set the email carries a verified https App
+      // Link / Universal Link (same trust model as the web link; falls back
+      // to the web reset page if the app is not installed). Otherwise it is
+      // the validated custom-scheme deep link, exactly as before.
+      const appLinkBase = (process.env.APP_LINK_BASE_URL || "").replace(/\/+$/, "");
+      // (Expo Go dev links stay custom-scheme: they cannot be App Links.)
+      if (/^https:\/\//.test(appLinkBase) && !redirectDestination.startsWith("exp://")) {
+        resetUrl = `${appLinkBase}/app/reset-password?token=${resetToken}`;
+      } else {
+        const sep = redirectDestination.includes("?") ? "&" : "?";
+        resetUrl = `${redirectDestination}${sep}token=${resetToken}`;
+      }
     } else {
       // Web AND Extension both land on the same web Reset Password page —
       // there is no stable, installation-independent extension ID this
@@ -212,7 +355,7 @@ router.post("/forgot-password", async (req, res) => {
 });
 
 // RESET PASSWORD — verifies the token from the email link and sets a new password.
-router.post("/reset-password", async (req, res) => {
+router.post("/reset-password", resetLimiter, async (req, res) => {
   try {
     const { token, password } = req.body;
 
@@ -246,6 +389,13 @@ router.post("/reset-password", async (req, res) => {
       where: { id: decoded.id },
       data: { password: hashedPassword },
     });
+
+    // A password reset must end every existing mobile session.
+    try {
+      await sessions.revokeAllForUser(decoded.id);
+    } catch (e) {
+      console.error("session revoke after reset failed:", e.message);
+    }
 
     res.json({ message: "Password has been reset. You can now log in." });
   } catch (error) {

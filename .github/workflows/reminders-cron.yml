@@ -1,0 +1,26 @@
+name: Reminder scheduler
+
+# Only needed when the API host sleeps when idle (e.g. Render free tier), so the in-process
+# scheduler cannot run. Set REMINDERS_ENABLED=false on the server and add these repo secrets:
+#   API_URL      e.g. https://job-application-tracker-portal-o1ls.onrender.com
+#   CRON_SECRET  same value as the server's CRON_SECRET
+# Disabled automatically when the secrets are not set.
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Trigger reminder pass
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$API_URL" ] || [ -z "$CRON_SECRET" ]; then echo "API_URL/CRON_SECRET not configured; skipping."; exit 0; fi
+          curl --fail --silent --show-error --max-time 120 -X POST -H "x-cron-secret: $CRON_SECRET" "$API_URL/api/notifications/run-reminders"

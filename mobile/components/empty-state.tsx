@@ -17,7 +17,7 @@ export function EmptyState({ title, subtitle, actionLabel, onActionPress }: Empt
 
   return (
     <ThemedView style={styles.container}>
-      <ThemedText type="smallBold" style={styles.title}>
+      <ThemedText type="headline" style={styles.title}>
         {title}
       </ThemedText>
       {subtitle ? (
@@ -28,6 +28,7 @@ export function EmptyState({ title, subtitle, actionLabel, onActionPress }: Empt
       {actionLabel && onActionPress ? (
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={actionLabel}
           onPress={onActionPress}
           style={[styles.actionButton, { backgroundColor: theme.tint }]}>
           <ThemedText type="smallBold" style={styles.actionLabel}>

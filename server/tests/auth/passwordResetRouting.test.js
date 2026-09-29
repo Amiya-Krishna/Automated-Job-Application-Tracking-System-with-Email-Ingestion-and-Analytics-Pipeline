@@ -9,6 +9,8 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 process.env.JWT_SECRET = "test-secret";
+process.env.RL_FORGOT_MAX = "1000"; // this file fires many requests from one IP; limiter behaviour is covered elsewhere
+process.env.RL_RESET_MAX = "1000";
 process.env.CLIENT_URL = "https://app.example.test,https://other.example.test";
 
 const user = { id: 7, email: "a@b.co", password: bcrypt.hashSync("oldpass1", 4) };

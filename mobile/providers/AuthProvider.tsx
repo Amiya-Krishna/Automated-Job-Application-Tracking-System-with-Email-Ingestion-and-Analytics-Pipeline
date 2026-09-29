@@ -1,110 +1,181 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { createContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
 
 import * as authService from '@/services/auth';
+import { logger } from '@/services/logger';
+import { setMonitoringUser } from '@/services/monitoring';
+import { clearQueryCache, restoreQueryCache, startQueryPersistence, stopQueryPersistence } from '@/services/queryPersistence';
+import { unregisterPushDevice, forgetLocalPushToken, registerForPushIfPermitted, watchPushTokenChanges } from '@/services/push';
+import { ensureFreshAccessToken } from '@/services/session';
 import { onUnauthorized } from '@/services/sessionEvents';
-import { clearToken, hydrateToken, setToken } from '@/services/tokenStore';
+import { clearSession, getCachedUser, getRefreshToken, getToken, hydrateSession, setCachedUser, setSession } from '@/services/tokenStore';
 import type { AuthUser, LoginRequest, RegisterRequest } from '@/types/auth';
 
 type AuthStatus = 'hydrating' | 'authenticated' | 'unauthenticated';
 
 export interface AuthContextValue {
   status: AuthStatus;
-  /**
-   * The logged-in user's id/name/email. Populated directly from the
-   * login response. On a cold app restart with an existing token, this
-   * starts out `null` even though `status` is `authenticated` — the
-   * backend has no "whoami" endpoint to re-fetch it from at startup
-   * (see the Phase-analysis: adding one wasn't in scope for this step),
-   * and a later phase's profile fetch (GET /api/profile) will populate
-   * richer profile data anyway. Nothing in this phase renders `user`,
-   * so this is a documented gap, not a hidden one.
-   */
+  /** Signed-in user. Restored from the device on cold start (works offline), then confirmed via GET /auth/me. */
   user: AuthUser | null;
+  /** Set when the session was ended by the server (expired/revoked); the login screen can explain it. */
+  sessionNotice: string | null;
+  clearSessionNotice: () => void;
   login: (credentials: LoginRequest) => Promise<void>;
   register: (payload: RegisterRequest) => Promise<{ message: string }>;
   logout: () => Promise<void>;
+  /** Permanently deletes the account (server-side) and signs out. */
+  deleteAccount: (password: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  // Requires AuthProvider to render inside QueryProvider (see
-  // app/_layout.tsx) — it is, and always must be.
-  const queryClient = useQueryClient();
+const REVALIDATE_AFTER_MS = 5 * 60 * 1000;
 
-  // 'hydrating' until the SecureStore read finishes — see the effect
-  // below. Nothing that depends on auth state (protected routes,
-  // authenticated requests) should run while this is 'hydrating'.
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>('hydrating');
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const lastValidatedRef = useRef(0);
+  const endingRef = useRef(false);
 
-  // Guards against the "critical startup requirement": populate the
-  // in-memory token from SecureStore, and ONLY THEN mark hydration
-  // complete. Runs once per app launch.
+  /** Wipes everything that belongs to the signed-in user. */
+  const wipeLocalUserData = useCallback(async () => {
+    stopQueryPersistence();
+    queryClient.clear();
+    await clearQueryCache();
+    await forgetLocalPushToken();
+    setMonitoringUser(null);
+  }, [queryClient]);
+
+  const beginAuthenticated = useCallback(
+    (u: AuthUser | null) => {
+      setUser(u);
+      setStatus('authenticated');
+      if (u) {
+        setMonitoringUser(u.id);
+        startQueryPersistence(queryClient, u.id);
+      }
+    },
+    [queryClient],
+  );
+
+  // Confirms the session with GET /auth/me. Errors other than "session over"
+  // (offline, 5xx) keep the user signed in; a real 401 is handled by services/api.ts
+  // (which refreshes, or ends the session via emitUnauthorized).
+  const validate = useCallback(async () => {
+    try {
+      const me = await authService.fetchMe();
+      lastValidatedRef.current = Date.now();
+      const next = { id: me.id, name: me.name, email: me.email };
+      setUser(next);
+      void setCachedUser(next);
+      setMonitoringUser(me.id);
+    } catch {
+      // Intentionally silent: offline / transient failures must not affect the session.
+    }
+  }, []);
+
+  // ---- Startup: hydrate from SecureStore, restore cached reads, then validate ----
   useEffect(() => {
     let cancelled = false;
-    hydrateToken().then((token) => {
+    (async () => {
+      const { hasSession } = await hydrateSession();
       if (cancelled) return;
-      setStatus(token ? 'authenticated' : 'unauthenticated');
-    });
+      if (!hasSession) {
+        setStatus('unauthenticated');
+        return;
+      }
+      const cached = getCachedUser();
+      await restoreQueryCache(queryClient, cached?.id ?? null);
+      if (cancelled) return;
+      beginAuthenticated(cached);
+      void validate();
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [queryClient, beginAuthenticated, validate]);
 
-  // Reacts to the API client's 401 event (services/sessionEvents.ts).
-  // Guarded by a ref, not just the `status !== 'authenticated'` check in
-  // state, because multiple in-flight requests can all 401 back-to-back
-  // in the same tick, before the first one's setState has re-rendered —
-  // the ref flips synchronously, so only the first 401 actually acts,
-  // preventing multiple simultaneous "log the user out" operations /
-  // redirect loops from a single burst of failed requests.
-  const handlingUnauthorizedRef = useRef(false);
+  // ---- Server ended the session (refresh rejected / legacy token expired) ----
   useEffect(() => {
-    const unsubscribe = onUnauthorized(() => {
-      if (handlingUnauthorizedRef.current) return;
-      handlingUnauthorizedRef.current = true;
+    return onUnauthorized(() => {
+      if (endingRef.current) return;
+      endingRef.current = true;
       setUser(null);
       setStatus('unauthenticated');
-      queryClient.clear();
-      // Reset once state has settled, so a genuinely new 401 later in
-      // the session (e.g. after logging back in) is handled again.
-      setTimeout(() => {
-        handlingUnauthorizedRef.current = false;
-      }, 0);
+      setSessionNotice('Your session has expired. Please sign in again.');
+      void wipeLocalUserData().finally(() => {
+        endingRef.current = false;
+      });
     });
-    return unsubscribe;
-  }, [queryClient]);
+  }, [wipeLocalUserData]);
 
-  const login = async (credentials: LoginRequest) => {
-    const { token, user: loggedInUser } = await authService.login(credentials);
-    await setToken(token);
-    setUser(loggedInUser);
-    setStatus('authenticated');
-  };
+  // ---- Foreground recovery: refresh a stale token and re-confirm the session ----
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      void (async () => {
+        if (getRefreshToken()) await ensureFreshAccessToken(60_000);
+        if (getToken() && Date.now() - lastValidatedRef.current > REVALIDATE_AFTER_MS) await validate();
+      })();
+    });
+    return () => sub.remove();
+  }, [status, validate]);
 
-  const register = async (payload: RegisterRequest) => {
-    // Does NOT log the user in — see services/auth.ts and
-    // authRoutes.js's actual contract. Caller (the register screen)
-    // sends the user to the login screen afterward.
-    return authService.register(payload);
-  };
+  // ---- Push: keep this device registered while signed in (never prompts) ----
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    void registerForPushIfPermitted();
+    return watchPushTokenChanges();
+  }, [status]);
 
-  const logout = async () => {
-    await clearToken();
+  const login = useCallback(
+    async (credentials: LoginRequest) => {
+      const res = await authService.login(credentials);
+      await setSession({ accessToken: res.accessToken ?? res.token, refreshToken: res.refreshToken ?? null, accessTokenExpiresAt: res.accessTokenExpiresAt ?? null }, res.user);
+      lastValidatedRef.current = Date.now();
+      setSessionNotice(null);
+      beginAuthenticated(res.user);
+    },
+    [beginAuthenticated],
+  );
+
+  const register = useCallback((payload: RegisterRequest) => authService.register(payload), []);
+
+  const logout = useCallback(async () => {
+    const refresh = getRefreshToken();
+    // Best effort, bounded: never let a slow/offline server trap the user in the app.
+    await Promise.race([
+      (async () => {
+        await unregisterPushDevice();
+        if (refresh) await authService.logoutRemote(refresh);
+      })().catch((e) => logger.warn('remote sign-out failed', e)),
+      new Promise((r) => setTimeout(r, 4000)),
+    ]);
+    await clearSession();
     setUser(null);
     setStatus('unauthenticated');
-    // Every screen's fetched data (applications, jobs, analytics,
-    // profile) belongs to the user who just logged out — clear it so
-    // the next person to log in on this device never sees a flash of
-    // the previous user's cached data before their own requests land.
-    queryClient.clear();
-  };
+    setSessionNotice(null);
+    await wipeLocalUserData();
+  }, [wipeLocalUserData]);
+
+  const deleteAccount = useCallback(
+    async (password: string) => {
+      await authService.deleteAccount(password); // throws on wrong password / offline
+      await clearSession();
+      setUser(null);
+      setStatus('unauthenticated');
+      await wipeLocalUserData();
+    },
+    [wipeLocalUserData],
+  );
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, login, register, logout }),
-    [status, user],
+    () => ({ status, user, sessionNotice, clearSessionNotice: () => setSessionNotice(null), login, register, logout, deleteAccount }),
+    [status, user, sessionNotice, login, register, logout, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

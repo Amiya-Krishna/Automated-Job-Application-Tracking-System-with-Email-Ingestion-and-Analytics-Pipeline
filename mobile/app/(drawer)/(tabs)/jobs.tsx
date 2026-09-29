@@ -150,7 +150,7 @@ export default function JobsScreen() {
 
         {isLoading ? (
           <LoadingState label="Loading matched jobs…" />
-        ) : isError ? (
+        ) : isError && !filteredJobs.length ? (
           <ErrorState error={error} onRetry={refetch} />
         ) : (
           <FlatList<EngineJob>
@@ -168,6 +168,10 @@ export default function JobsScreen() {
             ItemSeparatorComponent={() => <ThemedView style={{ height: Spacing.two }} />}
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
+            removeClippedSubviews
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            windowSize={7}
             refreshControl={
               <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.tint} />
             }

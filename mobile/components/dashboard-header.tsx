@@ -10,6 +10,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
+import { BellIcon } from '@/components/icons';
 import { SearchBar } from '@/components/search-bar';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
@@ -60,21 +61,21 @@ export function DashboardHeader({ name }: DashboardHeaderProps) {
           <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
             {getGreeting()}{firstName ? `, ${firstName}` : ''}
           </ThemedText>
-          <ThemedText type="smallBold" numberOfLines={1}>
+          <ThemedText type="headline" numberOfLines={1} accessibilityRole="header">
             Let&apos;s find your next role
           </ThemedText>
         </View>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Notifications"
+          accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
           hitSlop={Spacing.two}
           onPress={() => router.navigate('/notifications')}
           style={styles.bellButton}>
-          <ThemedText style={styles.bellIcon}>🔔</ThemedText>
+          <BellIcon color={theme.text} />
           {unreadCount > 0 ? (
             <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-              <ThemedText type="small" style={styles.badgeText}>
+              <ThemedText type="caption" style={styles.badgeText} maxFontSizeMultiplier={1}>
                 {unreadCount > 9 ? '9+' : unreadCount}
               </ThemedText>
             </View>
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   menuButton: {
-    width: 32,
+    width: 44,
     height: 44,
     alignItems: 'flex-start',
     justifyContent: 'center',
@@ -131,11 +132,11 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: 2,
-    right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     paddingHorizontal: 3,
     alignItems: 'center',
     justifyContent: 'center',
@@ -144,5 +145,6 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 10,
     lineHeight: 12,
+    fontWeight: '700',
   },
 });

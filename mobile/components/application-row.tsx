@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { memo } from 'react';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { StatusBadge } from '@/components/status-badge';
@@ -8,10 +9,11 @@ import { Spacing } from '@/constants/theme';
 import type { AppliedJob } from '@/types/applications';
 import { formatDate } from '@/utils/format';
 
-export function ApplicationRow({ item }: { item: AppliedJob }) {
+export const ApplicationRow = memo(function ApplicationRow({ item }: { item: AppliedJob }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={`${item.title} at ${item.company}, ${item.status}, applied ${formatDate(item.appliedDate)}`}
       onPress={() =>
         router.push({ pathname: '/application/[id]', params: { id: String(item.trackedJobId) } })
       }>
@@ -34,7 +36,7 @@ export function ApplicationRow({ item }: { item: AppliedJob }) {
       </ThemedView>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {
