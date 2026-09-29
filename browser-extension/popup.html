@@ -18,38 +18,86 @@
         <header class="app-header">
           <span class="logo">TT</span>
           <span class="brand">TrackTrail</span>
-          <button type="button" id="themeToggleBtn" class="theme-toggle" aria-label="Toggle theme"></button>
+          <button
+            type="button"
+            id="themeToggleBtn"
+            class="theme-toggle"
+            aria-label="Toggle theme"
+          ></button>
         </header>
 
-        <p class="hint" id="authHint">Sign in to manage your job applications right from your browser.</p>
+        <p class="hint" id="authHint">
+          Sign in to manage your job applications right from your browser.
+        </p>
 
         <form id="loginForm">
           <label>Email</label>
-          <input type="email" id="email" required placeholder="you@example.com" autocomplete="email" />
+          <input
+            type="email"
+            id="email"
+            required
+            placeholder="you@example.com"
+            autocomplete="email"
+          />
 
           <label>Password</label>
-          <input type="password" id="password" required placeholder="Password" autocomplete="current-password" />
+          <input
+            type="password"
+            id="password"
+            required
+            placeholder="Password"
+            autocomplete="current-password"
+          />
 
           <button type="submit" id="loginBtn">Log in</button>
-          <button type="button" id="forgotPasswordLink" class="link-btn">Forgot password?</button>
-          <p id="loginError" class="error"></p>
+          <button type="button" id="forgotPasswordLink" class="link-btn">
+            Forgot password?
+          </button>
+          <p id="loginError" class="error" role="status" aria-live="polite"></p>
         </form>
 
         <form id="registerForm" class="hidden">
           <label>Name</label>
-          <input type="text" id="regName" required placeholder="Your name" autocomplete="name" />
+          <input
+            type="text"
+            id="regName"
+            required
+            placeholder="Your name"
+            autocomplete="name"
+          />
 
           <label>Email</label>
-          <input type="email" id="regEmail" required placeholder="you@example.com" autocomplete="email" />
+          <input
+            type="email"
+            id="regEmail"
+            required
+            placeholder="you@example.com"
+            autocomplete="email"
+          />
 
           <label>Password</label>
-          <input type="password" id="regPassword" required placeholder="Password" autocomplete="new-password" />
+          <input
+            type="password"
+            id="regPassword"
+            required
+            placeholder="Password"
+            autocomplete="new-password"
+          />
 
           <button type="submit" id="registerBtn">Create account</button>
-          <p id="registerError" class="error"></p>
+          <p
+            id="registerError"
+            class="error"
+            role="status"
+            aria-live="polite"
+          ></p>
         </form>
 
-        <button id="toggleAuthMode" class="link-btn settings-link" type="button">
+        <button
+          id="toggleAuthMode"
+          class="link-btn settings-link"
+          type="button"
+        >
           Don't have an account? Sign up
         </button>
       </div>
@@ -60,57 +108,113 @@
           <span class="logo">TT</span>
           <span class="brand">TrackTrail</span>
           <span class="userchip" id="userChip" title=""></span>
-          <button type="button" id="themeToggleBtnIn" class="theme-toggle" aria-label="Toggle theme"></button>
+          <button
+            type="button"
+            id="themeToggleBtnIn"
+            class="theme-toggle"
+            aria-label="Toggle theme"
+          ></button>
         </header>
 
         <nav class="tabs" id="tabs">
-          <button class="tab active" data-tab="jobsTab" type="button">Jobs</button>
+          <button class="tab active" data-tab="jobsTab" type="button">
+            Jobs
+          </button>
           <button class="tab" data-tab="addTab" type="button">Add</button>
           <button class="tab" data-tab="statsTab" type="button">Stats</button>
         </nav>
 
-        <button id="openDashboardBtn" class="secondary dashboard-cta" type="button">Open full dashboard ↗</button>
+        <button
+          id="openDashboardBtn"
+          class="secondary dashboard-cta"
+          type="button"
+        >
+          Open full dashboard ↗
+        </button>
 
         <!-- ---- JOBS TAB ---- -->
         <section id="jobsTab" class="tabPanel">
           <div id="detectedJobCard" class="detectedCard hidden">
-            <span class="detectedCard-icon" aria-hidden="true">📍</span>
+            <span class="detectedCard-icon" aria-hidden="true">•</span>
             <div class="detectedCard-info">
               <p class="detectedCard-title" id="detectedJobTitle"></p>
               <p class="detectedCard-sub" id="detectedJobSub"></p>
             </div>
-            <button type="button" id="detectedJobSaveBtn" class="detectedCard-save">Add job</button>
+            <button
+              type="button"
+              id="detectedJobSaveBtn"
+              class="detectedCard-save"
+            >
+              Add job
+            </button>
           </div>
-          <p id="detectedJobHint" class="detectedHint hidden"></p>
+          <p
+            id="detectedJobHint"
+            class="detectedHint hidden"
+            role="status"
+            aria-live="polite"
+          ></p>
 
           <div class="toolbar">
-            <input type="search" id="searchInput" placeholder="Search company or role..." />
-            <button id="refreshJobsBtn" class="icon-btn" type="button" title="Refresh" aria-label="Refresh">⟳</button>
+            <input
+              type="search"
+              id="searchInput"
+              placeholder="Search company or role..."
+            />
+            <button
+              id="refreshJobsBtn"
+              class="icon-btn"
+              type="button"
+              title="Refresh"
+              aria-label="Refresh"
+            >
+              ⟳
+            </button>
           </div>
 
           <div class="chips" id="statusChips">
-            <button class="chip active" data-status="all" type="button">All</button>
-            <button class="chip" data-status="Applied" type="button">Applied</button>
-            <button class="chip" data-status="Interview" type="button">Interview</button>
-            <button class="chip" data-status="Offer" type="button">Offer</button>
-            <button class="chip" data-status="Rejected" type="button">Rejected</button>
+            <button class="chip active" data-status="all" type="button">
+              All
+            </button>
+            <button class="chip" data-status="Applied" type="button">
+              Applied
+            </button>
+            <button class="chip" data-status="Interview" type="button">
+              Interview
+            </button>
+            <button class="chip" data-status="Offer" type="button">
+              Offer
+            </button>
+            <button class="chip" data-status="Rejected" type="button">
+              Rejected
+            </button>
           </div>
 
           <ul id="jobsList" class="jobsList"></ul>
           <div id="jobsEmpty" class="emptyState hidden">
             <p>No jobs match here yet.</p>
           </div>
-          <p id="jobsError" class="error"></p>
+          <p id="jobsError" class="error" role="status" aria-live="polite"></p>
         </section>
 
         <!-- ---- ADD TAB ---- -->
         <section id="addTab" class="tabPanel hidden">
           <form id="addJobForm">
             <label>Company</label>
-            <input type="text" id="addCompany" required placeholder="e.g. Acme Corp" />
+            <input
+              type="text"
+              id="addCompany"
+              required
+              placeholder="e.g. Acme Corp"
+            />
 
             <label>Role</label>
-            <input type="text" id="addRole" required placeholder="e.g. SDE Intern" />
+            <input
+              type="text"
+              id="addRole"
+              required
+              placeholder="e.g. SDE Intern"
+            />
 
             <label>Status</label>
             <select id="addStatus">
@@ -125,10 +229,19 @@
             <input type="date" id="addInterviewDate" />
 
             <label>Notes (optional)</label>
-            <textarea id="addNotes" rows="3" placeholder="Anything you want to remember..."></textarea>
+            <textarea
+              id="addNotes"
+              rows="3"
+              placeholder="Anything you want to remember..."
+            ></textarea>
 
             <button type="submit" id="addJobBtn">Add job</button>
-            <p id="addJobMsg" class="error"></p>
+            <p
+              id="addJobMsg"
+              class="error"
+              role="status"
+              aria-live="polite"
+            ></p>
           </form>
         </section>
 
@@ -138,6 +251,27 @@
         </section>
 
         <button id="logoutBtn" class="secondary">Log out</button>
+      </div>
+
+      <div
+        id="confirmDialog"
+        class="confirmDialog hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirmTitle"
+        tabindex="-1"
+      >
+        <div class="confirmDialog-card">
+          <h2 id="confirmTitle">Delete job?</h2>
+          <p id="confirmMessage"></p>
+          <div class="confirmDialog-actions">
+            <button id="confirmCancel" class="secondary" type="button">
+              Cancel</button
+            ><button id="confirmDelete" class="danger" type="button">
+              Delete
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -65,6 +65,9 @@ async function boot({ token = true } = {}) {
           webAppUrl: "https://app.example.com",
         }),
       },
+      session: {
+        get: async () => ({ accessToken: token ? tok : undefined }),
+      },
     },
   };
   const dom = new JSDOM(DASH_HTML, {

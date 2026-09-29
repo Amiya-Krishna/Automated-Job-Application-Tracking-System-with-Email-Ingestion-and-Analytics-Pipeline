@@ -1,12 +1,25 @@
 name: CI
 
-# Lint, typecheck and the critical-path tests for the mobile app and the API it depends on.
+# Lint, typecheck and critical-path tests for the web client,
+# mobile app, and API.
 on:
   pull_request:
-    paths: ['client/**', 'mobile/**', 'server/**', '.github/workflows/ci.yml']
+    paths:
+      - 'client/**'
+      - 'mobile/**'
+      - 'server/**'
+      - 'browser-extension/**'
+      - '.github/workflows/ci.yml'
+
   push:
-    branches: [main]
-    paths: ['client/**', 'mobile/**', 'server/**', '.github/workflows/ci.yml']
+    branches:
+      - main
+    paths:
+      - 'client/**'
+      - 'mobile/**'
+      - 'server/**'
+      - 'browser-extension/**'
+      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -16,77 +29,168 @@ permissions:
   contents: read
 
 jobs:
+  # ============================================================
+  # CLIENT
+  # ============================================================
   client:
     name: Web lint, critical tests, production build
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     defaults:
       run:
         working-directory: client
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: client/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      # The client resume integration test imports a server test helper,
+      # which requires server dependencies such as Express.
+      - name: Install server dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: server
+
+      - name: Install client dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint client
+        run: npm run lint
+
+      - name: Run client tests
+        run: npm test
+
+      - name: Build client
+        run: npm run build
         env:
           VITE_API_BASE_URL: https://api.example.com
 
+  # ============================================================
+  # SERVER
+  # ============================================================
   server:
     name: Server tests (auth, sessions, notifications, resume)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
     defaults:
       run:
         working-directory: server
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: server/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - run: npx prisma generate
+
+      - name: Install server dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npx prisma generate
         env:
           DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
-      - run: npm test
+
+      - name: Run server tests
+        run: npm test
         env:
           JWT_SECRET: ci-only-secret
 
+  # ============================================================
+  # MOBILE
+  # ============================================================
   mobile:
     name: Mobile lint, typecheck, critical tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     defaults:
       run:
         working-directory: mobile
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: |
             mobile/package-lock.json
             server/package-lock.json
-      # The resume integration test boots the real backend modules, so server deps are needed too.
-      - run: npm ci --no-audit --no-fund
+
+      # The mobile resume integration test boots real backend modules,
+      # so server dependencies are required here as well.
+      - name: Install server dependencies
+        run: npm ci --no-audit --no-fund
         working-directory: server
-      # NOTE: run `npm install` locally once after pulling this change and commit the updated
-      # mobile/package-lock.json; until then `npm ci` would reject the new dependencies.
-      - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm run test:critical
+
+      - name: Install mobile dependencies
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Lint mobile
+        run: npm run lint
+
+      - name: Typecheck mobile
+        run: npm run typecheck
+
+      - name: Run mobile critical tests
+        run: npm run test:critical
         env:
           NODE_PATH: ${{ github.workspace }}/server/node_modules
-      - name: Expo config sanity (staging + production must resolve)
+
+      - name: Expo config sanity
         run: |
-          EXPO_PUBLIC_APP_ENV=staging EXPO_PUBLIC_API_URL=https://api.example.com npx expo config --type public > /dev/null
-          EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_URL=https://api.example.com npx expo config --type public > /dev/null
+          EXPO_PUBLIC_APP_ENV=staging \
+          EXPO_PUBLIC_API_URL=https://api.example.com \
+          npx expo config --type public > /dev/null
+
+          EXPO_PUBLIC_APP_ENV=production \
+          EXPO_PUBLIC_API_URL=https://api.example.com \
+          npx expo config --type public > /dev/null
+
+
+  # ============================================================
+  # BROWSER EXTENSION
+  # ============================================================
+  extension:
+    name: Browser extension tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    defaults:
+      run:
+        working-directory: browser-extension
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: browser-extension/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run extension tests
+        run: npm test

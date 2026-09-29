@@ -43,18 +43,138 @@ const registerError = document.getElementById("registerError");
 const toggleAuthMode = document.getElementById("toggleAuthMode");
 const authHint = document.getElementById("authHint");
 const forgotPasswordLink = document.getElementById("forgotPasswordLink");
+const confirmDialog = document.getElementById("confirmDialog");
+const confirmMessage = document.getElementById("confirmMessage");
+const confirmCancel = document.getElementById("confirmCancel");
+const confirmDelete = document.getElementById("confirmDelete");
 
 // ---------- state ----------
 let allJobs = [];
 let activeStatus = "all";
 let searchTerm = "";
+let pendingDelete = null;
+let deleteDialogReturnFocus = null;
+
+function isSessionError(result) {
+  const message = (result?.error || "").toLowerCase();
+  return (
+    result?.code === "session_expired" ||
+    message.includes("session ended") ||
+    message.includes("session expired") ||
+    message.includes("not logged in")
+  );
+}
+
+function isOfflineError(result) {
+  const message = (result?.error || "").toLowerCase();
+  return (
+    !navigator.onLine ||
+    message.includes("failed to fetch") ||
+    message.includes("network") ||
+    message.includes("offline")
+  );
+}
+
+function friendlyError(result, fallback) {
+  if (isSessionError(result)) {
+    return { kind: "error", message: "Your session expired. Sign in again." };
+  }
+  if (result?.code === "session_restored") {
+    return {
+      kind: "error",
+      message: "Your session was restored. Repeat that action.",
+    };
+  }
+  if (
+    result?.duplicate ||
+    /already (saved|added)|duplicate/i.test(result?.error || "")
+  ) {
+    return { kind: "success", message: "Already saved." };
+  }
+  if (isOfflineError(result)) {
+    return {
+      kind: "error",
+      message:
+        "You're offline or the server is unreachable. Check your connection and try again.",
+    };
+  }
+  if (/invalid|required|missing/i.test(result?.error || "")) {
+    return { kind: "error", message: result.error };
+  }
+  return { kind: "error", message: result?.error || fallback };
+}
+
+function setMessage(el, message, kind = "error") {
+  el.className = kind === "success" ? "success" : "error";
+  el.textContent = message;
+}
+
+function restoreDeleteFocus() {
+  const target = deleteDialogReturnFocus;
+  deleteDialogReturnFocus = null;
+  if (target && target.isConnected && typeof target.focus === "function")
+    target.focus();
+  else refreshJobsBtn.focus();
+}
+
+function closeDeleteDialog() {
+  pendingDelete = null;
+  confirmDialog.classList.add("hidden");
+  document.removeEventListener("keydown", onDeleteDialogKeydown);
+  restoreDeleteFocus();
+}
+
+function onDeleteDialogKeydown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeDeleteDialog();
+  }
+}
+
+function askDelete(job) {
+  pendingDelete = job;
+  deleteDialogReturnFocus =
+    document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+  confirmMessage.textContent = `Delete “${job.role || "this job"}” at ${job.company || "this company"}? This cannot be undone.`;
+  confirmDialog.classList.remove("hidden");
+  document.addEventListener("keydown", onDeleteDialogKeydown);
+  confirmCancel.focus();
+}
+confirmCancel.addEventListener("click", closeDeleteDialog);
+confirmDialog.addEventListener("click", (event) => {
+  if (event.target === confirmDialog) closeDeleteDialog();
+});
+confirmDelete.addEventListener("click", async () => {
+  if (!pendingDelete) return;
+  const job = pendingDelete;
+  confirmDelete.disabled = true;
+  confirmDelete.textContent = "Deleting…";
+  const result = await sendMessage({ type: "DELETE_JOB", id: job.id });
+  confirmDelete.disabled = false;
+  confirmDelete.textContent = "Delete";
+  if (result?.ok) {
+    allJobs = allJobs.filter((item) => item.id !== job.id);
+    closeDeleteDialog();
+    renderJobs();
+    setMessage(jobsError, "Job deleted.", "success");
+    return;
+  }
+  const error = friendlyError(result, "Couldn't delete job. Try again.");
+  setMessage(jobsError, error.message, error.kind);
+});
 
 // ---------- helpers ----------
 function formatDate(value) {
   if (!value) return "";
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function statusClass(status) {
@@ -88,13 +208,15 @@ toggleAuthMode.addEventListener("click", () => {
     authMode = "register";
     loginForm.classList.add("hidden");
     registerForm.classList.remove("hidden");
-    authHint.textContent = "Create an account to start tracking your applications.";
+    authHint.textContent =
+      "Create an account to start tracking your applications.";
     toggleAuthMode.textContent = "Already have an account? Log in";
   } else {
     authMode = "login";
     registerForm.classList.add("hidden");
     loginForm.classList.remove("hidden");
-    authHint.textContent = "Sign in to manage your job applications right from your browser.";
+    authHint.textContent =
+      "Sign in to manage your job applications right from your browser.";
     toggleAuthMode.textContent = "Don't have an account? Sign up";
   }
 });
@@ -140,7 +262,8 @@ registerForm.addEventListener("submit", async (e) => {
 function applyFilters() {
   return allJobs.filter((job) => {
     const jobStatus = (job.status || "Applied").trim().toLowerCase();
-    const matchesStatus = activeStatus === "all" || jobStatus === activeStatus.trim().toLowerCase();
+    const matchesStatus =
+      activeStatus === "all" || jobStatus === activeStatus.trim().toLowerCase();
     const haystack = `${job.company || ""} ${job.role || ""}`.toLowerCase();
     const matchesSearch = !searchTerm || haystack.includes(searchTerm);
     return matchesStatus && matchesSearch;
@@ -159,7 +282,13 @@ function renderJobs() {
   }
   jobsEmpty.classList.add("hidden");
 
-  const statusOptions = ["Applied", "Interview", "Offer", "Rejected", "Wishlist"];
+  const statusOptions = [
+    "Applied",
+    "Interview",
+    "Offer",
+    "Rejected",
+    "Wishlist",
+  ];
 
   for (const job of filtered) {
     const li = document.createElement("li");
@@ -220,7 +349,11 @@ function renderJobs() {
       saveBtn.addEventListener("click", async () => {
         const value = textarea.value.trim();
         saveBtn.disabled = true;
-        const result = await sendMessage({ type: "UPDATE_JOB", id: job.id, updates: { notes: value } });
+        const result = await sendMessage({
+          type: "UPDATE_JOB",
+          id: job.id,
+          updates: { notes: value },
+        });
         saveBtn.disabled = false;
         if (result?.ok) {
           job.notes = value;
@@ -272,19 +405,9 @@ function renderJobs() {
     delBtn.className = "delete-btn";
     delBtn.type = "button";
     delBtn.title = "Delete";
-    delBtn.textContent = "✕";
-    delBtn.addEventListener("click", async () => {
-      if (!confirm(`Delete "${job.role || "this job"}" at ${job.company || "this company"}?`)) return;
-      delBtn.disabled = true;
-      const result = await sendMessage({ type: "DELETE_JOB", id: job.id });
-      if (result?.ok) {
-        allJobs = allJobs.filter((j) => j.id !== job.id);
-        renderJobs();
-      } else {
-        delBtn.disabled = false;
-        jobsError.textContent = result?.error || "Couldn't delete job.";
-      }
-    });
+    delBtn.setAttribute("aria-label", `Delete ${job.role || "job"}`);
+    delBtn.textContent = "Delete";
+    delBtn.addEventListener("click", () => askDelete(job));
 
     actions.appendChild(select);
     actions.appendChild(dateEl);
@@ -313,7 +436,8 @@ async function loadJobs() {
 statusChips.addEventListener("click", (e) => {
   const chip = e.target.closest(".chip");
   if (!chip) return;
-  for (const c of statusChips.querySelectorAll(".chip")) c.classList.remove("active");
+  for (const c of statusChips.querySelectorAll(".chip"))
+    c.classList.remove("active");
   chip.classList.add("active");
   activeStatus = chip.dataset.status;
   renderJobs();
@@ -362,7 +486,13 @@ addJobForm.addEventListener("submit", async (e) => {
 
 // ---------- stats ----------
 function renderStats() {
-  const counts = { Applied: 0, Interview: 0, Offer: 0, Rejected: 0, Wishlist: 0 };
+  const counts = {
+    Applied: 0,
+    Interview: 0,
+    Offer: 0,
+    Rejected: 0,
+    Wishlist: 0,
+  };
   const knownKeys = Object.keys(counts);
   for (const job of allJobs) {
     const raw = (job.status || "Applied").trim();
@@ -404,7 +534,9 @@ forgotPasswordLink?.addEventListener("click", async () => {
   // extension, so the emailed link comes back branded "TrackTrail
   // Extension · Reset Password" with copy that sends the user back here
   // afterward, instead of the plain web flow.
-  chrome.tabs.create({ url: `${(url || "").replace(/\/+$/, "")}/forgot-password?source=extension` });
+  chrome.tabs.create({
+    url: `${(url || "").replace(/\/+$/, "")}/forgot-password?source=extension`,
+  });
 });
 
 // ---------- detected job (current tab) ----------
@@ -418,20 +550,24 @@ async function loadDetectedJob() {
   const result = await sendMessage({ type: "GET_DETECTED_JOB" });
 
   if (!result?.ok || !result.supported) {
-    detectedJobHint.textContent = "Open a LinkedIn or Indeed job page to add it here in one tap.";
+    detectedJobHint.textContent =
+      "Open a LinkedIn or Indeed job page to add it here in one tap.";
     detectedJobHint.classList.remove("hidden");
     return;
   }
 
   if (!result.found || !result.job) {
-    detectedJobHint.textContent = "No job detected on this page yet — open a specific listing.";
+    detectedJobHint.textContent =
+      "No job detected on this page yet — open a specific listing.";
     detectedJobHint.classList.remove("hidden");
     return;
   }
 
   currentDetectedSaveJob = result.saveJob;
   detectedJobTitle.textContent = result.job.role || "Untitled role";
-  detectedJobSub.textContent = result.job.company ? `at ${result.job.company}` : "Company not detected";
+  detectedJobSub.textContent = result.job.company
+    ? `at ${result.job.company}`
+    : "Company not detected";
   detectedJobCard.classList.remove("hidden");
   detectedJobCard.classList.remove("saved");
   detectedJobSaveBtn.disabled = false;
@@ -443,10 +579,15 @@ detectedJobSaveBtn.addEventListener("click", async () => {
   detectedJobSaveBtn.disabled = true;
   detectedJobSaveBtn.textContent = "Adding...";
 
-  const result = await sendMessage({ type: "SAVE_JOB", job: currentDetectedSaveJob });
+  const result = await sendMessage({
+    type: "SAVE_JOB",
+    job: currentDetectedSaveJob,
+  });
 
   if (result?.ok) {
-    detectedJobSaveBtn.textContent = result.duplicate ? "Already added" : "✓ Added";
+    detectedJobSaveBtn.textContent = result.duplicate
+      ? "Already added"
+      : "✓ Added";
     detectedJobCard.classList.add("saved");
     await loadJobs();
   } else {

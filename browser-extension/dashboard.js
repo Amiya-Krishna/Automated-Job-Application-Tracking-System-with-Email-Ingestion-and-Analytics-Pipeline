@@ -22,14 +22,9 @@ async function api(path, options = {}) {
 
 // Gmail routes require the same auth token the popup uses for /api/jobs.
 async function apiAuth(path, options = {}) {
-  const { token } = await chrome.storage.local.get("token");
-  if (!token) {
-    throw new Error("Not logged in. Open the extension popup and sign in first.");
-  }
-  return api(path, {
-    ...options,
-    headers: { token, ...(options.headers || {}) },
-  });
+  const result = await chrome.runtime.sendMessage({ type: "API_REQUEST", path, options });
+  if (!result?.ok) throw new Error(result?.error || "Couldn't reach TrackTrail.");
+  return result.data;
 }
 
 function formatDate(value) {
@@ -37,6 +32,22 @@ function formatDate(value) {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function confirmDialog(message) {
+  const dialog = document.getElementById("dashboardConfirm");
+  const body = document.getElementById("dashboardConfirmMessage");
+  const cancel = document.getElementById("dashboardConfirmCancel");
+  const confirm = document.getElementById("dashboardConfirmDelete");
+  body.textContent = message;
+  dialog.classList.remove("hidden");
+  cancel.focus();
+  return new Promise((resolve) => {
+    const close = (result) => { dialog.classList.add("hidden"); cancel.onclick = null; confirm.onclick = null; dialog.onkeydown = null; resolve(result); };
+    cancel.onclick = () => close(false);
+    confirm.onclick = () => close(true);
+    dialog.onkeydown = (event) => { if (event.key === "Escape") close(false); };
+  });
 }
 
 // ---------- sidebar nav ----------
@@ -786,7 +797,7 @@ const resumeManager = createResumeManager({
   doc: document,
   formatDate,
   saveBlob,
-  confirmFn: (m) => window.confirm(m),
+  confirmFn: confirmDialog,
   openWeb: async (path) => {
     const { webAppUrl } = await chrome.storage.local.get("webAppUrl");
     window.open(`${(webAppUrl || DEFAULT_WEB_APP_URL).replace(/\/+$/, "")}${path}`, "_blank", "noopener");

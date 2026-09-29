@@ -26,6 +26,7 @@ function isMobileClient(req) {
   const h = String(req.header("x-client") || "").toLowerCase();
   return h === "mobile" || (req.body && req.body.client === "mobile");
 }
+function isExtensionClient(req) { return String(req.header("x-client") || "").toLowerCase() === "extension"; }
 function isWebClient(req) { return String(req.header("x-client") || "").toLowerCase() === "web"; }
 function readCookie(req, name) {
   const match = String(req.headers.cookie || "").split(/;\s*/).find((part) => part.startsWith(`${name}=`));
@@ -155,10 +156,10 @@ router.post("/login", loginLimiter, async (req, res) => {
       });
     }
 
-    if (mobile) {
+    if (mobile || isExtensionClient(req)) {
       const s = await sessions.issueSession(user, deviceInfo(req));
       return res.json({
-        // `token` mirrors accessToken so older mobile builds keep working.
+        // `token` mirrors accessToken so existing mobile/extension clients keep working.
         token: s.accessToken,
         accessToken: s.accessToken,
         accessTokenExpiresAt: s.accessTokenExpiresAt,

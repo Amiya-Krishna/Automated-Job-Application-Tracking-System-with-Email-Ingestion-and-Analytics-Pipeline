@@ -2,11 +2,15 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 // Load the real background.js with a mocked chrome + fetch.
-async function boot({ token = "jwt-abc", apiBaseUrl, webAppUrl, fetchImpl } = {}) {
-  const store = { token, apiBaseUrl, webAppUrl };
+async function boot({ token = "jwt-abc", refreshToken = "refresh-abc", apiBaseUrl, webAppUrl, fetchImpl } = {}) {
+  const store = { apiBaseUrl, webAppUrl };
+  const session = { accessToken: token, refreshToken, user: { id: 1, name: "Test" } };
   let listener;
   globalThis.chrome = {
-    storage: { local: { get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).map((x) => [x, store[x]])), set: async () => {}, remove: async () => {} } },
+    storage: {
+      local: { get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).map((x) => [x, store[x]])), set: async () => {}, remove: async () => {} },
+      session: { get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).map((x) => [x, session[x]])), set: async (v) => Object.assign(session, v), remove: async (ks) => { for (const k of ks) delete session[k]; } },
+    },
     runtime: { onMessage: { addListener: (fn) => { listener = fn; } } },
   };
   const calls = [];
@@ -47,9 +51,9 @@ test("ids are URL-encoded (no path injection through a message)", async () => {
 });
 
 test("not logged in: fails fast with a code and never calls the network", async () => {
-  const { send, calls } = await boot({ token: null, fetchImpl: () => json(200, {}) });
+  const { send, calls } = await boot({ token: null, refreshToken: null, fetchImpl: () => json(200, {}) });
   const r = await send({ type: "RESUME_ANALYZE", job: {} });
-  assert.deepEqual([r.ok, r.code], [false, "not_logged_in"]);
+  assert.deepEqual([r.ok, r.code], [false, "session_expired"]);
   assert.match(r.error, /Not logged in/);
   assert.equal(calls.length, 0);
 });

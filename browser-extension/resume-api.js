@@ -4,7 +4,7 @@
 // AI provider. The backend owns validation, parsing, storage and tailoring.
 //
 // Dependencies are injected so the module is testable in Node:
-//   chromeApi   { storage.local.get }      fetchImpl   fetch-compatible
+//   chromeApi   { storage.session.get }    fetchImpl   fetch-compatible
 //   defaultApiBaseUrl                       (the stored `apiBaseUrl` overrides it)
 
 export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl }) {
@@ -16,9 +16,9 @@ export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl }) {
   }
 
   async function authHeaders() {
-    const { token } = await chromeApi.storage.local.get("token");
-    if (!token) throw new Error("Not logged in. Open the extension popup and sign in first.");
-    return { token };
+    const { accessToken } = await chromeApi.storage.session.get("accessToken");
+    if (!accessToken) throw new Error("Not logged in or session ended. Sign in again.");
+    return { token: accessToken, "x-client": "extension" };
   }
 
   async function request(path, options = {}) {

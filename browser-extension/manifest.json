@@ -7,8 +7,7 @@
   "host_permissions": [
     "https://*.linkedin.com/*",
     "https://*.indeed.com/*",
-    "https://job-application-tracker-portal-o1ls.onrender.com/*",
-    "http://localhost:5000/*"
+    "https://job-application-tracker-portal-o1ls.onrender.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -20,12 +19,6 @@
       "js": ["jd-extract.js", "tailor-panel.js", "content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["dashboard.html"],
-      "matches": ["<all_urls>"]
     }
   ],
   "action": {

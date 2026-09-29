@@ -1,77 +1,185 @@
 name: Mobile release (EAS)
 
-# staging    : every push to main that touches mobile/ publishes an OTA update to the `staging` channel.
-# production : manual, from the Actions tab, behind the "production" environment (add required reviewers
-#              in GitHub -> Settings -> Environments). Actions: update | build | submit | rollback.
+# staging:
+# Every push to main that touches mobile/ publishes an OTA update
+# to the staging channel.
 #
-# Required repository secret: EXPO_TOKEN  (https://expo.dev/accounts/<you>/settings/access-tokens)
-# Required EAS environment variables (`eas env:create`): EXPO_PUBLIC_API_URL (https) for `staging` and `production`.
+# production:
+# Manual from the Actions tab, protected by the "production" environment.
+# Configure required reviewers in:
+# GitHub -> Settings -> Environments
+#
+# Production actions:
+# update | build | submit | rollback
+#
+# Required repository secret:
+# EXPO_TOKEN
+#
+# Required EAS environment variable:
+# EXPO_PUBLIC_API_URL (HTTPS)
+# Configure it for both staging and production using:
+# eas env:create
+
 on:
   push:
-    branches: [main]
-    paths: ['mobile/**']
+    branches:
+      - main
+    paths:
+      - 'mobile/**'
+
   workflow_dispatch:
     inputs:
       action:
         description: 'What to do on PRODUCTION'
         type: choice
-        options: [update, build, submit, rollback]
+        options:
+          - update
+          - build
+          - submit
+          - rollback
         default: update
+        required: true
+
       rollback_group:
-        description: 'rollback only: the previous update GROUP ID to republish (from `eas update:list --branch production`)'
+        description: 'Rollback only: previous update GROUP ID to republish'
         required: false
+
       platform:
-        description: 'build/submit platform'
+        description: 'Build/submit platform'
         type: choice
-        options: [all, android, ios]
+        options:
+          - all
+          - android
+          - ios
         default: all
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  # ============================================================
+  # STAGING OTA UPDATE
+  # ============================================================
   staging-update:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    defaults: { run: { working-directory: mobile } }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - uses: expo/expo-github-action@v8
-        with: { eas-version: latest, token: '${{ secrets.EXPO_TOKEN }}' }
-      - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-      - run: eas update --channel staging --environment staging --message "staging ${{ github.sha }}" --non-interactive
 
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Publish staging OTA update
+        run: >
+          eas update
+          --channel staging
+          --environment staging
+          --message "staging ${{ github.sha }}"
+          --non-interactive
+
+  # ============================================================
+  # PRODUCTION
+  # ============================================================
   production:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 60
-    defaults: { run: { working-directory: mobile } }
+
+    defaults:
+      run:
+        working-directory: mobile
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
-      - uses: expo/expo-github-action@v8
-        with: { eas-version: latest, token: '${{ secrets.EXPO_TOKEN }}' }
-      - run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: "OTA update (JS and asset changes only; same runtime version)"
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # ==========================================================
+      # OTA UPDATE
+      # ==========================================================
+      - name: OTA update
         if: inputs.action == 'update'
-        run: eas update --channel production --environment production --message "production ${{ github.sha }}" --non-interactive
+        run: >
+          eas update
+          --channel production
+          --environment production
+          --message "production ${{ github.sha }}"
+          --non-interactive
 
+      # ==========================================================
+      # BUILD
+      # ==========================================================
       - name: Store build
         if: inputs.action == 'build'
-        run: eas build --profile production --platform ${{ inputs.platform }} --non-interactive --no-wait
+        run: >
+          eas build
+          --profile production
+          --platform ${{ inputs.platform }}
+          --non-interactive
+          --no-wait
 
-      - name: "Submit latest build to the stores (Play internal track, draft)"
+      # ==========================================================
+      # SUBMIT
+      # ==========================================================
+      - name: Submit latest build to stores
         if: inputs.action == 'submit'
-        run: eas submit --profile production --platform ${{ inputs.platform }} --latest --non-interactive
+        run: >
+          eas submit
+          --profile production
+          --platform ${{ inputs.platform }}
+          --latest
+          --non-interactive
 
-      - name: "Roll back OTA (republish a previous known-good update group)"
+      # ==========================================================
+      # ROLLBACK OTA
+      # ==========================================================
+      - name: Roll back OTA
         if: inputs.action == 'rollback'
         run: |
-          test -n "${{ inputs.rollback_group }}" || { echo "rollback_group is required"; exit 1; }
-          eas update:republish --group "${{ inputs.rollback_group }}" --destination-channel production --message "rollback to ${{ inputs.rollback_group }}" --non-interactive
+          test -n "${{ inputs.rollback_group }}" || {
+            echo "rollback_group is required"
+            exit 1
+          }
+
+          eas update:republish \
+            --group "${{ inputs.rollback_group }}" \
+            --destination-channel production \
+            --message "rollback to ${{ inputs.rollback_group }}" \
+            --non-interactive

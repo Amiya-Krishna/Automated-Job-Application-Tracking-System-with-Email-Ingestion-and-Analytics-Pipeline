@@ -121,9 +121,9 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
 
   // ------------------------------------------------------------ actions
   const activate = (r) => guarded(async () => { state.data = await api.activate(r.id); message(`“${r.name}” will now be used for tailoring.`); });
-  const remove = (r) => {
+  const remove = async (r) => {
     const n = r.versionCount;
-    const ok = confirmFn(`Delete “${r.name}”?${n ? ` This also deletes its ${n} tailored version${n === 1 ? "" : "s"}.` : ""} This cannot be undone.`);
+    const ok = await confirmFn(`Delete “${r.name}”?${n ? ` This also deletes its ${n} tailored version${n === 1 ? "" : "s"}.` : ""} This cannot be undone.`);
     if (!ok) return undefined;
     return guarded(async () => {
       const out = await api.remove(r.id);

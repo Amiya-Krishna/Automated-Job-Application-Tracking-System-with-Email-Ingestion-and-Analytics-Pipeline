@@ -10,9 +10,44 @@ async function getWebAppUrl() {
   return (webAppUrl || DEFAULT_WEB_APP_URL).replace(/\/+$/, "");
 }
 
+// Tokens are intentionally session-only. A browser restart requires login
+// again, while a service-worker restart restores the rotating refresh token
+// from chrome.storage.session without ever writing credentials to disk.
+const sessionStore = () => chrome.storage.session;
+async function getSession() { return sessionStore().get(["accessToken", "refreshToken", "user"]); }
+async function clearSession() { await sessionStore().remove(["accessToken", "refreshToken", "user"]); }
+
+async function refreshSession() {
+  const { refreshToken } = await getSession();
+  if (!refreshToken) return null;
+  const base = await getApiBaseUrl();
+  const res = await fetch(`${base}/auth/refresh`, { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.accessToken || !data.refreshToken) { await clearSession(); return null; }
+  await sessionStore().set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
+  return data.accessToken;
+}
+
 async function getToken() {
-  const { token } = await chrome.storage.local.get("token");
-  return token || null;
+  const { accessToken } = await getSession();
+  return accessToken || refreshSession();
+}
+
+async function authorizedFetch(path, options = {}) {
+  const base = await getApiBaseUrl();
+  let token = await getToken();
+  if (!token) throw Object.assign(new Error("Not logged in or session ended. Sign in again."), { code: "session_expired" });
+  const request = (value) => fetch(`${base}${path}`, { ...options, headers: { "x-client": "extension", token: value, ...(options.headers || {}) } });
+  let res = await request(token);
+  if (res.status !== 401) return res;
+  token = await refreshSession();
+  if (!token) throw Object.assign(new Error("Your session has ended. Sign in again."), { code: "session_expired" });
+  // Never automatically repeat a mutation. POST /jobs is idempotent server-side,
+  // but resume/apply endpoints are not assumed safe to replay.
+  if (!["GET", "HEAD", "OPTIONS"].includes((options.method || "GET").toUpperCase())) {
+    throw Object.assign(new Error("Your session was restored. Please repeat that action."), { code: "session_restored" });
+  }
+  return request(token);
 }
 
 async function register(name, email, password) {
@@ -38,7 +73,7 @@ async function login(email, password) {
 
   const res = await fetch(`${base}/auth/login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "x-client": "extension" },
     body: JSON.stringify({ email, password }),
   });
 
@@ -48,31 +83,30 @@ async function login(email, password) {
     throw new Error(data.message || "Login failed");
   }
 
-  await chrome.storage.local.set({ token: data.token, user: data.user });
+  if (!data.accessToken || !data.refreshToken) throw new Error("The server did not create a secure session.");
+  await sessionStore().set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
   return data.user;
 }
 
 async function logout() {
-  await chrome.storage.local.remove(["token", "user"]);
+  const { refreshToken } = await getSession();
+  try {
+    if (refreshToken) {
+      const base = await getApiBaseUrl();
+      await fetch(`${base}/auth/logout`, { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
+    }
+  } finally { await clearSession(); }
 }
 
 async function saveJob(job) {
-  const base = await getApiBaseUrl();
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Not logged in. Open the extension and sign in first.");
-  }
-
   // `job` is passed through as-is from content.js (company, role, status,
   // notes, location, description, sourceName, sourceUrl, externalJobId) —
   // the backend's POST /api/jobs is the single source of truth for which
   // fields matter and how dedup works, so we don't reshape it here.
-  const res = await fetch(`${base}/jobs`, {
+  const res = await authorizedFetch("/jobs", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      token,
     },
     body: JSON.stringify(job),
   });
@@ -95,17 +129,7 @@ async function markApplied(id) {
 }
 
 async function getJobs() {
-  const base = await getApiBaseUrl();
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Not logged in. Open the extension and sign in first.");
-  }
-
-  const res = await fetch(`${base}/jobs`, {
-    method: "GET",
-    headers: { token },
-  });
+  const res = await authorizedFetch("/jobs", { method: "GET" });
 
   const data = await res.json();
 
@@ -117,21 +141,14 @@ async function getJobs() {
 }
 
 async function updateJob(id, updates) {
-  const base = await getApiBaseUrl();
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Not logged in. Open the extension and sign in first.");
-  }
   if (!id) {
     throw new Error("Missing job id.");
   }
 
-  const res = await fetch(`${base}/jobs/${id}`, {
+  const res = await authorizedFetch(`/jobs/${id}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      token,
     },
     body: JSON.stringify(updates),
   });
@@ -146,19 +163,12 @@ async function updateJob(id, updates) {
 }
 
 async function deleteJob(id) {
-  const base = await getApiBaseUrl();
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Not logged in. Open the extension and sign in first.");
-  }
   if (!id) {
     throw new Error("Missing job id.");
   }
 
-  const res = await fetch(`${base}/jobs/${id}`, {
+  const res = await authorizedFetch(`/jobs/${id}`, {
     method: "DELETE",
-    headers: { token },
   });
 
   if (!res.ok) {
@@ -175,18 +185,9 @@ async function deleteJob(id) {
 // whatever the API says. Machine-readable error codes (e.g. "no_resume") are
 // passed through so the panel can show the right call to action.
 async function resumeApi(path, { method = "GET", body } = {}) {
-  const base = await getApiBaseUrl();
-  const token = await getToken();
-
-  if (!token) {
-    const err = new Error("Not logged in. Open the extension and sign in first.");
-    err.code = "not_logged_in";
-    throw err;
-  }
-
-  const res = await fetch(`${base}/resume${path}`, {
+  const res = await authorizedFetch(`/resume${path}`, {
     method,
-    headers: { "Content-Type": "application/json", token },
+    headers: { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 
@@ -221,11 +222,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           break;
         }
         case "GET_SESSION": {
-          const [{ token }, { user }] = await Promise.all([
-            chrome.storage.local.get("token"),
-            chrome.storage.local.get("user"),
-          ]);
-          sendResponse({ ok: true, loggedIn: Boolean(token), user: user || null });
+          const token = await getToken();
+          if (!token) { sendResponse({ ok: true, loggedIn: false, user: null }); break; }
+          const res = await authorizedFetch("/auth/me", { method: "GET" });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) { await clearSession(); sendResponse({ ok: true, loggedIn: false, user: null }); break; }
+          await sessionStore().set({ user: data.user });
+          sendResponse({ ok: true, loggedIn: true, user: data.user });
+          break;
+        }
+        case "API_REQUEST": {
+          const res = await authorizedFetch(message.path, message.options || {});
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw Object.assign(new Error(data.message || "Request failed"), { code: data.code || null, status: res.status });
+          sendResponse({ ok: true, data });
           break;
         }
         case "GET_DETECTED_JOB": {
@@ -308,7 +318,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ ok: false, error: "Unknown message type" });
       }
     } catch (err) {
-      sendResponse({ ok: false, error: err.message, code: err.code || null });
+      const code = err.code || null;
+      const message = code === "session_expired" ? "Not logged in or session ended. Sign in again." : code === "session_restored" ? "Your session was restored. Please repeat that action." : err.message || "Something went wrong. Please try again.";
+      sendResponse({ ok: false, error: message, code });
     }
   })();
 
