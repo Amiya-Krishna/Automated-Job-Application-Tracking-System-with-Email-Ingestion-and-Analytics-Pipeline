@@ -187,7 +187,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: browser-extension/package-lock.json
+          cache-dependency-path: |
+            browser-extension/package-lock.json
+            server/package-lock.json
+
+      - name: Install server dependencies
+        run: npm ci --no-audit --no-fund
+        working-directory: server
 
       - name: Install extension dependencies
         run: npm ci --no-audit --no-fund
