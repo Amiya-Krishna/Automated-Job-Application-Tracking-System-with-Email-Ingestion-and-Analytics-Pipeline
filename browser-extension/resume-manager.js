@@ -76,14 +76,23 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
   }
 
   // ----------------------------------------------------------- viewer
+  let viewerReturnFocus = null;
   function openViewer({ title, meta, text, actions = [] }) {
     els.viewerTitle.textContent = title;
     els.viewerMeta.textContent = meta || "";
     els.viewerBody.textContent = text || "";
     els.viewerActions.replaceChildren(...actions);
+    viewerReturnFocus = doc.activeElement;
     els.viewer.classList.remove("hidden");
+    els.viewerClose.focus();
   }
-  function closeViewer() { els.viewer.classList.add("hidden"); }
+  function closeViewer() {
+    els.viewer.classList.add("hidden");
+    // return focus to what opened it (the list re-renders, so fall back to Refresh)
+    const target = viewerReturnFocus && viewerReturnFocus.isConnected ? viewerReturnFocus : els.refresh;
+    viewerReturnFocus = null;
+    if (target && typeof target.focus === "function") target.focus();
+  }
 
   async function viewResume(r) {
     await guarded(async () => {
@@ -243,6 +252,15 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
   els.refresh.addEventListener("click", load);
   els.viewerClose.addEventListener("click", closeViewer);
   els.viewer.addEventListener("click", (e) => { if (e.target === els.viewer) closeViewer(); });
+  els.viewer.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); closeViewer(); return; }
+    if (e.key !== "Tab") return;
+    const items = [...els.viewer.querySelectorAll("button:not(:disabled), [href], select, input, textarea")];
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey && doc.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && doc.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
 
   return { load, render, state, closeViewer };
 }

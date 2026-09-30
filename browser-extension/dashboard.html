@@ -18,7 +18,7 @@
           </div>
         </div>
 
-        <nav class="sidebar-nav" id="dashTabs">
+        <nav class="sidebar-nav" id="dashTabs" aria-label="TrackTrail sections">
           <button
             class="nav-item active"
             data-tab="matchedTab"
@@ -109,7 +109,7 @@
         </nav>
 
         <div class="sidebar-footer">
-          <span class="dot-live"></span> Connected to backend
+          TrackTrail dashboard
         </div>
       </aside>
 
@@ -141,7 +141,7 @@
 
           <div id="matchedList" class="cardGrid"></div>
           <p id="matchedEmpty" class="emptyState hidden">No jobs found for these filters.</p>
-          <p id="matchedError" class="error"></p>
+          <p id="matchedError" class="error" role="alert"></p>
 
           <div class="pager">
             <button id="matchedPrev" class="ghost-btn" type="button">← Prev</button>
@@ -166,7 +166,7 @@
 
           <div id="appsList" class="cardGrid"></div>
           <p id="appsEmpty" class="emptyState hidden">No applications yet.</p>
-          <p id="appsError" class="error"></p>
+          <p id="appsError" class="error" role="alert"></p>
         </section>
 
         <!-- ================= ANALYTICS ================= -->
@@ -188,7 +188,7 @@
           <h3 class="sectionTitle">Funnel</h3>
           <div id="analyticsFunnel" class="funnel"></div>
 
-          <p id="analyticsError" class="error"></p>
+          <p id="analyticsError" class="error" role="alert"></p>
         </section>
 
         <!-- ================= COMPANIES ================= -->
@@ -211,7 +211,7 @@
             </table>
           </div>
           <p id="companiesEmpty" class="emptyState hidden">No companies found yet.</p>
-          <p id="companiesError" class="error"></p>
+          <p id="companiesError" class="error" role="alert"></p>
         </section>
 
         <!-- ================= SOURCES ================= -->
@@ -222,7 +222,7 @@
 
           <div id="sourcesList" class="sourceList"></div>
           <p id="sourcesEmpty" class="emptyState hidden">No sources yet — they'll show up once the scraper runs.</p>
-          <p id="sourcesError" class="error"></p>
+          <p id="sourcesError" class="error" role="alert"></p>
         </section>
 
         <!-- ================= PROFILE ================= -->
@@ -246,7 +246,7 @@
             <textarea id="profResume" rows="8" placeholder="Paste your resume text — used for matching."></textarea>
 
             <button type="submit" id="profSaveBtn">Save profile</button>
-            <p id="profMsg" class="success"></p>
+            <p id="profMsg" class="success" role="status" aria-live="polite"></p>
           </form>
         </section>
 
@@ -264,7 +264,7 @@
             <span class="hint">PDF or DOCX, up to 2 MB. Files are sent only to your TrackTrail account.</span>
           </div>
           <p id="resumesMsg" class="success"></p>
-          <p id="resumesError" class="error"></p>
+          <p id="resumesError" class="error" role="alert"></p>
 
           <div id="resumesList" class="resumeList"></div>
           <p id="resumesEmpty" class="emptyState hidden">
@@ -293,7 +293,7 @@
         <!-- ================= EMAIL (GMAIL) ================= -->
         <section id="emailTab" class="dashPanel hidden">
           <div class="emailStatusRow">
-            <span id="gmailStatusBadge" class="badge badge-new">Checking...</span>
+            <span id="gmailStatusBadge" class="badge badge-new" role="status" aria-live="polite">Checking...</span>
             <button id="gmailConnectBtn" class="ghost-btn hidden" type="button">Connect Gmail</button>
             <button id="gmailDisconnectBtn" class="ghost-btn hidden" type="button">Disconnect</button>
             <button id="gmailRefreshStatusBtn" class="ghost-btn" type="button">↻ Refresh status</button>
@@ -311,14 +311,15 @@
 
           <div id="emailList" class="cardGrid"></div>
           <p id="emailEmpty" class="emptyState hidden">No matching emails found in the last 30 days.</p>
-          <p id="emailError" class="error"></p>
+          <p id="emailError" class="error" role="alert"></p>
         </section>
       </main>
     </div>
-    <div id="dashboardConfirm" class="resumeViewer hidden" role="dialog" aria-modal="true" aria-labelledby="dashboardConfirmTitle">
+    <div id="dashboardConfirm" class="resumeViewer hidden" role="alertdialog" aria-modal="true" aria-labelledby="dashboardConfirmTitle" aria-describedby="dashboardConfirmMessage">
       <div class="resumeViewerBox dashboardConfirmBox"><h2 id="dashboardConfirmTitle" class="resumeName">Confirm deletion</h2><p id="dashboardConfirmMessage" class="hint"></p><div class="resumeActions"><button id="dashboardConfirmCancel" class="ghost-btn" type="button">Cancel</button><button id="dashboardConfirmDelete" class="ghost-btn ghost-btn-danger" type="button">Delete</button></div></div>
     </div>
 
+    <script src="ui-errors.js"></script>
     <script src="dashboard.js" type="module"></script>
   </body>
 </html>

@@ -7,22 +7,55 @@
 //   chromeApi   { storage.session.get }    fetchImpl   fetch-compatible
 //   defaultApiBaseUrl                       (the stored `apiBaseUrl` overrides it)
 
-export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl }) {
+// `refreshSession` (optional) is the extension's ONE session-refresh flow, run by
+// the background worker (message REFRESH_SESSION). This module never refreshes
+// tokens itself — it only asks, then retries safe (GET) requests once.
+export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl, refreshSession }) {
   const doFetch = fetchImpl || ((...a) => globalThis.fetch(...a));
+  const coded = (message, code, status) => Object.assign(new Error(message), { code, status: status ?? null });
+  const SESSION_ENDED = () => coded("Your session ended. Sign in again.", "session_expired");
 
   async function baseUrl() {
     const { apiBaseUrl } = await chromeApi.storage.local.get("apiBaseUrl");
     return (apiBaseUrl || defaultApiBaseUrl).replace(/\/+$/, "");
   }
 
-  async function authHeaders() {
-    const { accessToken } = await chromeApi.storage.session.get("accessToken");
-    if (!accessToken) throw new Error("Not logged in or session ended. Sign in again.");
-    return { token: accessToken, "x-client": "extension" };
+  async function accessToken() {
+    const { accessToken: token } = await chromeApi.storage.session.get("accessToken");
+    return token || null;
+  }
+
+  async function send(path, options, token) {
+    try {
+      return await doFetch(`${await baseUrl()}/resume${path}`, { ...options, headers: { token, "x-client": "extension", ...(options.headers || {}) } });
+    } catch (e) {
+      throw coded("Can't reach TrackTrail. Check your connection and try again.", "network");
+    }
   }
 
   async function request(path, options = {}) {
-    return doFetch(`${await baseUrl()}/resume${path}`, { ...options, headers: { ...(await authHeaders()), ...(options.headers || {}) } });
+    let token = await accessToken();
+    if (!token && refreshSession) {
+      if (!(await refreshSession())?.ok) throw SESSION_ENDED();
+      token = await accessToken();
+    }
+    if (!token) throw coded("Not logged in or session ended. Sign in again.", "session_expired");
+    const res = await send(path, options, token);
+    if (res.status !== 401 || !refreshSession) return res;
+    if (!(await refreshSession())?.ok) throw SESSION_ENDED();
+    // Never replay a mutation (upload/activate/delete/export): ask the user to repeat it.
+    if (String(options.method || "GET").toUpperCase() !== "GET") throw coded("Your session was restored. Please repeat that action.", "session_restored");
+    return send(path, options, await accessToken());
+  }
+
+  // Same user-safe rules as background.js: 5xx bodies are never shown.
+  async function failure(res) {
+    const data = await res.json().catch(() => ({}));
+    if (res.status >= 500) return coded("TrackTrail is having trouble right now. Please try again in a moment.", data.code || "server_error", res.status);
+    const err = coded(data.message || `Request failed (${res.status})`, data.code || (res.status === 429 ? "rate_limited" : null), res.status);
+    const retry = Number(data.retryAfterSeconds);
+    if (Number.isFinite(retry) && retry > 0) err.retryAfterSeconds = Math.ceil(retry);
+    return err;
   }
 
   async function json(path, options = {}) {
@@ -32,17 +65,13 @@ export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl }) {
       // JSON bodies get a JSON content type; a FormData body must NOT (the browser adds the multipart boundary)
       headers: { ...(options.body && !isForm ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) },
     });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(data.message || `Request failed (${res.status})`), { code: data.code || null, status: res.status });
-    return data;
+    if (!res.ok) throw await failure(res);
+    return res.json().catch(() => ({}));
   }
 
   async function blob(path, options = {}) {
     const res = await request(path, options);
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw Object.assign(new Error(data.message || `Request failed (${res.status})`), { code: data.code || null, status: res.status });
-    }
+    if (!res.ok) throw await failure(res);
     const filename = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") || "")?.[1] || "resume";
     return [await res.blob(), filename];
   }

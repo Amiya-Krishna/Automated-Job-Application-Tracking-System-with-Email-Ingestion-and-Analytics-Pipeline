@@ -7,24 +7,54 @@ async function getApiBaseUrl() {
   return (apiBaseUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 }
 
-async function api(path, options = {}) {
-  const base = await getApiBaseUrl();
-  const res = await fetch(`${base}${path}`, {
-    ...options,
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.message || `Request failed (${res.status})`);
-  }
-  return data;
-}
-
 // Gmail routes require the same auth token the popup uses for /api/jobs.
 async function apiAuth(path, options = {}) {
   const result = await chrome.runtime.sendMessage({ type: "API_REQUEST", path, options });
-  if (!result?.ok) throw new Error(result?.error || "Couldn't reach TrackTrail.");
+  if (!result?.ok) {
+    throw Object.assign(new Error(result?.error || "Couldn't reach TrackTrail."), { code: result?.code || null, retryAfterSeconds: result?.retryAfterSeconds || null });
+  }
   return result.data;
+}
+
+// ---------- shared state helpers ----------
+// Same classifier as popup/panel (ui-errors.js): consistent wording and Retry rules.
+function errInfo(err, fallback) {
+  return window.TrackTrailErrors.describe({ error: err?.message, code: err?.code, retryAfterSeconds: err?.retryAfterSeconds }, fallback);
+}
+
+// Show a failure in an error <p role="alert"> with a Retry button when it can help.
+function setError(el, err, retry) {
+  document.querySelectorAll(".skeleton").forEach((n) => n.remove());
+  const info = errInfo(err);
+  el.className = "error";
+  el.textContent = info.kind === "session" ? "Your session ended. Open the TrackTrail toolbar icon, sign in, then retry." : info.message;
+  if (retry && (info.retryable || info.kind === "session")) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ghost-btn";
+    btn.textContent = "Retry";
+    btn.addEventListener("click", () => { el.textContent = ""; retry(); });
+    el.append(" ", btn);
+  }
+}
+
+// Loading placeholders (removed by the loader once data or an error arrives).
+function skeleton(container, count = 3, tag = "div") {
+  for (let i = 0; i < count; i += 1) {
+    const n = document.createElement(tag);
+    n.className = "skeleton";
+    n.setAttribute("aria-hidden", "true");
+    container.appendChild(n);
+  }
+}
+function clearSkeletons() { document.querySelectorAll(".skeleton").forEach((n) => n.remove()); }
+
+// Build text nodes only — scraped/third-party values are never parsed as HTML.
+function cell(tag, className, text) {
+  const n = document.createElement(tag);
+  if (className) n.className = className;
+  n.textContent = text;
+  return n;
 }
 
 function formatDate(value) {
@@ -39,14 +69,30 @@ function confirmDialog(message) {
   const body = document.getElementById("dashboardConfirmMessage");
   const cancel = document.getElementById("dashboardConfirmCancel");
   const confirm = document.getElementById("dashboardConfirmDelete");
+  const shell = document.querySelector(".shell") || document.querySelector("main");
+  const returnTo = document.activeElement;
   body.textContent = message;
   dialog.classList.remove("hidden");
-  cancel.focus();
+  if (shell) shell.inert = true; // nothing behind the dialog is reachable
+  cancel.focus(); // safest default
   return new Promise((resolve) => {
-    const close = (result) => { dialog.classList.add("hidden"); cancel.onclick = null; confirm.onclick = null; dialog.onkeydown = null; resolve(result); };
+    const close = (result) => {
+      dialog.classList.add("hidden");
+      if (shell) shell.inert = false;
+      cancel.onclick = null; confirm.onclick = null; dialog.onkeydown = null;
+      if (returnTo && returnTo.isConnected) returnTo.focus();
+      resolve(result);
+    };
     cancel.onclick = () => close(false);
     confirm.onclick = () => close(true);
-    dialog.onkeydown = (event) => { if (event.key === "Escape") close(false); };
+    dialog.onkeydown = (event) => {
+      if (event.key === "Escape") { event.preventDefault(); close(false); }
+      else if (event.key === "Tab") {
+        const first = cancel, last = confirm;
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
   });
 }
 
@@ -59,8 +105,9 @@ const pageDesc = document.getElementById("pageDesc");
 dashTabs.addEventListener("click", (e) => {
   const btn = e.target.closest(".nav-item");
   if (!btn) return;
-  for (const t of dashTabs.querySelectorAll(".nav-item")) t.classList.remove("active");
+  for (const t of dashTabs.querySelectorAll(".nav-item")) { t.classList.remove("active"); t.removeAttribute("aria-current"); }
   btn.classList.add("active");
+  btn.setAttribute("aria-current", "page");
 
   const targetId = btn.dataset.tab;
   for (const panel of dashPanels) panel.classList.toggle("hidden", panel.id !== targetId);
@@ -76,6 +123,14 @@ dashTabs.addEventListener("click", (e) => {
   if (targetId === "resumesTab") resumeManager.load();
   if (targetId === "emailTab") loadGmailStatus();
 });
+
+// Deep links from the popup, e.g. dashboard.html#applicationsTab
+function openTabFromHash() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  const btn = id && dashTabs.querySelector(`.nav-item[data-tab="${CSS.escape(id)}"]`);
+  if (btn) btn.click();
+}
+window.addEventListener("hashchange", openTabFromHash);
 
 // ============================================================
 // MATCHED JOBS
@@ -108,6 +163,7 @@ async function loadMatchedJobs() {
   matchedError.textContent = "";
   matchedList.innerHTML = "";
   matchedEmpty.classList.add("hidden");
+  skeleton(matchedList, 4);
 
   const params = new URLSearchParams();
   if (matchedStatus.value) params.set("status", matchedStatus.value);
@@ -117,6 +173,7 @@ async function loadMatchedJobs() {
 
   try {
     const result = await apiAuth(`/engine/jobs?${params.toString()}`);
+    clearSkeletons();
     const jobs = result.data || [];
     matchedPageLabel.textContent = `Page ${matchedPage}`;
 
@@ -190,7 +247,7 @@ async function loadMatchedJobs() {
         } catch (err) {
           applyBtn.disabled = false;
           applyBtn.textContent = "Queue apply";
-          matchedError.textContent = err.message;
+          setError(matchedError, err);
         }
       });
       actions.appendChild(applyBtn);
@@ -199,7 +256,7 @@ async function loadMatchedJobs() {
       matchedList.appendChild(card);
     }
   } catch (err) {
-    matchedError.textContent = err.message;
+    setError(matchedError, err, loadMatchedJobs);
   }
 }
 
@@ -249,6 +306,7 @@ async function loadApplications() {
   appsError.textContent = "";
   appsList.innerHTML = "";
   appsEmpty.classList.add("hidden");
+  skeleton(appsList, 4);
 
   try {
     // Applications tracked from this dashboard (manual adds + jobs saved
@@ -256,6 +314,7 @@ async function loadApplications() {
     // /api/applications (that one belongs to the separate matched-jobs
     // pipeline, so it stays empty for anything added here or via Gmail).
     const allJobs = await apiAuth("/jobs");
+    clearSkeletons();
     const apps = activeAppStatus
       ? allJobs.filter((j) => (j.status || "Applied") === activeAppStatus)
       : allJobs;
@@ -323,7 +382,7 @@ async function loadApplications() {
           loadApplications();
         } catch (err) {
           statusSelect.disabled = false;
-          appsError.textContent = err.message;
+          setError(appsError, err);
         }
       });
       actions.appendChild(statusSelect);
@@ -332,7 +391,7 @@ async function loadApplications() {
       appsList.appendChild(card);
     }
   } catch (err) {
-    appsError.textContent = err.message;
+    setError(appsError, err, loadApplications);
   }
 }
 
@@ -360,7 +419,7 @@ const analyticsRefresh = document.getElementById("analyticsRefresh");
 function statCard(num, label) {
   const el = document.createElement("div");
   el.className = "statCard";
-  el.innerHTML = `<div class="num">${num ?? "—"}</div><div class="label">${label}</div>`;
+  el.append(cell("div", "num", String(num ?? "—")), cell("div", "label", label));
   return el;
 }
 
@@ -369,6 +428,7 @@ async function loadAnalytics() {
   analyticsSummary.innerHTML = "";
   analyticsConversion.innerHTML = "";
   analyticsFunnel.innerHTML = "";
+  skeleton(analyticsSummary, 5);
 
   try {
     const [summaryRes, funnelRes] = await Promise.all([
@@ -376,6 +436,7 @@ async function loadAnalytics() {
       apiAuth(`/analytics/funnel`),
     ]);
 
+    clearSkeletons();
     const d = summaryRes.data || {};
     analyticsSummary.appendChild(statCard(d.totalApplications, "Total applications"));
     analyticsSummary.appendChild(statCard(d.responseRatePct != null ? `${d.responseRatePct}%` : "—", "Response rate"));
@@ -402,15 +463,15 @@ async function loadAnalytics() {
       const row = document.createElement("div");
       row.className = "funnelRow";
       const pct = Math.round(((Number(val) || 0) / maxVal) * 100);
-      row.innerHTML = `
-        <div class="funnelLabel">${label}</div>
-        <div class="funnelBarTrack"><div class="funnelBarFill" style="width:${pct}%"></div></div>
-        <div class="funnelVal">${val ?? 0}</div>
-      `;
+      const track = cell("div", "funnelBarTrack", "");
+      const fill = cell("div", "funnelBarFill", "");
+      fill.style.width = `${pct}%`;
+      track.append(fill);
+      row.append(cell("div", "funnelLabel", label), track, cell("div", "funnelVal", String(val ?? 0)));
       analyticsFunnel.appendChild(row);
     }
   } catch (err) {
-    analyticsError.textContent = err.message;
+    setError(analyticsError, err, loadAnalytics);
   }
 }
 
@@ -432,12 +493,14 @@ async function loadCompanies() {
   companiesError.textContent = "";
   companiesBody.innerHTML = "";
   companiesEmpty.classList.add("hidden");
+  skeleton(companiesBody, 4, "tr");
 
   try {
     const params = new URLSearchParams({ pageSize: "50" });
     if (companiesSearch.value.trim()) params.set("search", companiesSearch.value.trim());
 
     const result = await apiAuth(`/companies?${params.toString()}`);
+    clearSkeletons();
     const companies = result.data || [];
 
     if (companies.length === 0) {
@@ -447,15 +510,13 @@ async function loadCompanies() {
 
     for (const c of companies) {
       const row = document.createElement("tr");
-      row.innerHTML = `
-        <td class="cellStrong">${c.name}</td>
-        <td class="cellMuted">${c.domain || "—"}</td>
-        <td class="num"><span class="pill">${c.jobCount}</span></td>
-      `;
+      const count = cell("td", "num", "");
+      count.append(cell("span", "pill", String(c.jobCount ?? 0)));
+      row.append(cell("td", "cellStrong", c.name || "—"), cell("td", "cellMuted", c.domain || "—"), count);
       companiesBody.appendChild(row);
     }
   } catch (err) {
-    companiesError.textContent = err.message;
+    setError(companiesError, err, loadCompanies);
   }
 }
 
@@ -477,9 +538,11 @@ async function loadSources() {
   sourcesError.textContent = "";
   sourcesList.innerHTML = "";
   sourcesEmpty.classList.add("hidden");
+  skeleton(sourcesList, 3);
 
   try {
     const result = await apiAuth("/sources");
+    clearSkeletons();
     const sources = result.data || [];
 
     if (sources.length === 0) {
@@ -493,20 +556,27 @@ async function loadSources() {
       const pct = Math.round(((s.jobCount || 0) / maxJobs) * 100);
       const row = document.createElement("div");
       row.className = "sourceRow";
-      row.innerHTML = `
-        <div class="sourceHead">
-          <div>
-            <div class="sourceName">${s.name}</div>
-            ${s.baseUrl ? `<a class="sourceLink" href="${s.baseUrl}" target="_blank" rel="noopener noreferrer">${s.baseUrl}</a>` : ""}
-          </div>
-          <span class="pill">${s.jobCount} jobs</span>
-        </div>
-        <div class="funnelBarTrack"><div class="funnelBarFill" style="width:${pct}%"></div></div>
-      `;
+      const head = cell("div", "sourceHead", "");
+      const info = cell("div", "", "");
+      info.append(cell("div", "sourceName", s.name || "Unnamed source"));
+      // only http(s) links — a scraped value like javascript:… must never become a clickable href
+      if (/^https?:\/\//i.test(s.baseUrl || "")) {
+        const link = cell("a", "sourceLink", s.baseUrl);
+        link.href = s.baseUrl;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        info.append(link);
+      }
+      head.append(info, cell("span", "pill", `${s.jobCount ?? 0} jobs`));
+      const track = cell("div", "funnelBarTrack", "");
+      const fill = cell("div", "funnelBarFill", "");
+      fill.style.width = `${pct}%`;
+      track.append(fill);
+      row.append(head, track);
       sourcesList.appendChild(row);
     }
   } catch (err) {
-    sourcesError.textContent = err.message;
+    setError(sourcesError, err, loadSources);
   }
 }
 
@@ -541,8 +611,7 @@ async function loadProfile() {
     }
     profileLoaded = true;
   } catch (err) {
-    profMsg.className = "error";
-    profMsg.textContent = err.message;
+    setError(profMsg, err, () => { profileLoaded = false; loadProfile(); });
   }
 }
 
@@ -564,8 +633,7 @@ profileForm.addEventListener("submit", async (e) => {
     profMsg.className = "success";
     profMsg.textContent = "Profile saved.";
   } catch (err) {
-    profMsg.className = "error";
-    profMsg.textContent = err.message;
+    setError(profMsg, err);
   } finally {
     profSaveBtn.disabled = false;
   }
@@ -603,7 +671,7 @@ async function loadGmailStatus() {
     }
   } catch (err) {
     gmailStatusBadge.textContent = "Unknown";
-    emailError.textContent = err.message;
+    setError(emailError, err, loadGmailStatus);
   }
 }
 
@@ -614,7 +682,7 @@ gmailConnectBtn.addEventListener("click", async () => {
     const result = await apiAuth("/gmail/auth-url?source=extension");
     chrome.tabs.create({ url: result.url });
   } catch (err) {
-    emailError.textContent = err.message;
+    setError(emailError, err);
   } finally {
     gmailConnectBtn.disabled = false;
   }
@@ -629,7 +697,7 @@ gmailDisconnectBtn.addEventListener("click", async () => {
     emailList.innerHTML = "";
     emailEmpty.classList.add("hidden");
   } catch (err) {
-    emailError.textContent = err.message;
+    setError(emailError, err);
   } finally {
     gmailDisconnectBtn.disabled = false;
   }
@@ -747,7 +815,7 @@ gmailScanBtn.addEventListener("click", async () => {
         } catch (err) {
           importBtn.disabled = false;
           importBtn.textContent = "Save as job";
-          emailError.textContent = err.message;
+          setError(emailError, err);
         }
       });
 
@@ -761,7 +829,7 @@ gmailScanBtn.addEventListener("click", async () => {
       emailList.appendChild(card);
     }
   } catch (err) {
-    emailError.textContent = err.message;
+    setError(emailError, err);
   } finally {
     gmailScanBtn.disabled = false;
     gmailScanBtn.textContent = "Scan inbox";
@@ -771,6 +839,7 @@ gmailScanBtn.addEventListener("click", async () => {
 // ---------- init ----------
 (async () => {
   loadMatchedJobs();
+  openTabFromHash();
 })();
 
 // window.TrackTrailTheme comes from theme.js, loaded as a plain script
@@ -780,7 +849,12 @@ window.TrackTrailTheme.wireThemeToggle("themeToggleBtn");
 // ============================================================
 // MY RESUMES — backend is the source of truth (/api/resume/*)
 // ============================================================
-const resumeApi = createResumeApi({ chromeApi: chrome, defaultApiBaseUrl: DEFAULT_API_BASE_URL });
+const resumeApi = createResumeApi({
+  chromeApi: chrome,
+  defaultApiBaseUrl: DEFAULT_API_BASE_URL,
+  // the ONE session-refresh flow lives in background.js
+  refreshSession: () => chrome.runtime.sendMessage({ type: "REFRESH_SESSION" }),
+});
 
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);

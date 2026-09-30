@@ -16,7 +16,7 @@ async function boot({ token = "jwt-abc", refreshToken = "refresh-abc", apiBaseUr
   const calls = [];
   globalThis.fetch = async (url, init) => { calls.push({ url, init }); return fetchImpl(url, init, calls); };
   await import(`../background.js?${Math.random()}`);
-  const send = (message) => new Promise((resolve) => listener(message, {}, resolve));
+  const send = (message, sender = {}) => new Promise((resolve) => listener(message, sender, resolve));
   return { send, calls };
 }
 const json = (status, body) => ({ ok: status < 400, status, json: async () => body });
@@ -88,4 +88,68 @@ test("SECURITY: every network request the extension makes goes to the TrackTrail
     assert.doesNotMatch(c.url, /googleapis|groq|openrouter|anthropic|openai/i);
     assert.doesNotMatch(JSON.stringify(c.init.headers), /goog|api[-_]?key|authorization/i);
   }
+});
+
+// ---------------------------------------------------------------- hardening
+test("5xx bodies are never shown; 429 keeps its code and retry hint; network failure is coded", async () => {
+  let b = await boot({ fetchImpl: () => json(500, { message: "TypeError: cannot read properties of undefined at /srv/app.js:41" }) });
+  let r = await b.send({ type: "SAVE_JOB", job: { company: "A", role: "B" } });
+  assert.deepEqual([r.ok, r.code], [false, "server_error"]);
+  assert.doesNotMatch(r.error, /TypeError|srv/);
+  b = await boot({ fetchImpl: () => json(429, { message: "Too many requests.", code: "rate_limited", retryAfterSeconds: 12 }) });
+  r = await b.send({ type: "SAVE_JOB", job: { company: "A", role: "B" } });
+  assert.deepEqual([r.code, r.retryAfterSeconds], ["rate_limited", 12]);
+  b = await boot({ fetchImpl: () => { throw new TypeError("Failed to fetch"); } });
+  r = await b.send({ type: "GET_JOBS" });
+  assert.deepEqual([r.ok, r.code], [false, "network"]);
+});
+
+test("GET_SESSION: an outage does NOT sign the user out; a rejected refresh does", async () => {
+  let b = await boot({ fetchImpl: () => { throw new TypeError("offline"); } });
+  let r = await b.send({ type: "GET_SESSION" });
+  assert.deepEqual([r.ok, r.code], [false, "network"]);
+  // 401 on /auth/me then the refresh endpoint is down (503): session must survive
+  b = await boot({ fetchImpl: (url) => (url.endsWith("/auth/me") ? json(401, {}) : json(503, {})) });
+  r = await b.send({ type: "GET_SESSION" });
+  assert.equal(r.ok, false);
+  // 401 then refresh definitively rejected (401): logged out, flagged as expired
+  b = await boot({ fetchImpl: (url) => (url.endsWith("/auth/me") ? json(401, {}) : json(401, { message: "bad refresh" })) });
+  r = await b.send({ type: "GET_SESSION" });
+  assert.deepEqual([r.ok, r.loggedIn, r.expired], [true, false, true]);
+});
+
+test("concurrent 401s share ONE refresh (the refresh token rotates)", async () => {
+  let refreshes = 0;
+  const { send } = await boot({
+    fetchImpl: (url, init) => {
+      if (url.endsWith("/auth/refresh")) { refreshes += 1; return json(200, { accessToken: "new", refreshToken: "r2", user: { id: 1 } }); }
+      return init.headers.token === "new" ? json(200, []) : json(401, {});
+    },
+  });
+  const rs = await Promise.all([send({ type: "GET_JOBS" }), send({ type: "GET_JOBS" }), send({ type: "RESUME_LIST" })]);
+  assert.ok(rs.every((r) => r.ok));
+  assert.equal(refreshes, 1);
+});
+
+test("API_REQUEST is refused for content scripts (sender.tab) and non-absolute paths", async () => {
+  const { send, calls } = await boot({ fetchImpl: () => json(200, {}) });
+  const viaTab = await send({ type: "API_REQUEST", path: "/jobs" }, { tab: { id: 3 } });
+  assert.deepEqual([viaTab.ok, viaTab.code], [false, "forbidden"]);
+  assert.equal((await send({ type: "API_REQUEST", path: "/jobs" })).ok, true); // extension pages still work
+  calls.length = 0;
+  const r = await send({ type: "API_REQUEST", path: "http://evil.example/x" });
+  assert.deepEqual([r.ok, r.code], [false, "forbidden"]);
+  assert.equal(calls.length, 0);
+});
+
+test("mutations are never silently replayed after a session refresh", async () => {
+  const { send, calls } = await boot({
+    fetchImpl: (url, init) => {
+      if (url.endsWith("/auth/refresh")) return json(200, { accessToken: "new", refreshToken: "r2", user: {} });
+      return init.headers.token === "new" ? json(201, { id: 1 }) : json(401, {});
+    },
+  });
+  const r = await send({ type: "RESUME_TAILOR", job: { description: "x" } });
+  assert.deepEqual([r.ok, r.code], [false, "session_restored"]);
+  assert.equal(calls.filter((c) => c.url.endsWith("/resume/tailor")).length, 1);
 });

@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <title>TrackTrail</title>
@@ -10,13 +10,43 @@
          (non-module) script so it still runs ahead of the deferred
          `type="module"` scripts below. -->
     <script src="theme.js"></script>
+    <script src="ui-errors.js"></script>
   </head>
   <body>
     <div class="wrap">
-      <!-- ===================== LOGGED OUT ===================== -->
-      <div id="loggedOutView">
+      <!-- Polite live region for short status announcements (saved, deleted, loaded…) -->
+      <div id="popupLive" class="sr-only" role="status" aria-live="polite"></div>
+
+      <!-- ===================== STARTING UP ===================== -->
+      <div id="bootView" aria-busy="true">
         <header class="app-header">
-          <span class="logo">TT</span>
+          <span class="logo" aria-hidden="true">TT</span>
+          <span class="brand">TrackTrail</span>
+        </header>
+        <div class="skeleton" style="width: 80%"></div>
+        <div class="skeleton" style="width: 60%"></div>
+        <div class="skeleton" style="height: 64px; margin-top: 12px"></div>
+        <span class="sr-only">Loading TrackTrail…</span>
+      </div>
+
+      <!-- ===================== CAN'T REACH TRACKTRAIL ===================== -->
+      <div id="offlineView" class="hidden">
+        <header class="app-header">
+          <span class="logo" aria-hidden="true">TT</span>
+          <span class="brand">TrackTrail</span>
+        </header>
+        <div class="stateBox err" role="alert">
+          <p id="offlineText" class="stateBox-text"></p>
+          <button type="button" id="offlineRetryBtn" class="secondary">
+            Try again
+          </button>
+        </div>
+      </div>
+
+      <!-- ===================== LOGGED OUT ===================== -->
+      <div id="loggedOutView" class="hidden">
+        <header class="app-header">
+          <span class="logo" aria-hidden="true">TT</span>
           <span class="brand">TrackTrail</span>
           <button
             type="button"
@@ -31,7 +61,7 @@
         </p>
 
         <form id="loginForm">
-          <label>Email</label>
+          <label for="email">Email</label>
           <input
             type="email"
             id="email"
@@ -40,7 +70,7 @@
             autocomplete="email"
           />
 
-          <label>Password</label>
+          <label for="password">Password</label>
           <input
             type="password"
             id="password"
@@ -53,11 +83,11 @@
           <button type="button" id="forgotPasswordLink" class="link-btn">
             Forgot password?
           </button>
-          <p id="loginError" class="error" role="status" aria-live="polite"></p>
+          <p id="loginError" class="error" role="alert"></p>
         </form>
 
         <form id="registerForm" class="hidden">
-          <label>Name</label>
+          <label for="regName">Name</label>
           <input
             type="text"
             id="regName"
@@ -66,7 +96,7 @@
             autocomplete="name"
           />
 
-          <label>Email</label>
+          <label for="regEmail">Email</label>
           <input
             type="email"
             id="regEmail"
@@ -75,7 +105,7 @@
             autocomplete="email"
           />
 
-          <label>Password</label>
+          <label for="regPassword">Password</label>
           <input
             type="password"
             id="regPassword"
@@ -85,12 +115,7 @@
           />
 
           <button type="submit" id="registerBtn">Create account</button>
-          <p
-            id="registerError"
-            class="error"
-            role="status"
-            aria-live="polite"
-          ></p>
+          <p id="registerError" class="error" role="alert"></p>
         </form>
 
         <button
@@ -102,10 +127,10 @@
         </button>
       </div>
 
-      <!-- ===================== LOGGED IN (FULL APP) ===================== -->
+      <!-- ===================== LOGGED IN ===================== -->
       <div id="loggedInView" class="hidden">
         <header class="app-header">
-          <span class="logo">TT</span>
+          <span class="logo" aria-hidden="true">TT</span>
           <span class="brand">TrackTrail</span>
           <span class="userchip" id="userChip" title=""></span>
           <button
@@ -116,91 +141,134 @@
           ></button>
         </header>
 
-        <nav class="tabs" id="tabs">
-          <button class="tab active" data-tab="jobsTab" type="button">
+        <!-- Offline / server-trouble banner (shown by JS; the session is kept) -->
+        <div id="netBanner" class="stateBox warn hidden" role="status">
+          <p id="netBannerText" class="stateBox-text"></p>
+        </div>
+
+        <!-- THIS PAGE: Detect → Understand → Save / Analyze → Confirm → Open.
+             Rendered by popup.js; kept deliberately small (it is not a dashboard). -->
+        <section
+          id="pageSection"
+          class="pageSection"
+          aria-labelledby="pageHeading"
+        >
+          <h2 id="pageHeading" class="sectionLabel">This page</h2>
+          <div id="pageBody"></div>
+        </section>
+
+        <div class="tabs" id="tabs" role="tablist" aria-label="TrackTrail sections">
+          <button
+            class="tab active"
+            data-tab="jobsTab"
+            type="button"
+            role="tab"
+            id="tab-jobsTab"
+            aria-selected="true"
+            aria-controls="jobsTab"
+          >
             Jobs
           </button>
-          <button class="tab" data-tab="addTab" type="button">Add</button>
-          <button class="tab" data-tab="statsTab" type="button">Stats</button>
-        </nav>
-
-        <button
-          id="openDashboardBtn"
-          class="secondary dashboard-cta"
-          type="button"
-        >
-          Open full dashboard ↗
-        </button>
+          <button
+            class="tab"
+            data-tab="addTab"
+            type="button"
+            role="tab"
+            id="tab-addTab"
+            aria-selected="false"
+            aria-controls="addTab"
+            tabindex="-1"
+          >
+            Add
+          </button>
+          <button
+            class="tab"
+            data-tab="statsTab"
+            type="button"
+            role="tab"
+            id="tab-statsTab"
+            aria-selected="false"
+            aria-controls="statsTab"
+            tabindex="-1"
+          >
+            Stats
+          </button>
+        </div>
 
         <!-- ---- JOBS TAB ---- -->
-        <section id="jobsTab" class="tabPanel">
-          <div id="detectedJobCard" class="detectedCard hidden">
-            <span class="detectedCard-icon" aria-hidden="true">•</span>
-            <div class="detectedCard-info">
-              <p class="detectedCard-title" id="detectedJobTitle"></p>
-              <p class="detectedCard-sub" id="detectedJobSub"></p>
-            </div>
-            <button
-              type="button"
-              id="detectedJobSaveBtn"
-              class="detectedCard-save"
-            >
-              Add job
-            </button>
-          </div>
-          <p
-            id="detectedJobHint"
-            class="detectedHint hidden"
-            role="status"
-            aria-live="polite"
-          ></p>
-
+        <section
+          id="jobsTab"
+          class="tabPanel"
+          role="tabpanel"
+          aria-labelledby="tab-jobsTab"
+        >
           <div class="toolbar">
             <input
               type="search"
               id="searchInput"
               placeholder="Search company or role..."
+              aria-label="Search saved jobs by company or role"
             />
             <button
               id="refreshJobsBtn"
               class="icon-btn"
               type="button"
               title="Refresh"
-              aria-label="Refresh"
+              aria-label="Refresh saved jobs"
             >
               ⟳
             </button>
           </div>
 
-          <div class="chips" id="statusChips">
-            <button class="chip active" data-status="all" type="button">
+          <div class="chips" id="statusChips" role="group" aria-label="Filter by status">
+            <button class="chip active" data-status="all" type="button" aria-pressed="true">
               All
             </button>
-            <button class="chip" data-status="Applied" type="button">
+            <button class="chip" data-status="Applied" type="button" aria-pressed="false">
               Applied
             </button>
-            <button class="chip" data-status="Interview" type="button">
+            <button class="chip" data-status="Interview" type="button" aria-pressed="false">
               Interview
             </button>
-            <button class="chip" data-status="Offer" type="button">
+            <button class="chip" data-status="Offer" type="button" aria-pressed="false">
               Offer
             </button>
-            <button class="chip" data-status="Rejected" type="button">
+            <button class="chip" data-status="Rejected" type="button" aria-pressed="false">
               Rejected
+            </button>
+          </div>
+
+          <div id="jobsLoading" class="hidden" aria-hidden="true">
+            <div class="skeleton" style="height: 74px"></div>
+            <div class="skeleton" style="height: 74px"></div>
+            <div class="skeleton" style="height: 74px"></div>
+          </div>
+          <div id="jobsLoadError" class="stateBox err hidden" role="alert">
+            <p id="jobsLoadErrorText" class="stateBox-text"></p>
+            <button type="button" id="jobsRetryBtn" class="secondary">
+              Retry
             </button>
           </div>
 
           <ul id="jobsList" class="jobsList"></ul>
           <div id="jobsEmpty" class="emptyState hidden">
-            <p>No jobs match here yet.</p>
+            <p id="jobsEmptyText">No jobs match here yet.</p>
+            <button type="button" id="jobsEmptyAdd" class="secondary hidden">
+              Add a job manually
+            </button>
           </div>
           <p id="jobsError" class="error" role="status" aria-live="polite"></p>
         </section>
 
         <!-- ---- ADD TAB ---- -->
-        <section id="addTab" class="tabPanel hidden">
+        <section
+          id="addTab"
+          class="tabPanel hidden"
+          role="tabpanel"
+          aria-labelledby="tab-addTab"
+        >
           <form id="addJobForm">
-            <label>Company</label>
+            <label for="addCompany">Company</label>
             <input
               type="text"
               id="addCompany"
@@ -208,7 +276,7 @@
               placeholder="e.g. Acme Corp"
             />
 
-            <label>Role</label>
+            <label for="addRole">Role</label>
             <input
               type="text"
               id="addRole"
@@ -216,7 +284,7 @@
               placeholder="e.g. SDE Intern"
             />
 
-            <label>Status</label>
+            <label for="addStatus">Status</label>
             <select id="addStatus">
               <option>Applied</option>
               <option>Interview</option>
@@ -225,10 +293,10 @@
               <option>Wishlist</option>
             </select>
 
-            <label>Interview date (optional)</label>
+            <label for="addInterviewDate">Interview date (optional)</label>
             <input type="date" id="addInterviewDate" />
 
-            <label>Notes (optional)</label>
+            <label for="addNotes">Notes (optional)</label>
             <textarea
               id="addNotes"
               rows="3"
@@ -236,30 +304,37 @@
             ></textarea>
 
             <button type="submit" id="addJobBtn">Add job</button>
-            <p
-              id="addJobMsg"
-              class="error"
-              role="status"
-              aria-live="polite"
-            ></p>
+            <p id="addJobMsg" class="error" role="status" aria-live="polite"></p>
           </form>
         </section>
 
         <!-- ---- STATS TAB ---- -->
-        <section id="statsTab" class="tabPanel hidden">
+        <section
+          id="statsTab"
+          class="tabPanel hidden"
+          role="tabpanel"
+          aria-labelledby="tab-statsTab"
+        >
           <div class="statsGrid" id="statsGrid"></div>
         </section>
 
-        <button id="logoutBtn" class="secondary">Log out</button>
+        <button
+          id="openDashboardBtn"
+          class="secondary dashboard-cta"
+          type="button"
+        >
+          Open full dashboard ↗
+        </button>
+        <button id="logoutBtn" class="secondary" type="button">Log out</button>
       </div>
 
       <div
         id="confirmDialog"
         class="confirmDialog hidden"
-        role="dialog"
+        role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirmTitle"
-        tabindex="-1"
+        aria-describedby="confirmMessage"
       >
         <div class="confirmDialog-card">
           <h2 id="confirmTitle">Delete job?</h2>

@@ -75,8 +75,8 @@ body {
 }
 
 .icon-btn {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   margin: 0 0 0 6px;
   border-radius: 8px;
@@ -114,6 +114,7 @@ body {
   font-weight: 600;
   font-size: 12.5px;
   padding: 7px 0;
+  min-height: 32px;
   border-radius: 8px;
   cursor: pointer;
   margin: 0;
@@ -194,8 +195,15 @@ button:disabled {
 }
 
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-  outline: 3px solid rgba(6, 182, 212, .55);
+  outline: 3px solid #0e7490;
   outline-offset: 2px;
+}
+
+[data-theme="dark"] button:focus-visible,
+[data-theme="dark"] input:focus-visible,
+[data-theme="dark"] select:focus-visible,
+[data-theme="dark"] textarea:focus-visible {
+  outline-color: #67e8f9;
 }
 
 button.secondary {
@@ -371,6 +379,7 @@ button.secondary:hover {
   width: auto;
   margin: 0;
   padding: 4px 10px;
+  min-height: 28px;
   border-radius: 999px;
   background: #fff;
   border: 1px solid var(--border);
@@ -481,6 +490,7 @@ button.secondary:hover {
 .jobItem-status-select {
   width: auto;
   flex: 1;
+  min-height: 32px;
   padding: 4px 6px;
   font-size: 11px;
   border-radius: 8px;
@@ -488,7 +498,7 @@ button.secondary:hover {
 
 .jobItem-date {
   font-size: 10.5px;
-  color: #94a3b8;
+  color: var(--muted);
   white-space: nowrap;
 }
 
@@ -666,8 +676,8 @@ button.danger:hover { background: #b91c1c; }
 
 /* ---------- theme toggle button ---------- */
 .theme-toggle {
-  width: 26px;
-  height: 26px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   margin: 0 0 0 6px;
   border-radius: 8px;
@@ -699,3 +709,100 @@ button.danger:hover { background: #b91c1c; }
   width: 14px;
   height: 14px;
 }
+
+
+/* ================= states, "this page" card, accessibility ================= */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.skeleton {
+  height: 12px;
+  margin: 8px 0;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+}
+[data-theme="dark"] .skeleton {
+  background: linear-gradient(90deg, #1e293b 25%, #0f172a 50%, #1e293b 75%);
+  background-size: 200% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: tt-shimmer 1.3s linear infinite; }
+}
+@keyframes tt-shimmer { to { background-position: -200% 0; } }
+
+.pageSection { margin-bottom: 12px; }
+.sectionLabel {
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stateBox {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  background: var(--card);
+  font-size: 12.5px;
+}
+.stateBox-text { margin: 0; line-height: 1.45; }
+.stateBox-sub { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); }
+.stateBox button { margin-top: 8px; }
+.stateBox.warn { background: #fffbeb; border-color: #fcd34d; color: #92400e; }
+.stateBox.err { background: #fff1f2; border-color: #fecdd3; color: #9f1239; }
+.stateBox.ok { background: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+.stateBox.ok .stateBox-sub { color: #047857; }
+[data-theme="dark"] .stateBox.warn { background: #451a03; border-color: #92400e; color: #fde68a; }
+[data-theme="dark"] .stateBox.err { background: #4c0519; border-color: #9f1239; color: #fecdd3; }
+[data-theme="dark"] .stateBox.ok { background: #052e21; border-color: #065f46; color: #a7f3d0; }
+[data-theme="dark"] .stateBox.ok .stateBox-sub { color: #6ee7b7; }
+.warnText { color: #92400e; margin-bottom: 6px; font-size: 12px; }
+[data-theme="dark"] .warnText { color: #fde68a; }
+
+.jobBrief {
+  border: 1px solid #a5f3fc;
+  background: #ecfeff;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+[data-theme="dark"] .jobBrief { background: #0c2b3d; border-color: #0e7490; }
+.jobBrief-title { margin: 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+.jobBrief-sub { margin: 2px 0 0; font-size: 12px; font-weight: 600; color: #0e7490; overflow-wrap: anywhere; }
+[data-theme="dark"] .jobBrief-sub { color: #67e8f9; }
+.jobBrief-note { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+#pageBody > .jobBrief-note { margin: 6px 0 0; }
+
+.saveRow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.saveRow label { margin: 0; white-space: nowrap; }
+.saveRow select { min-height: 32px; }
+#pageBody input { margin-top: 6px; }
+#pageBody > button { margin-top: 8px; }
+
+/* notes: now a real button (keyboard reachable) that still reads as text */
+.jobItem-notes-text {
+  width: auto;
+  margin: 0;
+  padding: 2px 0;
+  min-height: 24px;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 400;
+  text-align: left;
+  border-radius: 4px;
+}
+.jobItem-notes-text:hover,
+[data-theme="dark"] .jobItem-notes-text:hover { background: none; text-decoration: underline; }
+[data-theme="dark"] .jobItem-notes-text { background: none; color: var(--muted); }
+.jobItem-notes-actions .ghost-btn { width: auto; margin: 0; min-height: 32px; }

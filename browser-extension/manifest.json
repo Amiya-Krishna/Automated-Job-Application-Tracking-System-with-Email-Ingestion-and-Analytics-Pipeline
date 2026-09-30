@@ -3,10 +3,11 @@
   "name": "TrackTrail — Job Application Tracker",
   "version": "1.1.0",
   "description": "Save jobs from LinkedIn and Indeed to your TrackTrail dashboard, see how well your resume matches, and tailor it truthfully.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
   "host_permissions": [
-    "https://*.linkedin.com/*",
-    "https://*.indeed.com/*",
     "https://job-application-tracker-portal-o1ls.onrender.com/*"
   ],
   "background": {
@@ -15,9 +16,16 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.linkedin.com/jobs/*", "https://*.indeed.com/*"],
-      "js": ["jd-extract.js", "tailor-panel.js", "content.js"],
-      "css": ["content.css"],
+      "matches": [
+        "https://*.linkedin.com/jobs/*",
+        "https://*.indeed.com/*"
+      ],
+      "js": [
+        "jd-extract.js",
+        "ui-errors.js",
+        "tailor-panel.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -34,5 +42,9 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "minimum_chrome_version": "102",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   }
 }

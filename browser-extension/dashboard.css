@@ -492,16 +492,20 @@ textarea:focus {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto; /* narrow windows scroll the table instead of clipping it */
 }
 
 .dataTable {
   width: 100%;
+  min-width: 440px;
   border-collapse: collapse;
   font-size: 13px;
 }
 
 .dataTable thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card);
   text-align: left;
   font-size: 10.5px;
   font-weight: 700;
@@ -737,6 +741,43 @@ textarea:focus {
   .content {
     padding: 22px 18px 50px;
   }
+}
+
+/* ================= states + accessibility ================= */
+button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
+  outline: 3px solid #0e7490;
+  outline-offset: 2px;
+}
+[data-theme="dark"] button:focus-visible, [data-theme="dark"] a:focus-visible, [data-theme="dark"] select:focus-visible,
+[data-theme="dark"] input:focus-visible, [data-theme="dark"] textarea:focus-visible, [data-theme="dark"] summary:focus-visible {
+  outline-color: #67e8f9;
+}
+.ghost-btn, .nav-item, select, input:not([type="checkbox"]):not([type="radio"]) { min-height: 36px; }
+.theme-toggle { min-width: 36px; min-height: 36px; }
+
+.skeleton {
+  min-height: 74px;
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+}
+tr.skeleton { display: table-row; min-height: 0; height: 40px; }
+[data-theme="dark"] .skeleton { background: linear-gradient(90deg, #1e293b 25%, #0f172a 50%, #1e293b 75%); background-size: 200% 100%; }
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton { animation: tt-shimmer 1.3s linear infinite; }
+}
+@keyframes tt-shimmer { to { background-position: -200% 0; } }
+
+.error .ghost-btn { padding: 4px 12px; min-height: 32px; margin-left: 6px; }
+.emptyState { line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .content { padding: 16px 12px 40px; }
+  .content-header { flex-wrap: wrap; }
+  .cardGrid { grid-template-columns: 1fr; }
+  .filterBar > * { flex: 1 1 140px; }
+  .statsRow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .resumeViewerBox { width: calc(100vw - 24px); max-height: calc(100vh - 24px); }
 }
 
 /* ================= DARK MODE ================= */
