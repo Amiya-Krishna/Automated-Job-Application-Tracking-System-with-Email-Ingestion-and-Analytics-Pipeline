@@ -1,4 +1,73 @@
-# TrackTrail — Final QA Report
+# QA, Security & Verification Report
+
+> **Consolidated from:** `IMPLEMENTATION_SUMMARY.md` (implementation-pass scope, password-reset architecture, tests, pre-existing failures, limitations) and `FINAL_QA_REPORT.md` (independent QA pass).
+> The "Final QA pass (this update)" section at the end of `IMPLEMENTATION_SUMMARY.md` summarised the same fixes, test results and open items that are recorded in full in Part B (§3, §4, §7, §10, §11, §12), so it is not repeated here.
+
+---
+
+## Part A — Implementation Pass
+
+### A1. Scope
+
+Scope note: inspection showed earlier work had already made much of the app mobile-friendly
+(responsive Navbar with hamburger menu, card-based Matched/Engine pages, a full mobile
+dashboard, source-aware web/mobile password reset). This pass targeted the real remaining gaps
+rather than rewriting working code.
+
+### A2. Password-reset architecture (source-aware)
+
+| Origin | Request | Emailed link |
+|---|---|---|
+| web | no `source` | `<first CLIENT_URL>/reset-password?token=...` |
+| mobile | `source=mobile` + `redirectUri` | that deep link (`mobile://` or `exp://` only) + `?token=` |
+| extension | `source=extension` | web reset page + `&source=extension` |
+
+- Mobile: `"scheme": "mobile"` is registered in `mobile/app.json`; the app's
+  `(auth)/reset-password` screen consumes the token.
+- Extension: an email link cannot reliably open an extension page - the extension has no
+  configured stable ID (no `key` in the manifest), so a `chrome-extension://` URL would be
+  invented. Instead the trusted web page is reused as the intermediate step and shows extension
+  branding and a "return to the extension and sign in" screen. This is a limitation: the user
+  finishes the reset in a browser tab, then signs in from the extension manually.
+- Security: client-supplied redirects are never trusted (mobile is scheme allow-listed; extension
+  ignores any `redirectUri`); tokens are 30-minute, purpose-scoped JWTs and are now
+  **single-use** - a fingerprint of the current password hash is embedded and checked, so a
+  token dies once the password changes (no schema change); same generic response for unknown
+  emails; tokens are not logged.
+
+### A3. Tests run (implementation pass)
+
+- Client: `vite build` OK; vitest 16/16.
+- Extension: 47/47.
+- Server: new `tests/auth/passwordResetRouting.test.js` (8/8) drives the real router over HTTP with
+  stubbed Prisma/email and checks the generated URL for web, mobile (mobile:// and exp://) and
+  extension, rejection of bad redirects, expiry, wrong-purpose tokens, and replay. Real email
+  delivery was NOT tested (no SMTP/DB in the sandbox).
+- Mobile: `tsc --noEmit` clean; integration tests 25/27.
+- Not done: no simulator/device run, no browser-based viewport testing at 320-414px, and the
+  extension popup was not exercised in a real browser (logic covered by unit tests only).
+
+### A4. Known pre-existing failures (at the end of the implementation pass)
+
+1. Server security test "AI provider hosts ... ONLY inside providers" fails when a real
+   `server/.env` is present; it passes without it. `.env` is excluded from the ZIP.
+2. Server security test "mobile networking goes only through the shared API client" expects
+   `from '@/services/api'` in `mobile/services/resume.ts` (stale assertion).
+3. Mobile test 3: `expo-sharing ~57.0.21` vs SDK-expected `~57.0.22`.
+4. Mobile test 10: regex expectation on `use-tailoring` hook source no longer matches.
+5. `npm run lint` (client) reports react-hooks rule errors in untouched files.
+
+See Part B (§4 and §6) for how the final QA pass handled the test failures.
+
+### A5. Other limitations
+
+- Web pages not converted to cards: none found with desktop-only tables remaining, but pages
+  such as JobForm/Analytics/ResumeTailoring were only scanned for fixed widths, not visually tested.
+- The extension's internal full-page dashboard was not redesigned.
+
+---
+
+## Part B — Final QA Report
 
 This is an independent re-verification pass over the ZIP delivered after the previous
 implementation phase. Nothing here was assumed from that phase's own numbers — every result
@@ -12,7 +81,7 @@ Status legend: **PASS** / **FAIL** / **PARTIAL** / **BLOCKED** / **PRE-EXISTING*
 
 ---
 
-## 1. Environment
+### 1. Environment
 
 | Component | What was used |
 |---|---|
@@ -31,7 +100,7 @@ local Postgres/API/web processes used to test them exist only in the sandbox's `
 
 ---
 
-## 2. Project integrity
+### 2. Project integrity
 
 - Web (`client/`), Mobile (`mobile/`), Server (`server/`), and Browser Extension
   (`browser-extension/`) are all present with intact `package.json` manifests.
@@ -50,7 +119,7 @@ local Postgres/API/web processes used to test them exist only in the sandbox's `
 
 ---
 
-## 3. Automated tests (re-run independently in this sandbox)
+### 3. Automated tests (re-run independently in this sandbox)
 
 | Suite | Result | Notes |
 |---|---|---|
@@ -67,7 +136,7 @@ local Postgres/API/web processes used to test them exist only in the sandbox's `
 
 ---
 
-## 4. Bugs found and fixed
+### 4. Bugs found and fixed
 
 All fixes are **in the delivered project tree**, not the test harness.
 
@@ -156,9 +225,9 @@ notes that the bundle check itself was not re-run after these three changes.
 
 ---
 
-## 5. Password-reset — end to end (the most important area)
+### 5. Password-reset — end to end (the most important area)
 
-### 5a. Web → Web (real browser, real server, real DB)
+#### 5a. Web → Web (real browser, real server, real DB)
 
 Driven through the actual UI in Chromium — signup, login, logout, a wrong-password login, the
 "Forgot password?" link, retrieving the real emailed link (opened in a **fresh browser
@@ -173,7 +242,7 @@ in again.
 - Missing / malformed / garbage tokens each produce a clear on-screen error, no crash, no
   false success.
 
-### 5b. Mobile → Mobile app
+#### 5b. Mobile → Mobile app
 
 The server's reset-link generation is unit-and-integration tested and was also driven live
 against the real API (see item 1 in §4). The mobile app's **own screen behavior** — token
@@ -197,7 +266,7 @@ mock.
 intent/URL-scheme handoff, or true cold-start-from-a-killed-process behavior, because there is
 no Android/iOS runtime in this sandbox. See §7 and §11.
 
-### 5c. Extension → Extension
+#### 5c. Extension → Extension
 
 Confirmed, live, in a real loaded extension: tapping "Forgot password?" in the popup opens a
 **new browser tab** at `<web app>/forgot-password?source=extension` — i.e. it leaves the
@@ -218,7 +287,7 @@ an https bounce page (to survive email-client link rewriting) that redirects int
 `externally_connectable` message handshake. **This was not built** — it is a real
 architecture change, not a bug fix, and is flagged here rather than attempted silently.
 
-### 5d. Security checks (live, against the real running server + DB)
+#### 5d. Security checks (live, against the real running server + DB)
 
 All of the following were exercised as real HTTP requests against the running server, not
 just read from source:
@@ -238,7 +307,7 @@ just read from source:
 | Token appears in any API response body | **Never** |
 | Short/weak new password | 400 |
 
-### 5e. Source-aware reset matrix
+#### 5e. Source-aware reset matrix
 
 | Request Source | Expected Destination | Actual Destination (verified) | Result |
 |---|---|---|---|
@@ -248,7 +317,7 @@ just read from source:
 
 ---
 
-## 6. Test-failure classification (per the required A–E categories)
+### 6. Test-failure classification (per the required A–E categories)
 
 | # | Failure | Category | Evidence | Action taken |
 |---|---|---|---|---|
@@ -264,7 +333,7 @@ every test-level change was strictly a quote/format tolerance fix.
 
 ---
 
-## 7. Environment limitations (stated plainly, not glossed over)
+### 7. Environment limitations (stated plainly, not glossed over)
 
 - **No Android SDK, emulator, or device.** This is the most significant gap relative to the
   QA brief's requirements: native deep-link behavior — Expo Go vs. dev build vs. release
@@ -294,9 +363,9 @@ every test-level change was strictly a quote/format tolerance fix.
 
 ---
 
-## 8. Functional QA — what was actually exercised (real browser, not source reading)
+### 8. Functional QA — what was actually exercised (real browser, not source reading)
 
-### Web (desktop + 390px mobile viewport, real Chromium, against the live API + DB)
+#### Web (desktop + 390px mobile viewport, real Chromium, against the live API + DB)
 - **Auth:** signup, login, logout (session cleared, protected routes redirect), invalid
   credentials (clear error), password-mismatch validation on signup — all confirmed.
 - **Profile:** edit name/experience/skills/resume text, save, **reload and verify
@@ -317,7 +386,7 @@ every test-level change was strictly a quote/format tolerance fix.
   uploaded resume returned a real match percentage and skill breakdown; no horizontal overflow
   at any point.
 
-### Web mobile responsiveness — real automated inspection, not CSS reading
+#### Web mobile responsiveness — real automated inspection, not CSS reading
 **190 page × width combinations** checked with Playwright at 320, 360, 375, 390, 414, 640,
 768, 900, 1024, and 1280px, across every route in `App.jsx` (public and authenticated),
 measuring actual rendered `scrollWidth` and flagging any element extending past the viewport
@@ -334,7 +403,7 @@ in a non-scrollable container.
   checked directly: the notification panel stays fully within the viewport at both 320 and
   390px.
 
-### Browser extension — real loaded extension, real service worker, real backend
+#### Browser extension — real loaded extension, real service worker, real backend
 - Loads with a real service worker (after the icons fix); popup opens, is interactive.
 - Login (including a visible, correct error for wrong credentials); manual "Add Job" form
   persists a job (confirmed via the API); Stats tab renders.
@@ -354,7 +423,7 @@ in a non-scrollable container.
 - Manifest permissions reviewed: no unnecessary permissions found beyond what job detection
   and the existing API/Gmail flows require.
 
-### Mobile app (web export of the real production route tree, not a mock)
+#### Mobile app (web export of the real production route tree, not a mock)
 - **Home:** signed-in load shows real stats pulled from the API (verified against 4 seeded
   applications — total count and per-status breakdown all correct). All quick actions
   (Add job, Paste JD, Gmail, Upload resume, Analytics) were clicked and each navigates to a
@@ -380,7 +449,7 @@ in a non-scrollable container.
 
 ---
 
-## 9. Cross-platform symmetry
+### 9. Cross-platform symmetry
 
 Spot-checked terminology, status vocabulary, and branding across the three clients:
 
@@ -400,7 +469,7 @@ Spot-checked terminology, status vocabulary, and branding across the three clien
 
 ---
 
-## 10. Bugs found, not fixed (flagged for follow-up)
+### 10. Bugs found, not fixed (flagged for follow-up)
 
 | # | Issue | Severity | Status |
 |---|---|---|---|
@@ -420,7 +489,7 @@ infrastructure (Redis, a real device, real email/OAuth) than is available here.
 
 ---
 
-## 11. Remaining limitations / what is still unverified
+### 11. Remaining limitations / what is still unverified
 
 1. **Native mobile deep links are entirely unverified.** This is the single biggest gap
    against the QA brief. Everything about the mobile reset flow that *can* be tested without a
@@ -450,7 +519,7 @@ infrastructure (Redis, a real device, real email/OAuth) than is available here.
 
 ---
 
-## 12. Final pass/fail matrix
+### 12. Final pass/fail matrix
 
 | Area | Result |
 |---|---|

@@ -1,8 +1,15 @@
-# Mobile production implementation
+# Mobile App — Implementation, Redesign & Release
+
+> **Consolidated from:** `MOBILE_PRODUCTION_IMPLEMENTATION.md`, `REDESIGN_NOTES.md` and the "Mobile" section of `IMPLEMENTATION_SUMMARY.md`.
+> Related: mobile endpoints (sessions, account, notifications, deep-link files) → `04`; Gmail on mobile and mobile resume manager → `09`; mobile QA results and password-reset verification → `10`.
+
+---
+
+## 1. Production implementation (Expo SDK 57)
 
 Scope: `mobile/` (Expo SDK 57), plus the minimum additive backend in `server/` the mobile app needs. Web client and browser extension behaviour is unchanged (they keep the 7‑day token). Everything below was verified only with light checks (syntax parse of all 152 TS/TSX files, JSON/YAML validation, and the Node test suites: server 178/178, mobile 63/63 + 1 pre‑existing skip). **No native build, `tsc`, lint or device run was performed** — see "First things to run".
 
-## What was implemented
+### What was implemented
 
 **1. Auth** – `GET /api/auth/me`; mobile login (`X-Client: mobile`) returns a 15‑min access JWT + opaque refresh token. Refresh tokens are stored hashed (`user_sessions`), rotated on every use, and replaying a rotated token (after a 10 s grace) revokes the whole chain. `POST /auth/refresh|logout|logout-all`, `DELETE /auth/account`. Password reset and logout‑all revoke all sessions. Login/register/forgot/reset/refresh are rate limited. Purpose tokens (reset, Gmail `state`) can no longer act as login tokens; invalid/expired tokens now return **401** (was 400 for invalid). Mobile stores tokens only in SecureStore; the API client refreshes proactively and on 401 (single‑flight), replays the request once, and signs out only when the server says the session is over (offline/5xx never logs you out). Legacy 7‑day tokens from older builds keep working until they expire.
 
@@ -26,13 +33,13 @@ Scope: `mobile/` (Expo SDK 57), plus the minimum additive backend in `server/` t
 
 **11. Store readiness** – hosted placeholder pages `server/public/legal/{privacy,terms,delete-account}.html` (served at `<API>/legal/…`, must be edited before submission), in‑app links, in‑app deletion, version display, dev artifacts removed.
 
-## Required environment variables / secrets
+### Required environment variables / secrets
 
 **Server (`server/.env`, see `.env.example`)**: existing vars plus `NODE_ENV=production`, `ACCESS_TOKEN_TTL_SECONDS`, `REFRESH_TOKEN_TTL_DAYS`, `APP_LINK_BASE_URL` (your API's https origin), `ANDROID_PACKAGE_NAME`, `ANDROID_SHA256_CERT_FINGERPRINTS`, `IOS_BUNDLE_ID`, `APPLE_TEAM_ID`, `REMINDERS_ENABLED`, `CRON_SECRET`, optional `EXPO_ACCESS_TOKEN`.
 **Mobile (EAS environment variables, `eas env:create --environment staging|production`)**: `EXPO_PUBLIC_API_URL` (**https**, required), optional `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_WEB_URL`, `EXPO_PUBLIC_SUPPORT_EMAIL`, `EXPO_PUBLIC_PRIVACY_URL/TERMS_URL/DELETE_ACCOUNT_URL`; build‑time: `GOOGLE_SERVICES_JSON` (file), `SENTRY_ORG`, `SENTRY_PROJECT`, `SENTRY_AUTH_TOKEN` (secret).
 **GitHub secrets**: `EXPO_TOKEN`; for the cron workflow `API_URL`, `CRON_SECRET`.
 
-## First things to run (once, locally)
+### First things to run (once, locally)
 
 ```bash
 cd server && npx prisma migrate deploy && npx prisma generate      # adds 4 additive tables (migration 20260929000000)
@@ -41,7 +48,7 @@ npx expo install --check                                             # confirms 
 npm run typecheck && npm run lint && npm run test:critical          # I could not run tsc/lint here
 ```
 
-## Production commands
+### Production commands
 
 ```bash
 cd mobile
@@ -57,7 +64,7 @@ eas update:list --branch production                     # find a previous group 
 eas update:republish --group <GROUP_ID> --destination-channel production        # OTA rollback
 ```
 
-## Actions only you can do (credentials/accounts)
+### Actions only you can do (credentials/accounts)
 
 1. **Identifiers**: confirm `com.tracktrail.mobile` (both stores) or change it in `app.json`, `server/.env` (`ANDROID_PACKAGE_NAME`, `IOS_BUNDLE_ID`) — it cannot change after publishing.
 2. **EAS**: `eas init` if the project id in `app.json` (`extra.eas.projectId`, `updates.url`) is not your project. Set the environment variables above.
@@ -70,9 +77,101 @@ eas update:republish --group <GROUP_ID> --destination-channel production        
 9. **Assets**: icon/splash use your existing files; supply final store artwork (1024×1024 icon, screenshots). Remove the unused starter assets in `mobile/assets/images` if you like.
 10. Real‑device testing: push (Expo Go cannot receive pushes), App Link verification (`adb shell pm get-app-links com.tracktrail.mobile`), Universal Links, the reset‑email flow on both OSes.
 
-## Known limits / notes
+### Known limits / notes
 
 * Rate limiters and the reminder scheduler are per server instance (fine for one instance; use a shared store if you scale out — the reminder dedupe key is DB‑backed so duplicates are still prevented).
 * Offline writes are not queued: they fail fast with a clear message; reads work from cache.
 * A verified https reset link requires the association files (step 3/4); until then set no `APP_LINK_BASE_URL` and the email uses the `tracktrail://` link as before.
 * `mobile/.env` from the uploaded ZIP was not included; recreate it from `mobile/.env.example`.
+
+---
+
+## 2. Redesign integration notes
+
+This documents what changed in the redesign pass and exactly what to do to run it.
+
+### 1. Install new dependencies
+
+```bash
+cd mobile
+npx expo install @react-native-async-storage/async-storage @react-navigation/drawer @react-navigation/native react-native-svg
+```
+
+(`package.json` already lists them; the command above just gets Expo to
+resolve SDK-compatible versions and install native code where needed.)
+
+### 2. Rebuild native code if you use dev builds / EAS
+
+`@react-navigation/drawer` and `react-native-svg` include native modules.
+If you run via Expo Go this "just works" for SVG and Drawer's JS parts;
+if you use a custom dev client or EAS build, run a new native build:
+
+```bash
+npx expo prebuild --clean   # if you manage native projects locally
+# or
+eas build --profile development
+```
+
+### 3. What moved / was renamed
+
+- `app/(tabs)/*` → `app/(drawer)/(tabs)/*` (all URLs unchanged — group
+  folders never appear in the URL, so every existing `router.push('/jobs')`
+  etc. still works).
+- `app/(tabs)/applications.tsx` → `app/applications.tsx`, now a top-level
+  Stack screen titled "Job Tracker" with a native back button, reachable
+  from the drawer, from Home's "Recent applications"/"Upcoming interviews"
+  sections, and from anywhere that already linked to `/applications`.
+- Bottom tabs are now exactly: **Home, Jobs, Analytics, Notifications, Profile**.
+
+### 4. New architecture pieces
+
+| Piece | File(s) |
+|---|---|
+| Theme (light/dark/system, persisted) | `context/ThemeContext.tsx`, `hooks/use-theme*.ts`, `hooks/use-color-scheme*.ts` |
+| Drawer navigation | `app/(drawer)/_layout.tsx`, `components/drawer-content.tsx` |
+| Notifications | `context/NotificationContext.tsx`, `services/notifications.ts`, `types/notifications.ts`, `hooks/use-notifications.ts`, `hooks/use-notification-preferences.ts` |
+| Saved Jobs | `services/savedJobs.ts`, `hooks/use-saved-jobs.ts` |
+| Reusable UI | `components/card.tsx`, `button.tsx`, `avatar.tsx`, `search-bar.tsx`, `screen-header.tsx`, `dashboard-header.tsx`, `theme-toggle.tsx`, `notification-item.tsx`, `charts/bar-chart.tsx`, `charts/donut-chart.tsx` |
+| New screens | Dashboard (redesigned `index.tsx`), `notifications.tsx`, `(drawer)/resume-insights.tsx`, `saved-jobs.tsx`, `help.tsx`, `about.tsx`, `legal/privacy.tsx`, `legal/terms.tsx`; Settings redesigned |
+
+### 5. Honest limitations (by design, not oversight)
+
+- **Push notifications**: there's no Expo push-token registration
+  endpoint on your backend, so Settings' Push/Email toggles are
+  device-local preferences that gate the in-app Notifications tab only.
+  Wiring true push needs `expo-notifications` + a backend table/route for
+  tokens — out of scope here, but the toggle UI and notification model
+  are ready for it.
+- **Saved Jobs**: stored on-device (AsyncStorage) since there's no
+  bookmark endpoint on the backend.
+- **Change Password**: there's no "change password while logged in"
+  endpoint, so Settings reuses the existing forgot-password email flow.
+- **Privacy Policy / Terms**: placeholder copy — replace before shipping.
+- **NativeTabs badge**: the unread-notifications badge is shown in the
+  Dashboard's bell icon and the Notifications tab itself, not as a native
+  badge dot on the tab bar icon — `expo-router/unstable-native-tabs`'s
+  badge API varies by SDK version and wasn't something I could verify
+  without your exact installed version; safe to add later.
+
+### 6. Design conventions followed
+
+New components use the same kebab-case flat-file convention as the rest
+of `components/` (not nested `Card/`, `Button/` folders) to stay
+consistent with the existing codebase, with one exception: `components/charts/`
+groups the two chart primitives since they're a genuinely new category.
+
+> **Cross-reference:** push registration, server-side notification preferences and in-app account deletion were subsequently implemented; see Section 1 (items 1, 2 and 8) for the production implementation.
+
+---
+
+## 3. Mobile screen changes (implementation pass)
+
+- Profile: identity card with avatar, **Edit profile** and **Settings** directly on Profile,
+  "Connected" rows (Gmail Integration with live status, My Resumes), skills.
+- Settings: **Edit profile and Change password removed.** Sections: Account (+Gmail shortcut),
+  Preferences (appearance, notification toggles - existing, persisted), Support (About, Privacy,
+  Terms), Log out. No delete-account (backend has no endpoint) and no invented settings.
+- New dedicated **Gmail Integration** screen (`app/account/gmail.tsx`), reusing the existing
+  hooks/backend: status, connect, disconnect, scan, add-to-pipeline, loading/error/empty states.
+- Home: added "Paste JD" (`/tailor`) and "Gmail" quick actions; Gmail card opens the new screen.
+- Removed the orphaned top-level `app/(tabs)` route group (never registered in the root Stack).

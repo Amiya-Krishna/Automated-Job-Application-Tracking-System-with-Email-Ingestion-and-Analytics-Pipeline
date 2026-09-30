@@ -1,4 +1,93 @@
-# AI-Powered Job-Specific Resume Tailoring
+# Gmail Integration & AI-Powered Resume Tailoring
+
+> **Consolidated from:** `GMAIL_INTEGRATION.md` and `RESUME_TAILORING.md`.
+> Related: Gmail endpoints and `/api/resume/*` summary → `04` (Gmail) and Part 2 below (resume); environment variables → `03`; verification status of Gmail OAuth → `10`.
+
+---
+
+## Part 1 — Gmail Integration Setup
+
+Lets a logged-in user connect their Gmail (read-only) and scan for recent
+interview/offer/rejection emails, turning each one into a job entry with
+one click. This requires **your own** Google OAuth credentials — Google
+ties OAuth clients to a specific Google account/project, so this can't be
+pre-provisioned for you.
+
+### 1. Create a Google Cloud project (free)
+
+1. Go to https://console.cloud.google.com/ and create a new project (or
+   use an existing one).
+
+### 2. Enable the Gmail API
+
+1. In the left sidebar: **APIs & Services → Library**.
+2. Search for **Gmail API** and click **Enable**.
+
+### 3. Configure the OAuth consent screen
+
+1. **APIs & Services → OAuth consent screen**.
+2. User type: **External** (unless you have a Google Workspace org).
+3. Fill in app name ("TrackTrail"), your email as support contact.
+4. Scopes: add `.../auth/gmail.readonly`.
+5. Test users: while the app is in "Testing" mode, add the Gmail
+   address(es) you'll log in with — Google only allows listed test users
+   until you submit for verification (not required for a demo/portfolio
+   project).
+
+### 4. Create OAuth client credentials
+
+1. **APIs & Services → Credentials → Create Credentials → OAuth client ID**.
+2. Application type: **Web application**.
+3. Authorized redirect URIs — add your **backend** URL + `/api/gmail/callback`:
+   - Local dev: `http://localhost:5000/api/gmail/callback`
+   - Production: `https://your-backend.onrender.com/api/gmail/callback`
+4. Save. Copy the **Client ID** and **Client Secret**.
+
+### 5. Add credentials to `server/.env`
+
+```
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URI=https://your-backend.onrender.com/api/gmail/callback
+```
+
+Also set the same three variables in your Render dashboard's environment
+variables (Render doesn't read your local `.env` file).
+
+### 6. Try it
+
+1. Redeploy the backend so it picks up the new env vars.
+2. In the app, go to **Integrations** in the nav bar → **Connect Gmail**.
+3. Approve access with a test-user Gmail account.
+4. Click **Scan inbox** — it looks at the last 30 days for messages
+   matching interview/application/offer/rejection keywords and lets you
+   add each one to your pipeline with one click.
+
+### What data this touches
+
+- Scope requested: `gmail.readonly` — TrackTrail can never send, delete,
+  or modify anything in the inbox.
+- Only message **subject, sender, date, and snippet** are read — never the
+  full email body.
+- Nothing from Gmail is stored in the database; only the refresh token
+  (used to re-authenticate future scans) is saved, and only for the
+  logged-in user who connected it.
+- Disconnecting (via the Integrations page) deletes that refresh token
+  immediately.
+
+### Mobile
+
+The mobile app (`mobile/`) uses this exact same setup — same Google Cloud
+project, same env vars, no separate credentials. It calls
+`GET /api/gmail/auth-url?source=mobile&redirectUri=...` instead of
+`source=web`/`source=extension`, so the OAuth callback can send the
+browser back to the app via its own `mobile://` (or, in Expo Go,
+`exp://`) redirect instead of the web dashboard. See
+`mobile/README.md`'s "Gmail integration" section for the full mechanism.
+
+---
+
+## Part 2 — AI-Powered Job-Specific Resume Tailoring
 
 One central backend service (`server/services/resumeTailoring/`, HTTP at
 `/api/resume/*`) used by the web client, the mobile app and the browser
@@ -19,7 +108,7 @@ Web ───────┘        (auth, rate-limit,             │
                     verifyResult (structural invariant) ─▶ ResumeVersion + ResumeChange rows
 ```
 
-## The no-fabrication guarantee — how it is enforced
+### The no-fabrication guarantee — how it is enforced
 
 The rule is enforced in layers, and **none of them depends on an LLM behaving**:
 
@@ -60,7 +149,7 @@ re-ordered by relevance and skill spellings are aligned to the JD (only where
 the taxonomy says it is the same skill). The strictness of the validator means
 LLM rewrites are deliberately conservative.
 
-## API (all require the `token` header; every query is scoped to the user)
+### API (all require the `token` header; every query is scoped to the user)
 
 | Method & path | Purpose |
 |---|---|
@@ -87,7 +176,7 @@ supplied alongside an id for jobs that have none stored).
 Errors: `{ message, code }` — e.g. `no_resume`, `jd_too_short`, `resume_unreadable`,
 `no_matching_skills`, `rate_limited`, `session_in_progress`.
 
-## Resume manager (web, browser extension, mobile)
+### Resume manager (web, browser extension, mobile)
 
 One backend, one set of records. The web client, the browser extension ("My Resumes" in the dashboard)
 and the mobile app (Profile → My Resumes) all read `GET /api/resume/resumes`; there are no client-local resumes.
@@ -105,7 +194,7 @@ and the mobile app (Profile → My Resumes) all read `GET /api/resume/resumes`; 
   verified here); uploads then appear in the app automatically.
 - Deleting a resume also deletes its tailored versions (database `ON DELETE CASCADE`, verified on Postgres).
 
-## Data model (migration `20260919000000_resume_tailoring`, purely additive)
+### Data model (migration `20260919000000_resume_tailoring`, purely additive)
 
 `resumes`, `resume_facts`, `job_descriptions`, `resume_analyses`,
 `resume_versions`, `resume_changes`, `tailoring_sessions`. No existing table or
@@ -113,7 +202,7 @@ column is modified. Parsing is cached per resume, JD analysis per JD hash,
 analysis per (resume, JD, taxonomy version); re-tailoring the same job+resume
 reuses the existing version (no LLM call) unless `regenerate` is set.
 
-## AI Provider Configuration
+### AI Provider Configuration
 
 The AI provider is used for exactly one thing: **proposing rewordings of existing
 bullets/summary**. It never parses resumes or job descriptions, matches skills,
@@ -141,7 +230,7 @@ plus the previously supported `anthropic`, `openai` and `openai-compatible`.
 **API keys are configured only in the backend environment** (`server/.env`, or your
 host's secret store). Never put them in `client/.env`, `mobile/.env`, or the extension.
 
-### Gemini (Google)
+#### Gemini (Google)
 ```env
 AI_PROVIDER=gemini
 AI_API_KEY=...            # from Google AI Studio
@@ -150,7 +239,7 @@ AI_MODEL=...              # a model id from Google's current model list
 Uses the Gemini `generateContent` API with the key in the `x-goog-api-key` header
 (never in the URL). Default base URL `https://generativelanguage.googleapis.com/v1beta`.
 
-### Groq
+#### Groq
 ```env
 AI_PROVIDER=groq
 AI_API_KEY=...
@@ -159,7 +248,7 @@ AI_BASE_URL=https://api.groq.com/openai/v1
 ```
 OpenAI-compatible; the shared OpenAI-style request/response code is reused.
 
-### OpenRouter
+#### OpenRouter
 ```env
 AI_PROVIDER=openrouter
 AI_API_KEY=...
@@ -169,7 +258,7 @@ AI_BASE_URL=https://openrouter.ai/api/v1
 OpenAI-compatible. Optional, non-secret attribution headers can be set with
 `AI_OPENROUTER_REFERER` / `AI_OPENROUTER_TITLE`.
 
-### Models
+#### Models
 There is **no default model** anywhere in the code — set `AI_MODEL` explicitly and
 change it any time without a code change. Availability, pricing and free-tier limits
 change and differ per provider; check each provider's current official documentation.
@@ -177,7 +266,7 @@ This project does not assume any model or quota is free or permanent. If the mod
 is wrong the provider returns an HTTP 4xx, which is surfaced (not silently retried or
 hidden by fallback) and tailoring degrades to the deterministic reorder-only mode.
 
-### Fallback (optional)
+#### Fallback (optional)
 ```env
 AI_PROVIDER=gemini
 AI_API_KEY=...
@@ -197,30 +286,30 @@ vendor). The fallback's answer receives no special treatment: it passes through 
 identical schema → evidence → structural validation. The version records which
 provider actually served it (`aiProvider` / `aiModel`).
 
-### Behaviour on failure
+#### Behaviour on failure
 Any provider failure (or a missing/invalid configuration) never breaks tailoring: the
 user still gets safe reorder-only suggestions plus a warning. An unusable
 `AI_BASE_URL` (not https, or containing credentials) or an unsafe `AI_MODEL` for
 Gemini is refused **before** any key is sent.
 
-### Logging
+#### Logging
 Provider calls log one metadata-only line: provider, model, duration, status, retry
 count, fallback events. Logs never contain API keys, resume/JD text, prompts,
 responses or tokens (`AI_LOG_LEVEL=silent` turns them off).
 
-### Verification status
+#### Verification status
 Adapters are covered by mocked-HTTP tests only (success, malformed JSON, HTTP
 400/401/403/429/5xx, timeouts, retries, fallback, security). **They have not been
 exercised against the real Gemini, Groq or OpenRouter APIs** in this repository's
 tests; do a real smoke test with your own key before relying on a provider.
 
-## Configuration
+### Configuration
 
-See `server/.env.example` and **AI Provider Configuration** below. Mobile: optional
+See `server/.env.example` and **AI Provider Configuration** above. Mobile: optional
 `EXPO_PUBLIC_WEB_URL`. Extension: `DEFAULT_WEB_APP_URL` in `config.js`. AI keys
 are server-only and appear in none of the clients.
 
-## Install / run / test
+### Install / run / test
 
 ```bash
 cd server && npm install && npx prisma migrate deploy && npx prisma generate
@@ -230,7 +319,7 @@ cd ../browser-extension && npm install && npm test
 cd ../mobile && npm install && npm run test:integration && npx tsc --noEmit
 ```
 
-## Known limitations
+### Known limitations
 
 - **PARTIAL/related logic is taxonomy-driven** (`skillTaxonomy.js`, ~200 skills). Skills
   outside it are only matched literally (a few tech-shaped tokens after cues like
