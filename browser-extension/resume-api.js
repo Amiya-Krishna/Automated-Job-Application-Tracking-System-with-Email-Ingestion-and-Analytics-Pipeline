@@ -21,8 +21,18 @@ export function createResumeApi({ chromeApi, fetchImpl, defaultApiBaseUrl, refre
   }
 
   async function accessToken() {
-    const { accessToken: token } = await chromeApi.storage.session.get("accessToken");
-    return token || null;
+    try {
+      if (!chromeApi?.storage?.session?.get) {
+        return null;
+      }
+
+      const { accessToken: token } =
+        await chromeApi.storage.session.get("accessToken");
+
+      return token || null;
+    } catch {
+      return null;
+    }
   }
 
   async function send(path, options, token) {

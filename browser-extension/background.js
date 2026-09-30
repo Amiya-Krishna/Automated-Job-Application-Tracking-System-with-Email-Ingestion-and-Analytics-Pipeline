@@ -25,8 +25,8 @@ class TTError extends Error {
 }
 
 // fetch that reports connectivity problems as a coded, user-safe error
-async function netFetch(url, init) {
-  try { return await fetch(url, init); } catch (e) { throw new TTError(NETWORK_MESSAGE, { code: "network" }); }
+async function netFetch(base, path, init) {
+  try { return await fetch(`${base}${path}`, init); } catch (e) { throw new TTError(NETWORK_MESSAGE, { code: "network" }); }
 }
 
 // Turn a non-OK response into a TTError. 5xx bodies are replaced with a generic
@@ -60,7 +60,7 @@ async function doRefresh() {
   const { refreshToken } = await getSession();
   if (!refreshToken) return null;
   const base = await getApiBaseUrl();
-  const res = await netFetch(`${base}/auth/refresh`, { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
+  const res = await netFetch(base, "/auth/refresh", { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
   const data = await res.json().catch(() => ({}));
   if (res.ok && data.accessToken && data.refreshToken) {
     await sessionStore().set({ accessToken: data.accessToken, refreshToken: data.refreshToken, user: data.user });
@@ -81,7 +81,7 @@ async function authorizedFetch(path, options = {}) {
   const base = await getApiBaseUrl();
   let token = await getToken();
   if (!token) throw new TTError("Not logged in or session ended. Sign in again.", { code: "session_expired" });
-  const request = (value) => netFetch(`${base}${path}`, { ...options, headers: { "x-client": "extension", token: value, ...(options.headers || {}) } });
+  const request = (value) => netFetch(base, path, { ...options, headers: { "x-client": "extension", token: value, ...(options.headers || {}) } });
   let res = await request(token);
   if (res.status !== 401) return res;
   token = await refreshSession();
@@ -104,7 +104,7 @@ async function apiJson(path, options, fallback) {
 
 async function register(name, email, password) {
   const base = await getApiBaseUrl();
-  const res = await netFetch(`${base}/auth/register`, {
+  const res = await netFetch(base, "/auth/register", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, email, password }),
@@ -115,7 +115,7 @@ async function register(name, email, password) {
 
 async function login(email, password) {
   const base = await getApiBaseUrl();
-  const res = await netFetch(`${base}/auth/login`, {
+  const res = await netFetch(base, "/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-client": "extension" },
     body: JSON.stringify({ email, password }),
@@ -132,7 +132,7 @@ async function logout() {
   try {
     if (refreshToken) {
       const base = await getApiBaseUrl();
-      await netFetch(`${base}/auth/logout`, { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
+      await netFetch(base, "/auth/logout", { method: "POST", headers: { "Content-Type": "application/json", "x-client": "extension" }, body: JSON.stringify({ refreshToken }) });
     }
   } catch (e) {
     // offline logout still ends the local session below

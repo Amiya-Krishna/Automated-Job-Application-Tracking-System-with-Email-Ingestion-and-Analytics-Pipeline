@@ -488,9 +488,11 @@ test("AUTH: without a token nothing is requested and the user is told to sign in
       storage: {
         local: {
           get: async () => ({
-            token: other,
             apiBaseUrl: `${c.app.origin}/api`,
           }),
+        },
+        session: {
+          get: async () => ({ accessToken: other }),
         },
       },
     },

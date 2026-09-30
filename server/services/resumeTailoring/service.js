@@ -18,6 +18,7 @@ const { analyzeAts } = require("./matcher");
 const { buildTailoring, resolveProfile, verifyResult } = require("./engine");
 const { toText, exportProfile, EXPORT_FORMATS } = require("./resumeRenderer");
 const { extractResumeText } = require("./fileExtract");
+const { parseResume } = require("./resumeParser");
 
 const STAGES = {
   queued: "Queued…",
@@ -176,12 +177,17 @@ function createResumeTailoringService({
         rawText: text,
         textHash: hash,
       }));
-    if (row && !row.parsed) {
-      try {
-        await ensureParsed(row);
-      } catch (e) {
-        if (!(e instanceof HttpError)) throw e;
-      }
+    // Materialize profile text with the deterministic local parser. Resume
+    // listing must never depend on an external AI provider being reachable.
+    if (!row.parsed || row.parserVersion !== PARSER_VERSION) {
+      const parsed = parseResume(text);
+      await repo.saveParse(row.id, {
+        parsed: parsed.profile,
+        parserVersion: PARSER_VERSION,
+        quality: parsed.quality,
+        facts: parsed.facts,
+      });
+      return { ...row, parsed: parsed.profile, parserVersion: PARSER_VERSION, parseQuality: parsed.quality };
     }
     return row;
   }
@@ -302,17 +308,16 @@ function createResumeTailoringService({
 
   /** Every resume of the user, the active one flagged, each with its tailored versions. */
   async function listResumes(userId) {
-    let activeId = null;
-    try {
-      activeId = (await resolveOriginalResume(userId)).resume.id;
-    } catch (e) {
-      if (!(e instanceof HttpError)) throw e;
-    }
-    await materializeProfileTextResume(userId); // the profile text is always a selectable resume
-    const [rows, versions] = await Promise.all([
+    // Resume listing is a metadata operation. It must never depend on an AI
+    // provider being reachable: opening “My Resumes” should work during an
+    // AI outage, and parsing can happen lazily when the resume is used.
+    await materializeProfileTextResume(userId);
+    const [rows, versions, active] = await Promise.all([
       repo.listResumes(userId),
       repo.listVersions(userId),
+      repo.findActiveResume(userId),
     ]);
+    const activeId = active?.id || rows.find((r) => r.sourceType === "profile_text")?.id || null;
     return {
       activeResumeId: activeId,
       resumes: rows.map((r) => ({

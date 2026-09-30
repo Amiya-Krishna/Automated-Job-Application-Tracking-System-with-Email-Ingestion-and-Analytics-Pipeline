@@ -56,6 +56,23 @@ test("the profile-text resume is listed and active by default, with card fields"
   assert.equal(l.activeResumeId, r.id);
 });
 
+test("listing resumes does not require an AI provider", async (t) => {
+  const app = await startApp({
+    provider: {
+      analyzeResume() {
+        throw new Error("AI provider unavailable");
+      },
+    },
+  });
+  t.after(app.close);
+  app.repo._seedProfile(1, { resume_text: fx.STUDENT_RESUME });
+  const l = await list(app, app.tokenFor(1));
+  assert.equal(l.resumes.length, 1);
+  assert.equal(l.resumes[0].sourceType, "profile_text");
+  assert.equal(l.resumes[0].isActive, true);
+  assert.ok(l.resumes[0].factsCount >= 20);
+});
+
 test("uploaded PDF and DOCX appear (newest active); invalid files are rejected and never listed", async (t) => {
   const app = await setup();
   t.after(app.close);
