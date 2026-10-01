@@ -42,15 +42,15 @@ export function FormTextInput({ label, error, style, ...rest }: FormTextInputPro
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.half,
+    gap: Spacing.one,
     backgroundColor: 'transparent',
   },
   input: {
     borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     fontSize: 16,
-    minHeight: 48, // accessible touch target
+    minHeight: 52, // accessible touch target
   },
 });

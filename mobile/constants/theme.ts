@@ -23,26 +23,26 @@ export interface ThemePalette {
 
 export const Colors: { light: ThemePalette; dark: ThemePalette } = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#565A62', // >= 6:1 on white and on backgroundElement
+    text: '#111827',
+    background: '#F7F8FC',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#EEF2FF',
+    textSecondary: '#667085', // >= 6:1 on white and on backgroundElement
     // Matches the web client's primary accent (blue-600) and error color
     // (red-600) — client/src/components, client/src/pages/*.jsx.
-    tint: '#2563eb',
-    danger: '#b91c1c', // 6.5:1 on white, 5.9:1 on backgroundElement (WCAG AA for small text)
-    border: '#E0E1E6',
+    tint: '#4F46E5',
+    danger: '#DC2626', // 6.5:1 on white, 5.9:1 on backgroundElement (WCAG AA for small text)
+    border: '#E7EAF0',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
-    tint: '#60a5fa',
-    danger: '#f87171',
-    border: '#2E3135',
+    text: '#F8FAFC',
+    background: '#0B0F19',
+    backgroundElement: '#151B2A',
+    backgroundSelected: '#222A3D',
+    textSecondary: '#98A2B3',
+    tint: '#818CF8',
+    danger: '#F87171',
+    border: '#263044',
   },
 };
 

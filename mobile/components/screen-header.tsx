@@ -48,12 +48,12 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.three,
-    paddingHorizontal: Spacing.four,
+    gap: 12,
+    paddingHorizontal: 20,
   },
   menuButton: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 4,
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   },
   title: {
     flex: 1,
-    fontSize: 28,
+    fontSize: 26,
     lineHeight: 34,
   },
   right: {

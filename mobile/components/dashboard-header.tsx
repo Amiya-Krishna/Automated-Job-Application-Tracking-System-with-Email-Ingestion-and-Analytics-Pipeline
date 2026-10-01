@@ -95,7 +95,7 @@ export function DashboardHeader({ name }: DashboardHeaderProps) {
 
 const styles = StyleSheet.create({
   container: {
-    gap: Spacing.three,
+    gap: 16,
   },
   topRow: {
     flexDirection: 'row',
@@ -103,8 +103,8 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   menuButton: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     alignItems: 'flex-start',
     justifyContent: 'center',
     gap: 4,
@@ -119,11 +119,11 @@ const styles = StyleSheet.create({
   },
   greetingBlock: {
     flex: 1,
-    gap: 1,
+    gap: 3,
   },
   bellButton: {
-    width: 44,
-    height: 44,
+    width: 46,
+    height: 46,
     alignItems: 'center',
     justifyContent: 'center',
   },

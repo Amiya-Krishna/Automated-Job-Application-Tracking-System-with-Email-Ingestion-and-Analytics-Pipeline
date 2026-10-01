@@ -32,6 +32,6 @@ export function SectionHeader({ title, actionLabel, onActionPress }: SectionHead
 }
 
 const styles = StyleSheet.create({
-  container: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  action: { minHeight: 44, minWidth: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  container: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 48 },
+  action: { minHeight: 48, minWidth: 48, alignItems: 'flex-end', justifyContent: 'center' },
 });

@@ -32,10 +32,10 @@ export function SearchBar({ onSubmit, ...rest }: SearchBarProps) {
 const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
+    borderRadius: 16,
+    paddingHorizontal: 16,
     justifyContent: 'center',
-    minHeight: 48,
+    minHeight: 52,
   },
   input: {
     fontSize: 16,

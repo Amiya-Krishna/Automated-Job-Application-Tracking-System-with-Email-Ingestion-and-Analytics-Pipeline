@@ -40,8 +40,8 @@ export const ApplicationRow = memo(function ApplicationRow({ item }: { item: App
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    borderRadius: 18,
+    padding: 16,
     gap: Spacing.two,
     minHeight: 44,
   },

@@ -121,9 +121,9 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.four,
+    paddingBottom: 20,
     marginBottom: Spacing.two,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     gap: Spacing.one,
   },
   name: {
@@ -137,9 +137,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    minHeight: 48,
+    minHeight: 54,
     paddingHorizontal: Spacing.two,
-    borderRadius: Spacing.two,
+    borderRadius: 14,
   },
   menuIcon: {
     fontSize: 18,

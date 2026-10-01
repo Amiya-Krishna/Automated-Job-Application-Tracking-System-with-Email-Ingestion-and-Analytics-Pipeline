@@ -86,8 +86,8 @@ export const JobCard = memo(function JobCard({ item, sourceName, appliedStatus, 
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
+    borderRadius: 18,
+    padding: 16,
     gap: Spacing.two,
     minHeight: 44,
   },
