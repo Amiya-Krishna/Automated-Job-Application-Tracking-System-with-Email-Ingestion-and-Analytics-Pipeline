@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const EXT_ID = "abcdefghijklmnopabcdefghijklmnop";
+
 // Load the real background.js with a mocked chrome + fetch.
 async function boot({ token = "jwt-abc", refreshToken = "refresh-abc", apiBaseUrl, webAppUrl, fetchImpl } = {}) {
   const store = { apiBaseUrl, webAppUrl };
@@ -11,7 +13,7 @@ async function boot({ token = "jwt-abc", refreshToken = "refresh-abc", apiBaseUr
       local: { get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).map((x) => [x, store[x]])), set: async () => {}, remove: async () => {} },
       session: { get: async (k) => Object.fromEntries((Array.isArray(k) ? k : [k]).map((x) => [x, session[x]])), set: async (v) => Object.assign(session, v), remove: async (ks) => { for (const k of ks) delete session[k]; } },
     },
-    runtime: { onMessage: { addListener: (fn) => { listener = fn; } } },
+    runtime: { id: EXT_ID, getURL: (p = "") => `chrome-extension://${EXT_ID}/${p}`, onMessage: { addListener: (fn) => { listener = fn; } } },
   };
   const calls = [];
   globalThis.fetch = async (url, init) => { calls.push({ url, init }); return fetchImpl(url, init, calls); };
@@ -131,15 +133,63 @@ test("concurrent 401s share ONE refresh (the refresh token rotates)", async () =
   assert.equal(refreshes, 1);
 });
 
-test("API_REQUEST is refused for content scripts (sender.tab) and non-absolute paths", async () => {
+// Realistic senders, as Chrome reports them.
+const popupSender = { id: EXT_ID, url: `chrome-extension://${EXT_ID}/popup.html` };
+// The dashboard is opened with chrome.tabs.create(), so it DOES carry sender.tab.
+const dashboardSender = { id: EXT_ID, url: `chrome-extension://${EXT_ID}/dashboard.html#applicationsTab`, tab: { id: 42 } };
+const contentScriptSender = { id: EXT_ID, url: "https://www.linkedin.com/jobs/view/123", tab: { id: 3 } };
+
+test("API_REQUEST from the dashboard (an extension page opened in a tab, so sender.tab is set) is allowed and sent with the user's token + x-client", async () => {
+  const { send, calls } = await boot({ fetchImpl: () => json(200, { jobs: [] }) });
+  const r = await send({ type: "API_REQUEST", path: "/jobs", options: { method: "GET" } }, dashboardSender);
+  assert.deepEqual(r, { ok: true, data: { jobs: [] } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://job-application-tracker-portal-o1ls.onrender.com/api/jobs");
+  assert.equal(calls[0].init.headers.token, "jwt-abc");
+  assert.equal(calls[0].init.headers["x-client"], "extension");
+});
+
+test("API_REQUEST from the toolbar popup (no tab) is still allowed", async () => {
+  const { send } = await boot({ fetchImpl: () => json(200, {}) });
+  assert.equal((await send({ type: "API_REQUEST", path: "/jobs" }, popupSender)).ok, true);
+});
+
+test("API_REQUEST is refused for content scripts running in web pages — and makes no network call", async () => {
   const { send, calls } = await boot({ fetchImpl: () => json(200, {}) });
-  const viaTab = await send({ type: "API_REQUEST", path: "/jobs" }, { tab: { id: 3 } });
-  assert.deepEqual([viaTab.ok, viaTab.code], [false, "forbidden"]);
-  assert.equal((await send({ type: "API_REQUEST", path: "/jobs" })).ok, true); // extension pages still work
-  calls.length = 0;
-  const r = await send({ type: "API_REQUEST", path: "http://evil.example/x" });
+  const r = await send({ type: "API_REQUEST", path: "/jobs" }, contentScriptSender);
   assert.deepEqual([r.ok, r.code], [false, "forbidden"]);
   assert.equal(calls.length, 0);
+});
+
+test("API_REQUEST fails closed for a missing/forged/unparsable sender", async () => {
+  const { send, calls } = await boot({ fetchImpl: () => json(200, {}) });
+  for (const sender of [
+    undefined,
+    {},
+    { tab: { id: 1 } },
+    { id: EXT_ID },                                                     // no url
+    { id: "someotherextensionidsomeotherextensi", url: popupSender.url },   // wrong extension id
+    { id: EXT_ID, url: "https://evil.example/chrome-extension://" + EXT_ID + "/dashboard.html" },
+    { id: EXT_ID, url: `https://${EXT_ID}.chrome-extension.evil.example/` },
+    { id: EXT_ID, url: "not a url" },
+  ]) {
+    const r = await send({ type: "API_REQUEST", path: "/jobs" }, sender);
+    assert.deepEqual([r.ok, r.code], [false, "forbidden"], JSON.stringify(sender));
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("API_REQUEST refuses non-relative paths even from the dashboard (no token sent to other hosts)", async () => {
+  const { send, calls } = await boot({ fetchImpl: () => json(200, {}) });
+  for (const path of ["http://evil.example/x", "jobs", 5, undefined]) {
+    const r = await send({ type: "API_REQUEST", path }, dashboardSender);
+    assert.deepEqual([r.ok, r.code], [false, "forbidden"], String(path));
+  }
+  assert.equal(calls.length, 0);
+  // A leading "//" is still just a path under the API base (string-concatenated), never another host.
+  await send({ type: "API_REQUEST", path: "//evil.example/x" }, dashboardSender);
+  assert.ok(calls[0].url.startsWith("https://job-application-tracker-portal-o1ls.onrender.com/api/"), calls[0].url);
+  assert.equal(new URL(calls[0].url).host, "job-application-tracker-portal-o1ls.onrender.com");
 });
 
 test("mutations are never silently replayed after a session refresh", async () => {

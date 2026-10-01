@@ -199,6 +199,20 @@ async function resumeApi(path, { method = "GET", body } = {}) {
   return apiJson(`/resume${path}`, { method, headers: JSON_HEADERS, body: body === undefined ? undefined : JSON.stringify(body) }, "Resume request failed");
 }
 
+// True only when the message was sent by one of THIS extension's own pages
+// (popup, or the dashboard opened in a tab). The browser sets sender.url to the
+// URL of the sending frame and a web page cannot forge it, so a content script
+// running inside linkedin.com / indeed.com has a sender.url on that site's
+// origin and is rejected. Anything missing or unparsable fails closed.
+function isExtensionPage(sender) {
+  try {
+    if (!sender || !sender.url || sender.id !== chrome.runtime.id) return false;
+    return new URL(sender.url).origin === new URL(chrome.runtime.getURL("")).origin;
+  } catch {
+    return false;
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
     try {
@@ -241,7 +255,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         case "API_REQUEST": {
           // Generic authorized proxy for the extension's own pages (dashboard).
           // Content scripts run inside third-party pages, so they never get it.
-          if (sender?.tab || typeof message.path !== "string" || !message.path.startsWith("/")) {
+          // NOTE: do not use `sender.tab` to tell them apart: the dashboard is
+          // opened with chrome.tabs.create(), so ITS messages carry sender.tab
+          // too. isExtensionPage() checks where the message really came from.
+          if (!isExtensionPage(sender) || typeof message.path !== "string" || !message.path.startsWith("/")) {
             sendResponse({ ok: false, error: "Request not allowed.", code: "forbidden" });
             break;
           }
