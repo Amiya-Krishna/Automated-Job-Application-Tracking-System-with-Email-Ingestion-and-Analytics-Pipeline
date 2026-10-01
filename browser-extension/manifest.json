@@ -5,7 +5,8 @@
   "description": "Save jobs from LinkedIn and Indeed to your TrackTrail dashboard, see how well your resume matches, and tailor it truthfully.",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "identity"
   ],
   "host_permissions": [
     "https://job-application-tracker-portal-o1ls.onrender.com/*"

@@ -4,7 +4,6 @@ import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 import { parseJobEmail } from "../utils/emailParser";
-import { clearOAuthAccessTokenHandoff, preserveAccessTokenForOAuth } from "../utils/auth";
 
 function Integrations() {
   const navigate = useNavigate();
@@ -54,30 +53,13 @@ function Integrations() {
 
   const connectGmail = async () => {
     try {
-      // Keep OAuth in this SAME tab. Google will unload React during the
-      // top-level navigation, so preserve the current short-lived access token
-      // in this tab's sessionStorage immediately before leaving. AuthContext
-      // consumes that one-time handoff when the app loads again.
-      const res = await api.get("/gmail/auth-url", {
-        params: {
-          returnTo: `${location.pathname}${location.search}`,
-        },
-      });
-
-      if (!res.data?.url) {
-        throw new Error("The server did not return a Gmail authorization URL.");
-      }
-
-      if (!preserveAccessTokenForOAuth()) {
-        throw new Error("Could not preserve the current web session.");
-      }
-
-      window.location.assign(res.data.url);
+      // returnTo: the page the button was clicked on. The server validates it (same-origin
+      // path only) and signs it into the OAuth state; it is not trusted as a URL.
+      const res = await api.get("/gmail/auth-url", { params: { returnTo: `${location.pathname}${location.search}` } });
+      window.location.href = res.data.url;
     } catch (err) {
-      clearOAuthAccessTokenHandoff();
       toast.error(
         err.response?.data?.message ||
-          err.message ||
           "Gmail integration isn't configured on the backend yet"
       );
     }

@@ -79,9 +79,26 @@ function isAllowedGmailRedirect(url, env = process.env) {
   return isAllowedResetRedirect(url.replace(/gmail-callback$/, "reset-password"), env);
 }
 
-// Where the extension flow lands: a static page on THIS API server. EXTENSION_REDIRECT_URL
-// is honoured only when it is an http(s) URL (a chrome-extension:// target is what made
-// Chrome show "Blocked").
+// The browser extension uses chrome.identity.launchWebAuthFlow(). Google still
+// redirects to the server callback (GOOGLE_REDIRECT_URI), and the server then
+// redirects to Chrome's identity callback (https://<extension-id>.chromiumapp.org/...).
+// This value MUST be explicitly configured so an authenticated caller cannot
+// choose an arbitrary chromiumapp.org destination.
+function extensionOAuthRedirectUrl(env = process.env) {
+  const configured = env.EXTENSION_OAUTH_REDIRECT_URI || env.EXTENSION_REDIRECT_URL;
+  if (!configured) return null;
+  try {
+    const u = new URL(configured);
+    if (u.protocol !== "https:" || !/^[a-z0-9-]+\.chromiumapp\.org$/i.test(u.hostname)) return null;
+    if (u.username || u.password || u.search || u.hash) return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+// Legacy helper retained for deployments/tests that still serve the old landing
+// page. New extension OAuth must use extensionOAuthRedirectUrl().
 function extensionLandingUrl(env = process.env) {
   const configured = env.EXTENSION_REDIRECT_URL;
   if (configured) {
@@ -94,11 +111,7 @@ function extensionLandingUrl(env = process.env) {
   }
   let base = env.SERVER_URL;
   if (!base && env.GOOGLE_REDIRECT_URI) {
-    try {
-      base = new URL(env.GOOGLE_REDIRECT_URI).origin;
-    } catch {
-      /* fall through */
-    }
+    try { base = new URL(env.GOOGLE_REDIRECT_URI).origin; } catch { /* fall through */ }
   }
   base = (base || `http://localhost:${env.PORT || 5000}`).replace(/\/+$/, "");
   return `${base}/extension/gmail-success.html`;
@@ -111,4 +124,5 @@ module.exports = {
   withParam,
   isAllowedGmailRedirect,
   extensionLandingUrl,
+  extensionOAuthRedirectUrl,
 };

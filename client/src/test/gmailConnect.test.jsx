@@ -1,6 +1,5 @@
-// Web Gmail OAuth stays in the current tab. The existing short-lived access
-// token is bridged through sessionStorage only for the OAuth navigation, then
-// consumed by AuthContext on the next application load.
+// Web: the Connect button tells the server which page it was clicked on, and the page the
+// user returns to shows "connected" straight away without any re-login step in the UI.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -9,17 +8,12 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 vi.mock("../api", () => ({ default: { get: vi.fn(), post: vi.fn() } }));
 vi.mock("../components/Navbar", () => ({ default: () => null }));
 vi.mock("react-hot-toast", () => ({ default: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
-vi.mock("../utils/auth", () => ({
-  preserveAccessTokenForOAuth: vi.fn(() => true),
-  clearOAuthAccessTokenHandoff: vi.fn(),
-}));
-
 const { default: api } = await import("../api");
 const { default: toast } = await import("react-hot-toast");
-const { preserveAccessTokenForOAuth, clearOAuthAccessTokenHandoff } = await import("../utils/auth");
 const { default: Integrations } = await import("../pages/Integrations");
 
 const GOOGLE = "https://accounts.google.com/o/oauth2/v2/auth?state=signed";
+const realLocation = window.location;
 
 function renderAt(url) {
   return render(
@@ -31,52 +25,20 @@ function renderAt(url) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  window.history.replaceState({}, "", "/integrations");
+  Object.defineProperty(window, "location", { configurable: true, value: { ...realLocation, href: "http://localhost:5173/integrations" } });
+});
+afterEach(() => {
+  cleanup();
+  Object.defineProperty(window, "location", { configurable: true, value: realLocation });
 });
 
-afterEach(() => cleanup());
-
 describe("web Gmail connect", () => {
-  it("preserves the current session and navigates the SAME tab to Google", async () => {
-    api.get.mockImplementation((path) => (
-      path === "/gmail/status"
-        ? Promise.resolve({ data: { connected: false } })
-        : Promise.resolve({ data: { url: GOOGLE } })
-    ));
-
-    const assignSpy = vi.spyOn(window.location, "assign").mockImplementation(() => {});
-
+  it("sends the current route as returnTo and then navigates to Google", async () => {
+    api.get.mockImplementation((path) => (path === "/gmail/status" ? Promise.resolve({ data: { connected: false } }) : Promise.resolve({ data: { url: GOOGLE } })));
     renderAt("/integrations?tab=email");
     await userEvent.click(await screen.findByRole("button", { name: "Connect Gmail" }));
-
-    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith(GOOGLE));
-    expect(preserveAccessTokenForOAuth).toHaveBeenCalledTimes(1);
-    expect(api.get).toHaveBeenCalledWith("/gmail/auth-url", {
-      params: { returnTo: "/integrations?tab=email" },
-    });
-    expect(window.open).not.toHaveBeenCalled();
-
-    assignSpy.mockRestore();
-  });
-
-  it("does not navigate if the current session cannot be preserved", async () => {
-    preserveAccessTokenForOAuth.mockReturnValue(false);
-    api.get.mockImplementation((path) => (
-      path === "/gmail/status"
-        ? Promise.resolve({ data: { connected: false } })
-        : Promise.resolve({ data: { url: GOOGLE } })
-    ));
-
-    const assignSpy = vi.spyOn(window.location, "assign").mockImplementation(() => {});
-
-    renderAt("/integrations");
-    await userEvent.click(await screen.findByRole("button", { name: "Connect Gmail" }));
-
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Could not preserve the current web session."));
-    expect(assignSpy).not.toHaveBeenCalled();
-    expect(clearOAuthAccessTokenHandoff).toHaveBeenCalledTimes(1);
-
-    assignSpy.mockRestore();
+    await waitFor(() => expect(window.location.href).toBe(GOOGLE));
+    expect(api.get).toHaveBeenCalledWith("/gmail/auth-url", { params: { returnTo: "/integrations?tab=email" } });
   });
 
   it("after returning with ?gmail=connected the page shows Gmail connected immediately and cleans the URL", async () => {
@@ -85,7 +47,7 @@ describe("web Gmail connect", () => {
     expect(await screen.findByText("Gmail connected")).toBeTruthy();
     expect(toast.success).toHaveBeenCalledWith("Gmail connected");
     expect(api.get).toHaveBeenCalledWith("/gmail/status");
-    expect(api.post).not.toHaveBeenCalled();
+    expect(api.post).not.toHaveBeenCalled(); // no login / session call from the page itself
   });
 
   it("a failed callback reports the real failure, not a connected state", async () => {

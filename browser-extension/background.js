@@ -213,112 +213,82 @@ function isExtensionPage(sender) {
   }
 }
 
-// ---------- Gmail connect (OAuth in one temporary tab) ----------
-// Google's consent screen must open in a normal tab, but it is only a visit:
-//   1. the extension page that clicked Connect asks us (GMAIL_CONNECT) to start;
-//   2. we remember which tab/window that was and open the Google URL;
-//   3. after authorizing, Google -> API callback -> a normal https landing page on
-//      the API server (/extension/gmail-success.html?gmail=<result>). The callback
-//      deliberately does NOT redirect to a chrome-extension:// URL: Chrome blocks a
-//      web page from navigating to one, which is what showed up as "Blocked" even
-//      though the connection had succeeded;
-//   4. we see that landing URL, close the OAuth tab, refocus the ORIGINAL page
-//      (never reloaded, so its signed-in session is untouched) and tell it to
-//      re-check the real status from the API.
-// The landing URL's `gmail=` value is only a hint for the message shown; whether
-// Gmail is connected is always re-read from the authenticated /gmail/status.
-const GMAIL_FLOW_KEY = "gmailFlow";
-const GMAIL_LANDING_PATH = "/extension/gmail-success.html";
+// ---------- Gmail connect (Chrome Identity OAuth) -------------------------
+// Do NOT open Google with chrome.tabs.create(). That creates a normal browser tab
+// and makes the extension responsible for watching the OAuth redirect.
+// chrome.identity.launchWebAuthFlow() is the supported extension OAuth primitive:
+// Chrome owns the interactive OAuth UI and resolves the promise when the server
+// redirects to this extension's chromiumapp.org callback URL.
 const GOOGLE_AUTH_ORIGIN = "https://accounts.google.com";
+const GMAIL_FLOW_KEY = "gmailFlow";
 
-async function readGmailFlow() {
-  try { return (await sessionStore().get(GMAIL_FLOW_KEY))[GMAIL_FLOW_KEY] || null; } catch { return null; }
-}
 async function clearGmailFlow() {
   try { await sessionStore().remove([GMAIL_FLOW_KEY]); } catch { /* best effort */ }
 }
-async function focusTab(tabId, windowId) {
-  try {
-    await chrome.tabs.update(tabId, { active: true });
-    if (windowId != null && chrome.windows?.update) await chrome.windows.update(windowId, { focused: true });
-    return true;
-  } catch {
-    return false; // the tab no longer exists
-  }
-}
+
 function notifyGmailResult(status) {
   try {
     const p = chrome.runtime.sendMessage({ type: "GMAIL_CONNECT_RESULT", status });
-    if (p && p.catch) p.catch(() => {}); // no extension page open to listen
+    if (p && p.catch) p.catch(() => {});
   } catch { /* nobody listening */ }
 }
 
-async function startGmailConnect(sender) {
-  // A flow already in progress: bring its tab forward instead of opening another.
-  const existing = await readGmailFlow();
-  if (existing?.oauthTabId != null) {
-    try {
-      const tab = await chrome.tabs.get(existing.oauthTabId);
-      if (tab) { await focusTab(existing.oauthTabId, tab.windowId); return { reused: true }; }
-    } catch { /* it was closed; start a new one */ }
+function getExtensionOAuthRedirectUrl() {
+  const url = chrome.identity.getRedirectURL("gmail");
+  return new URL(url);
+}
+
+function parseGmailOAuthResult(rawUrl, expectedRedirect) {
+  let u;
+  try { u = new URL(rawUrl); } catch { throw new TTError(GENERIC_MESSAGE, { code: "bad_oauth_result" }); }
+  if (u.origin !== expectedRedirect.origin || u.pathname !== expectedRedirect.pathname) {
+    throw new TTError(GENERIC_MESSAGE, { code: "bad_oauth_result" });
   }
-  const { url } = await apiJson("/gmail/auth-url?source=extension", {}, "Couldn't start the Gmail connection");
+  const status = u.searchParams.get("gmail");
+  return ["connected", "no_refresh_token", "error"].includes(status) ? status : "error";
+}
+
+async function startGmailConnect() {
+  const existing = await sessionStore().get(GMAIL_FLOW_KEY);
+  if (existing?.[GMAIL_FLOW_KEY]?.startedAt) return { reused: true };
+
+  const redirect = getExtensionOAuthRedirectUrl();
+  const query = new URLSearchParams({ source: "extension" });
+  // The server validates this against its configured EXTENSION_OAUTH_REDIRECT_URI
+  // and signs the exact value into OAuth state. It is never trusted from the
+  // callback request itself.
+  query.set("redirectUri", redirect.toString());
+
+  const { url } = await apiJson(`/gmail/auth-url?${query.toString()}`, {}, "Couldn't start the Gmail connection");
   let target;
   try { target = new URL(url); } catch { target = null; }
-  if (!target || target.origin !== GOOGLE_AUTH_ORIGIN) throw new TTError(GENERIC_MESSAGE, { code: "bad_auth_url" });
-
-  const origin = sender?.tab || null; // the extension page (dashboard) that clicked Connect
-  const create = { url: target.toString(), active: true };
-  if (origin) { create.windowId = origin.windowId; create.openerTabId = origin.id; if (Number.isInteger(origin.index)) create.index = origin.index + 1; }
-  const tab = await chrome.tabs.create(create);
-  const base = await getApiBaseUrl();
-  await sessionStore().set({
-    [GMAIL_FLOW_KEY]: {
-      oauthTabId: tab.id,
-      originTabId: origin ? origin.id : null,
-      originWindowId: origin ? origin.windowId : null,
-      landingOrigin: new URL(base).origin,
-      startedAt: Date.now(),
-    },
-  });
-  return { reused: false };
-}
-
-async function finishGmailFlow(flow, status) {
-  await clearGmailFlow();
-  try { await chrome.tabs.remove(flow.oauthTabId); } catch { /* already closed */ }
-  let returned = flow.originTabId != null && (await focusTab(flow.originTabId, flow.originWindowId));
-  if (!returned) {
-    // The page that started this is gone (or it was the toolbar popup): open the Email tab once.
-    try { await chrome.tabs.create({ url: chrome.runtime.getURL("dashboard.html#emailTab") }); } catch { /* ignore */ }
+  if (!target || target.origin !== GOOGLE_AUTH_ORIGIN) {
+    throw new TTError(GENERIC_MESSAGE, { code: "bad_auth_url" });
   }
-  notifyGmailResult(status);
-}
 
-async function onGmailTabUpdated(tabId, changeInfo, tab) {
-  const url = changeInfo?.url || tab?.url;
-  if (!url) return;
-  const flow = await readGmailFlow();
-  if (!flow || flow.oauthTabId !== tabId) return;
-  let u;
-  try { u = new URL(url); } catch { return; }
-  // Only the API server's own landing page counts (exact origin + path).
-  if (u.origin !== flow.landingOrigin || u.pathname !== GMAIL_LANDING_PATH) return;
-  const raw = u.searchParams.get("gmail");
-  await finishGmailFlow(flow, ["connected", "no_refresh_token", "error"].includes(raw) ? raw : "error");
-}
+  await sessionStore().set({ [GMAIL_FLOW_KEY]: { startedAt: Date.now(), redirectUri: redirect.toString() } });
 
-async function onGmailTabRemoved(tabId) {
-  const flow = await readGmailFlow();
-  if (!flow || flow.oauthTabId !== tabId) return;
-  // The user closed the Google tab themselves (or it finished and we closed it).
-  await clearGmailFlow();
-  if (flow.originTabId != null) await focusTab(flow.originTabId, flow.originWindowId);
-  notifyGmailResult("cancelled");
+  try {
+    const resultUrl = await chrome.identity.launchWebAuthFlow({
+      url: target.toString(),
+      interactive: true,
+    });
+    const status = parseGmailOAuthResult(resultUrl, redirect);
+    await clearGmailFlow();
+    notifyGmailResult(status);
+    return { reused: false, status };
+  } catch (err) {
+    await clearGmailFlow();
+    // User cancellation is intentionally reported separately; provider/server
+    // errors stay generic so raw OAuth/network details never reach the UI.
+    const message = String(err?.message || "").toLowerCase();
+    if (message.includes("canceled") || message.includes("cancelled") || message.includes("user")) {
+      notifyGmailResult("cancelled");
+      return { reused: false, status: "cancelled" };
+    }
+    throw new TTError(GENERIC_MESSAGE, { code: "oauth_failed" });
+  }
 }
-
-chrome.tabs?.onUpdated?.addListener((tabId, changeInfo, tab) => { onGmailTabUpdated(tabId, changeInfo, tab).catch(() => {}); });
-chrome.tabs?.onRemoved?.addListener((tabId) => { onGmailTabRemoved(tabId).catch(() => {}); });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {

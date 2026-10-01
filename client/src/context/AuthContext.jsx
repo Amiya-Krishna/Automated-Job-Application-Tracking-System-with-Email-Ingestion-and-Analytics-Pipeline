@@ -1,10 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import api, { refreshAccessToken } from "../api";
-import {
-  clearAccessToken,
-  restoreAccessTokenAfterOAuth,
-  setAccessToken,
-} from "../utils/auth";
+import { clearAccessToken, setAccessToken } from "../utils/auth";
 
 const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
@@ -12,27 +8,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const restore = useCallback(async () => {
     setStatus("loading");
-    try {
-      // A Google OAuth flow is a full-page navigation in the same tab.
-      // Recover the one-time handoff first so the existing authenticated
-      // session survives the navigation without putting the token in the URL.
-      const handedOffToken = restoreAccessTokenAfterOAuth();
-
-      // If OAuth happened while the short-lived access token was still valid,
-      // /auth/me can validate it directly. Otherwise api.js will use the normal
-      // HttpOnly refresh-cookie flow after receiving a 401.
-      if (!handedOffToken) {
-        await refreshAccessToken();
-      }
-
-      const { data } = await api.get("/auth/me");
-      setUser(data.user);
-      setStatus("authenticated");
-    } catch {
-      clearAccessToken();
-      setUser(null);
-      setStatus("anonymous");
-    }
+    try { await refreshAccessToken(); const { data } = await api.get("/auth/me"); setUser(data.user); setStatus("authenticated"); }
+    catch { clearAccessToken(); setUser(null); setStatus("anonymous"); }
   }, []);
   useEffect(() => { restore(); const ended = () => { clearAccessToken(); setUser(null); setStatus("anonymous"); }; window.addEventListener("tracktrail:session-ended", ended); return () => window.removeEventListener("tracktrail:session-ended", ended); }, [restore]);
   const login = useCallback((data) => { setAccessToken(data.accessToken || data.token); setUser(data.user); setStatus("authenticated"); }, []);

@@ -11,6 +11,7 @@ const {
   withParam,
   isAllowedGmailRedirect,
   extensionLandingUrl,
+  extensionOAuthRedirectUrl,
 } = require("../utils/oauthReturn");
 
 const prisma = require("../lib/prisma");
@@ -29,10 +30,9 @@ const prisma = require("../lib/prisma");
 // so `state` can't be abused as an open redirect to an arbitrary domain.
 
 // STEP 1 — Get Google auth URL
-// The browser extension calls this as /gmail/auth-url?source=extension so
-// the callback below knows to send the browser back to the extension's own
-// dashboard instead of the Vercel-hosted web client. The mobile app calls
-// it as /gmail/auth-url?source=mobile&redirectUri=<its own deep link>.
+// The browser extension calls this as /gmail/auth-url?source=extension. The
+// server signs its configured Chrome Identity redirect into OAuth state. The
+// mobile app calls it as /gmail/auth-url?source=mobile&redirectUri=<its own deep link>.
 router.get("/auth-url", auth, (req, res) => {
   try {
     const oauth2Client = getOAuthClient();
@@ -51,7 +51,22 @@ router.get("/auth-url", auth, (req, res) => {
     // callback never creates, rotates or revokes a login session.
     const statePayload = { id: req.user.id, sid: req.user.sid, source, purpose: "gmail_oauth" };
 
-    if (source === "mobile") {
+    if (source === "extension") {
+      const redirectUri = extensionOAuthRedirectUrl();
+      if (!redirectUri) {
+        return res.status(503).json({
+          message: "Gmail extension OAuth is not configured on the server.",
+          code: "extension_oauth_not_configured",
+        });
+      }
+      if (req.query.redirectUri && req.query.redirectUri !== redirectUri) {
+        return res.status(400).json({
+          message: "The extension OAuth redirect URI does not match the server configuration.",
+          code: "extension_redirect_mismatch",
+        });
+      }
+      statePayload.redirectUri = redirectUri;
+    } else if (source === "mobile") {
       const redirectUri = req.query.redirectUri;
       if (!isAllowedGmailRedirect(redirectUri)) {
         return res.status(400).json({
@@ -61,7 +76,6 @@ router.get("/auth-url", auth, (req, res) => {
       }
       statePayload.redirectUri = redirectUri;
     } else if (source === "web") {
-      statePayload.popup = req.query.popup === "1";
       // Return to the origin that started the flow (not "whichever CLIENT_URL
       // entry is first") and to the page the button was clicked on.
       statePayload.returnOrigin = resolveWebReturnOrigin(req.get("origin"));
@@ -95,9 +109,8 @@ router.get("/auth-url", auth, (req, res) => {
 //
 // Where it returns to:
 //   web       -> <origin that started the flow><page that started it>?gmail=<status>
-//   extension -> a page on this server (extensionLandingUrl); the extension's service
-//                worker watches for it, closes the tab and refocuses the dashboard.
-//                (A redirect to chrome-extension://... is blocked by Chrome.)
+//   extension -> Chrome's chromiumapp.org identity callback; launchWebAuthFlow()
+//                resolves in the extension without creating a normal browser tab.
 //   mobile    -> the app's own gmail-callback deep link, consumed by the in-app auth session.
 router.get("/callback", async (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -106,7 +119,9 @@ router.get("/callback", async (req, res) => {
 
   function redirectTarget(status, ctx = {}) {
     const { source = "web", mobileRedirectUri, returnOrigin, returnPath } = ctx;
-    if (source === "extension") return withParam(extensionLandingUrl(), "gmail", status);
+    if (source === "extension" && extensionOAuthRedirectUrl() === ctx.extensionRedirectUri) {
+      return withParam(ctx.extensionRedirectUri, "gmail", status);
+    }
     if (source === "mobile" && isAllowedGmailRedirect(mobileRedirectUri)) {
       const sep = mobileRedirectUri.includes("?") ? "&" : "?";
       return `${mobileRedirectUri}${sep}gmail=${status}`;
@@ -117,63 +132,12 @@ router.get("/callback", async (req, res) => {
     return `${origin}${path}${path.includes("?") ? "&" : "?"}gmail=${status}`;
   }
 
-  function renderWebPopup(status, ctx = {}) {
-    const origin = allowedOrigins.includes(ctx.returnOrigin)
-      ? ctx.returnOrigin
-      : defaultWebOrigin;
-    const path = sanitizeReturnPath(ctx.returnPath);
-    const returnUrl = `${origin}${path}${path.includes("?") ? "&" : "?"}gmail=${status}`;
-
-    // These values are server-generated and origin/path validated above. Escape
-    // '<' before embedding JSON in a script so even a deliberately crafted path
-    // cannot terminate the script element. No login/session token is exposed.
-    const payload = JSON.stringify({
-      type: "tracktrail:gmail-oauth",
-      status,
-    }).replace(/</g, "\\u003c");
-    const targetOrigin = JSON.stringify(origin).replace(/</g, "\\u003c");
-    const fallbackUrl = JSON.stringify(returnUrl).replace(/</g, "\\u003c");
-
-    res.type("html").send(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="referrer" content="no-referrer">
-    <meta name="robots" content="noindex,nofollow">
-    <title>TrackTrail — Gmail</title>
-  </head>
-  <body>
-    <p>Gmail connection finished. You can close this window.</p>
-    <script>
-      (() => {
-        const message = ${payload};
-        const targetOrigin = ${targetOrigin};
-        const fallbackUrl = ${fallbackUrl};
-
-        if (window.opener && !window.opener.closed) {
-          window.opener.postMessage(message, targetOrigin);
-          setTimeout(() => window.close(), 150);
-          return;
-        }
-
-        // If the popup was detached or opened without an opener, preserve the
-        // old web fallback instead of leaving the user on a blank page.
-        window.location.replace(fallbackUrl);
-      })();
-    </script>
-  </body>
-</html>`);
-  }
-
-  let ctx = { source: "web", popup: false };
+  let ctx = { source: "web" };
 
   try {
-    const { code, state, error: googleError } = req.query;
+    const { code, state } = req.query;
 
-    // Google can return an OAuth denial with `state` but without `code`. Decode
-    // the signed state first so popup flows can report that failure to the
-    // still-open parent window instead of falling back to a full-page redirect.
-    if (typeof state !== "string" || !state) {
+    if (typeof code !== "string" || typeof state !== "string" || !code || !state) {
       return res.redirect(redirectTarget("error", ctx));
     }
 
@@ -182,22 +146,15 @@ router.get("/callback", async (req, res) => {
     ctx = {
       source: decoded.source === "extension" ? "extension" : decoded.source === "mobile" ? "mobile" : "web",
       mobileRedirectUri: decoded.redirectUri,
+      extensionRedirectUri: decoded.redirectUri,
       returnOrigin: decoded.returnOrigin,
       returnPath: decoded.returnPath,
-      popup: decoded.source === "web" && decoded.popup === true,
     };
-
-    if (googleError || typeof code !== "string" || !code) {
-      if (ctx.source === "web" && ctx.popup) return renderWebPopup("error", ctx);
-      return res.redirect(redirectTarget("error", ctx));
-    }
-
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
-      if (ctx.source === "web" && ctx.popup) return renderWebPopup("no_refresh_token", ctx);
       return res.redirect(redirectTarget("no_refresh_token", ctx));
     }
 
@@ -207,11 +164,9 @@ router.get("/callback", async (req, res) => {
       data: { gmailRefreshToken: tokens.refresh_token },
     });
 
-    if (ctx.source === "web" && ctx.popup) return renderWebPopup("connected", ctx);
     res.redirect(redirectTarget("connected", ctx));
   } catch (err) {
     console.error("[gmail-oauth] callback failed");
-    if (ctx.source === "web" && ctx.popup) return renderWebPopup("error", ctx);
     res.redirect(redirectTarget("error", ctx));
   }
 });
