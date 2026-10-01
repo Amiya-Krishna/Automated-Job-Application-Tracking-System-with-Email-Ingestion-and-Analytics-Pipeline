@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const { buildCorsOptions } = require("./middleware/corsOptions");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -21,6 +22,7 @@ const auth = require('./middleware/authMiddleware');
 // the first request.
 prisma.$connect()
   .then(() => console.log("Postgres connected"))
+  .then(() => require("./lib/schemaCheck").warnIfSessionsTableMissing())
   .then(() => seedJobSources())
   .then(() => console.log("job_sources seeded (manual/linkedin/indeed/gmail/extension)"))
   .catch((err) => console.error("Postgres connection error", err));
@@ -76,27 +78,7 @@ if (process.env.NODE_ENV === "production" && allowedOrigins.length === 0) {
   throw new Error("CLIENT_URL must list one or more HTTPS frontend origins in production.");
 }
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // In development, allow non-browser requests and an unset local origin.
-      // and always allow the Chrome extension (its origin looks like
-      // "chrome-extension://<random-id>", which can't be listed in
-      // CLIENT_URL ahead of time).
-      if (
-        (process.env.NODE_ENV !== "production" && (!origin || allowedOrigins.length === 0)) ||
-        allowedOrigins.includes(origin) ||
-        origin.startsWith("chrome-extension://")
-      ) {
-        return callback(null, true);
-      }
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    // lets the browser read the filename of resume exports cross-origin
-    exposedHeaders: ["Content-Disposition"],
-  })
-);
+app.use(cors(buildCorsOptions({ allowedOrigins })));
 app.use(express.json());
 app.use(require("./routes/wellKnownRoutes"));
 app.use(express.static("public"));

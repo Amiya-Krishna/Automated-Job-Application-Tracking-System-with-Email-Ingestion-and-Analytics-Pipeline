@@ -95,16 +95,18 @@ function createResumeTailoringService({
   }
 
   /**
-   * The user's "original" resume: an explicit resumeId, else whichever of
-   * (latest upload, current profile text) was updated most recently. Resume
-   * rows are immutable; new source text creates a new row.
+   * The single source of truth for "which resume is in use": an explicit
+   * activation / upload wins, unless the profile text was changed to something
+   * different AFTER it was activated (then the newer profile text wins); with
+   * no explicit choice, the newest of (latest upload, profile text) wins. A
+   * tombstoned profile text is never selected. Both resolveOriginalResume()
+   * (what tailoring uses) and listResumes() (what the UI shows as active) go
+   * through here so they can never disagree.
+   *
+   * Returns the resume row, or null when there is none. With `strict` it
+   * throws the same HttpErrors resolveOriginalResume always has.
    */
-  async function resolveOriginalResume(userId, resumeId) {
-    if (resumeId) {
-      const r = await repo.findResumeById(userId, resumeId);
-      if (!r) throw new HttpError(404, "resume_not_found", "Resume not found.");
-      return ensureParsed(r);
-    }
+  async function selectOriginalRow(userId, { strict = true } = {}) {
     const profileRow = await repo.getProfileRow(userId);
     const profText = profileRow?.resume_text
       ? sanitizeResumeText(profileRow.resume_text, {
@@ -120,7 +122,7 @@ function createResumeTailoringService({
         profText &&
         sha256(profText) !== active.textHash &&
         new Date(profileRow.updated_at || 0) > new Date(active.activatedAt);
-      if (!profileNewer) return ensureParsed(active);
+      if (!profileNewer) return active;
     }
 
     const upload = await repo.findLatestUploadResume(userId);
@@ -137,8 +139,11 @@ function createResumeTailoringService({
       )
         chosen = upload;
       else {
-        if (profText.length < LIMITS.MIN_RESUME_CHARS && !upload)
-          throw new HttpError(422, "resume_unreadable", MSG.PARSE_FAILED);
+        if (profText.length < LIMITS.MIN_RESUME_CHARS && !upload) {
+          if (strict)
+            throw new HttpError(422, "resume_unreadable", MSG.PARSE_FAILED);
+          return null;
+        }
         chosen =
           (await repo.findResumeByHash(userId, hash)) ||
           (await createResumeRow(userId, {
@@ -150,8 +155,25 @@ function createResumeTailoringService({
       }
     } else if (upload) chosen = upload;
 
-    if (!chosen) throw new HttpError(422, "no_resume", MSG.NO_RESUME);
-    return ensureParsed(chosen);
+    if (!chosen) {
+      if (strict) throw new HttpError(422, "no_resume", MSG.NO_RESUME);
+      return null;
+    }
+    return chosen;
+  }
+
+  /**
+   * The user's "original" resume: an explicit resumeId, else the row chosen by
+   * selectOriginalRow(). Resume rows are immutable; new source text creates a
+   * new row.
+   */
+  async function resolveOriginalResume(userId, resumeId) {
+    if (resumeId) {
+      const r = await repo.findResumeById(userId, resumeId);
+      if (!r) throw new HttpError(404, "resume_not_found", "Resume not found.");
+      return ensureParsed(r);
+    }
+    return ensureParsed(await selectOriginalRow(userId));
   }
 
   /** Make sure the resume derived from the user's profile text exists as a row (no-op when there is none). */
@@ -312,12 +334,18 @@ function createResumeTailoringService({
     // provider being reachable: opening “My Resumes” should work during an
     // AI outage, and parsing can happen lazily when the resume is used.
     await materializeProfileTextResume(userId);
-    const [rows, versions, active] = await Promise.all([
+    const [rows, versions] = await Promise.all([
       repo.listResumes(userId),
       repo.listVersions(userId),
-      repo.findActiveResume(userId),
     ]);
-    const activeId = active?.id || rows.find((r) => r.sourceType === "profile_text")?.id || null;
+    // Same selection rules as resolveOriginalResume(): the active resume shown
+    // here is exactly the one tailoring will use. Non-strict so that listing
+    // never throws for a user with no usable resume.
+    const selected = await selectOriginalRow(userId, { strict: false });
+    const activeId =
+      (selected && rows.some((r) => r.id === selected.id) ? selected.id : null) ||
+      rows.find((r) => r.sourceType === "profile_text")?.id ||
+      null;
     return {
       activeResumeId: activeId,
       resumes: rows.map((r) => ({

@@ -187,11 +187,16 @@ router.post("/login", loginLimiter, async (req, res) => {
       user: publicUser(user),
     });
   } catch (error) {
+    // Log the error class / Prisma code only (never the message: it can echo
+    // user data). P2021 = table missing (migration not deployed), P2022 =
+    // column missing, TypeError = stale generated Prisma client.
+    console.error(`[auth/login] failed: ${(error && (error.code || error.name)) || "unknown"}`);
     res.status(500).json({
       message: error.message,
     });
   }
 });
+
 
 // REFRESH — exchanges a refresh token for a new access token AND a new refresh
 // token (rotation). 401 means the session is over and the user must sign in.

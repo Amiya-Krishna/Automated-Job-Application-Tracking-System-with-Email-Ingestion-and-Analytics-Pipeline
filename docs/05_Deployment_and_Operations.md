@@ -586,6 +586,34 @@ pm2 restart job-tracker
 
 ## Troubleshooting Deployment
 
+### Issue: Login returns "TrackTrail is having trouble right now" (HTTP 500)
+
+Extension, mobile and web logins all create a row in `user_sessions` via
+`sessions.issueSession()`. A 500 from `POST /api/auth/login` after the
+credentials were accepted almost always means the production database or the
+generated Prisma client is behind the code:
+
+- `[auth/login] failed: P2021` in the server log: table `user_sessions` is
+  missing. Run `npx prisma migrate deploy` against the production
+  `DATABASE_URL` (migration `20260929000000_mobile_sessions_push`).
+- `[auth/login] failed: TypeError`: the Prisma client was generated from an
+  older schema. Run `npx prisma generate` in the build step.
+- On boot the server logs a `[schema-check]` line saying which of the two is wrong.
+
+Production build/release steps (never `prisma migrate dev` in production):
+
+```bash
+# build step
+cd server && npm ci && npx prisma generate
+# release / pre-deploy step (runs once per deploy, before the new instance starts)
+npx prisma migrate deploy
+# start
+npm start
+```
+
+`npm run build` = `prisma generate`, `npm run release` = `prisma migrate deploy`.
+`npm run prisma:migrate` (`migrate dev`) now refuses to run with `NODE_ENV=production`.
+
 ### Issue: Postgres Connection Failed
 
 ```bash
