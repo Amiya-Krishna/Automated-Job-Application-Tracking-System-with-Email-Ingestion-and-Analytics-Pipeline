@@ -15,7 +15,7 @@ if (
   throw new Error("VITE_API_BASE_URL must be an HTTPS URL in production.");
 }
 
-const baseUrl = configuredBaseUrl || "http://localhost:5000";
+const baseUrl = configuredBaseUrl || (import.meta.env.PROD ? "" : "http://localhost:5000");
 
 const axiosConfig = {
   baseURL: `${baseUrl}/api`,
