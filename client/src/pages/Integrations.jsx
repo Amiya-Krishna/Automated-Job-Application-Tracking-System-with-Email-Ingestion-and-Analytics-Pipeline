@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
@@ -7,6 +7,7 @@ import { parseJobEmail } from "../utils/emailParser";
 
 function Integrations() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [connected, setConnected] = useState(false);
@@ -52,7 +53,9 @@ function Integrations() {
 
   const connectGmail = async () => {
     try {
-      const res = await api.get("/gmail/auth-url");
+      // returnTo: the page the button was clicked on. The server validates it (same-origin
+      // path only) and signs it into the OAuth state; it is not trusted as a URL.
+      const res = await api.get("/gmail/auth-url", { params: { returnTo: `${location.pathname}${location.search}` } });
       window.location.href = res.data.url;
     } catch (err) {
       toast.error(

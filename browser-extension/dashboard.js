@@ -675,12 +675,39 @@ async function loadGmailStatus() {
   }
 }
 
+// Connect keeps THIS page as the home of the flow: the background worker opens
+// Google in one temporary tab, then closes it and refocuses this tab when the
+// callback lands. This page is never navigated or reloaded, so its signed-in
+// session is untouched; it only re-reads the real status when told the flow ended.
+let gmailConnectPending = false;
+
+async function onGmailConnectResult(status) {
+  gmailConnectPending = false;
+  await loadGmailStatus(); // the source of truth, whatever `status` says
+  if (status === "no_refresh_token") {
+    emailError.textContent = "Google didn't return a fresh permission grant. Remove TrackTrail's access at myaccount.google.com/permissions, then try Connect again.";
+  } else if (status === "error" && gmailStatusBadge.textContent !== "Connected") {
+    emailError.textContent = "Couldn't connect Gmail. Please try again.";
+  }
+}
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message?.type === "GMAIL_CONNECT_RESULT") onGmailConnectResult(message.status);
+});
+
+// Fallback when the background can't see the landing page (e.g. a custom API URL
+// the extension has no host permission for): re-check when the user comes back.
+window.addEventListener("focus", () => { if (gmailConnectPending) onGmailConnectResult("returned"); });
+
 gmailConnectBtn.addEventListener("click", async () => {
   emailError.textContent = "";
   gmailConnectBtn.disabled = true;
   try {
-    const result = await apiAuth("/gmail/auth-url?source=extension");
-    chrome.tabs.create({ url: result.url });
+    const result = await chrome.runtime.sendMessage({ type: "GMAIL_CONNECT" });
+    if (!result?.ok) {
+      throw Object.assign(new Error(result?.error || "Couldn't reach TrackTrail."), { code: result?.code || null, retryAfterSeconds: result?.retryAfterSeconds || null });
+    }
+    gmailConnectPending = true;
   } catch (err) {
     setError(emailError, err);
   } finally {

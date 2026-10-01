@@ -586,6 +586,30 @@ pm2 restart job-tracker
 
 ## Troubleshooting Deployment
 
+### Gmail OAuth (Web, Extension, Mobile)
+
+One Google redirect URI serves all three clients: `GOOGLE_REDIRECT_URI` =
+`https://<api-host>/api/gmail/callback` (must also be listed in the Google Cloud OAuth client's
+"Authorized redirect URIs"). The server returns each client to where it started using the signed
+`state` created by `GET /api/gmail/auth-url`; the callback never creates, rotates or revokes a login session.
+
+| Client | Starts with | Returns to |
+|---|---|---|
+| Web | `/gmail/auth-url?returnTo=<current path>` (`Origin` header identifies the site) | that origin (must be in `CLIENT_URL`) + that path, `?gmail=connected` |
+| Extension | `GMAIL_CONNECT` message -> `/gmail/auth-url?source=extension` | `https://<api-host>/extension/gmail-success.html?gmail=...`; the service worker closes the Google tab and refocuses the original dashboard tab |
+| Mobile | `/gmail/auth-url?source=mobile&redirectUri=<Linking.createURL('gmail-callback')>` | exactly that deep link (`tracktrail://gmail-callback`, legacy `mobile://gmail-callback`; Expo Go `exp://<LAN ip>/--/gmail-callback` only outside production) |
+
+Environment: `CLIENT_URL` must list **every** web origin users sign in on (comma-separated). `EXTENSION_REDIRECT_URL`
+should be **unset** (or an https page); a `chrome-extension://` value is ignored because Chrome blocks that redirect.
+`SERVER_URL` is optional (derived from `GOOGLE_REDIRECT_URI`).
+
+Testing: development - Google Cloud client with redirect URI `http://localhost:5000/api/gmail/callback`,
+`GOOGLE_REDIRECT_URI` set to the same, `CLIENT_URL` including `http://localhost:5173`; sign in, open Integrations (web) /
+Email tab (extension, with API base set to `http://localhost:5000/api`) / Profile -> Gmail (mobile) and connect.
+Production - same with the Render/Vercel URLs, the extension's default API base, and a standalone mobile build.
+
+Extension caveat: the service worker can only see the landing page when the API host is in `manifest.json` `host_permissions` (the production host is). With a custom/local API base the Google tab is not closed automatically (close it yourself); the dashboard still re-checks Gmail status as soon as you return to it.
+
 ### Issue: Login returns "TrackTrail is having trouble right now" (HTTP 500)
 
 Extension, mobile and web logins all create a row in `user_sessions` via

@@ -4,7 +4,14 @@ const { google } = require("googleapis");
 const { getOAuthClient, GMAIL_SCOPES } = require("../config/google");
 const auth = require("../middleware/authMiddleware");
 const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
-const { isAllowedMobileRedirect } = require("../utils/mobileRedirect");
+const {
+  parseClientOrigins,
+  resolveWebReturnOrigin,
+  sanitizeReturnPath,
+  withParam,
+  isAllowedGmailRedirect,
+  extensionLandingUrl,
+} = require("../utils/oauthReturn");
 
 const prisma = require("../lib/prisma");
 
@@ -38,20 +45,30 @@ router.get("/auth-url", auth, (req, res) => {
         : "web";
 
     // `purpose` keeps this state token from ever being accepted as a login token.
-    const statePayload = { id: req.user.id, source, purpose: "gmail_oauth" };
+    // The state is the ONLY thing the callback trusts about who started the flow
+    // and where to send them back, so everything it carries is validated here.
+    // It also records the initiating session (`sid`) for traceability; the
+    // callback never creates, rotates or revokes a login session.
+    const statePayload = { id: req.user.id, sid: req.user.sid, source, purpose: "gmail_oauth" };
 
     if (source === "mobile") {
       const redirectUri = req.query.redirectUri;
-      if (!isAllowedMobileRedirect(redirectUri)) {
+      if (!isAllowedGmailRedirect(redirectUri)) {
         return res.status(400).json({
           message:
-            "A valid redirectUri (tracktrail://, mobile:// or exp://) is required when source=mobile",
+            "A valid redirectUri (this app's gmail-callback deep link) is required when source=mobile",
         });
       }
       statePayload.redirectUri = redirectUri;
+    } else if (source === "web") {
+      // Return to the origin that started the flow (not "whichever CLIENT_URL
+      // entry is first") and to the page the button was clicked on.
+      statePayload.returnOrigin = resolveWebReturnOrigin(req.get("origin"));
+      statePayload.returnPath = sanitizeReturnPath(req.query.returnTo);
     }
 
     const state = jwt.sign(statePayload, process.env.JWT_SECRET, {
+      algorithm: "HS256",
       expiresIn: "10m",
     });
 
@@ -69,71 +86,71 @@ router.get("/auth-url", auth, (req, res) => {
 });
 
 // STEP 2 — Callback
-// EXTENSION_REDIRECT_URL is a separate redirect target (set in server/.env)
-// used only when the OAuth flow was started from the browser extension
-// (source=extension). It should point at the extension's own dashboard
-// page, e.g. chrome-extension://<your-extension-id>/dashboard.html — open
-// chrome://extensions with Developer mode on to find your extension's ID.
-// If it isn't set, we fall back to a small page served by this same
-// server (see /extension/gmail-success.html below) so the flow still
-// completes instead of dumping the user on the web client by mistake.
+// Google sends the browser here as a top-level navigation, so there are no TrackTrail
+// cookies/headers to read: everything about the flow comes from the signed `state`.
+// This route only stores the Gmail refresh token for the user named in `state`; it never
+// creates, rotates or revokes a TrackTrail login session and never sets cookies, so the
+// session the client already has stays exactly as it was.
+//
+// Where it returns to:
+//   web       -> <origin that started the flow><page that started it>?gmail=<status>
+//   extension -> a page on this server (extensionLandingUrl); the extension's service
+//                worker watches for it, closes the tab and refocuses the dashboard.
+//                (A redirect to chrome-extension://... is blocked by Chrome.)
+//   mobile    -> the app's own gmail-callback deep link, consumed by the in-app auth session.
 router.get("/callback", async (req, res) => {
-  const clientUrl = (process.env.CLIENT_URL || "").split(",")[0] || "/";
-  const extensionRedirectUrl =
-    process.env.EXTENSION_REDIRECT_URL ||
-    `${(process.env.SERVER_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/+$/, "")}/extension/gmail-success.html`;
+  res.set("Cache-Control", "no-store");
+  const allowedOrigins = parseClientOrigins();
+  const defaultWebOrigin = allowedOrigins[0] || "";
 
-  function redirectTarget(status, source, mobileRedirectUri) {
-    if (source === "extension") {
-      const sep = extensionRedirectUrl.includes("?") ? "&" : "?";
-      return `${extensionRedirectUrl}${sep}gmail=${status}`;
-    }
-    if (source === "mobile" && isAllowedMobileRedirect(mobileRedirectUri)) {
+  function redirectTarget(status, ctx = {}) {
+    const { source = "web", mobileRedirectUri, returnOrigin, returnPath } = ctx;
+    if (source === "extension") return withParam(extensionLandingUrl(), "gmail", status);
+    if (source === "mobile" && isAllowedGmailRedirect(mobileRedirectUri)) {
       const sep = mobileRedirectUri.includes("?") ? "&" : "?";
       return `${mobileRedirectUri}${sep}gmail=${status}`;
     }
-    return `${clientUrl}/integrations?gmail=${status}`;
+    // Web (and the fallback for an unreadable state): re-validate against the allow-list.
+    const origin = allowedOrigins.includes(returnOrigin) ? returnOrigin : defaultWebOrigin;
+    const path = sanitizeReturnPath(returnPath);
+    return `${origin}${path}${path.includes("?") ? "&" : "?"}gmail=${status}`;
   }
 
-  let source = "web";
-  let mobileRedirectUri;
+  let ctx = { source: "web" };
 
   try {
     const { code, state } = req.query;
 
-    if (!code || !state) {
-      return res.redirect(redirectTarget("error", source, mobileRedirectUri));
+    if (typeof code !== "string" || typeof state !== "string" || !code || !state) {
+      return res.redirect(redirectTarget("error", ctx));
     }
 
-    const decoded = jwt.verify(state, process.env.JWT_SECRET);
-    if (decoded.purpose !== "gmail_oauth") throw new Error("Invalid OAuth state");
-    source =
-      decoded.source === "extension"
-        ? "extension"
-        : decoded.source === "mobile"
-        ? "mobile"
-        : "web";
-    mobileRedirectUri = decoded.redirectUri;
+    const decoded = jwt.verify(state, process.env.JWT_SECRET, { algorithms: ["HS256"] });
+    if (decoded.purpose !== "gmail_oauth" || !decoded.id) throw new Error("Invalid OAuth state");
+    ctx = {
+      source: decoded.source === "extension" ? "extension" : decoded.source === "mobile" ? "mobile" : "web",
+      mobileRedirectUri: decoded.redirectUri,
+      returnOrigin: decoded.returnOrigin,
+      returnPath: decoded.returnPath,
+    };
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
-      return res.redirect(
-        redirectTarget("no_refresh_token", source, mobileRedirectUri)
-      );
+      return res.redirect(redirectTarget("no_refresh_token", ctx));
     }
 
-    // ✅ Save refresh token in DB
+    // ✅ Save refresh token in DB — only for the user the signed state names.
     await prisma.user.update({
       where: { id: decoded.id },
       data: { gmailRefreshToken: tokens.refresh_token },
     });
 
-    res.redirect(redirectTarget("connected", source, mobileRedirectUri));
+    res.redirect(redirectTarget("connected", ctx));
   } catch (err) {
     console.error("[gmail-oauth] callback failed");
-    res.redirect(redirectTarget("error", source, mobileRedirectUri));
+    res.redirect(redirectTarget("error", ctx));
   }
 });
 

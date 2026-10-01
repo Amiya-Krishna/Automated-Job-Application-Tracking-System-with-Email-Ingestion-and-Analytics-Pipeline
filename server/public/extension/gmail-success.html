@@ -1,8 +1,10 @@
 <!doctype html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Gmail connected — TrackTrail</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>TrackTrail — Gmail</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -27,17 +29,26 @@
   </head>
   <body>
     <div class="card">
-      <h1>Gmail connected ✅</h1>
-      <p>
-        You can close this tab and go back to the TrackTrail extension —
-        open the extension icon, go to the Email tab, and hit
-        "Refresh status".
-      </p>
-      <p>
-        Set <code>EXTENSION_REDIRECT_URL</code> in <code>server/.env</code>
-        to your extension's dashboard URL to skip this page and land there
-        directly next time.
-      </p>
+      <h1 id="title">Finishing up…</h1>
+      <p id="msg">One moment.</p>
     </div>
+    <script>
+      // The TrackTrail extension watches for this page, closes this tab and
+      // brings you back to the page where you clicked Connect. This page only
+      // reports the result (the extension re-checks the real status itself),
+      // and covers the case where the extension isn't able to do that.
+      (function () {
+        var status = new URLSearchParams(location.search).get("gmail");
+        var text = {
+          connected: ["Gmail connected ✅", "You can close this tab and go back to TrackTrail. Your Email status will show Connected."],
+          no_refresh_token: ["Almost there", "Google didn't return a fresh permission grant. Remove TrackTrail's access at myaccount.google.com/permissions, then try Connect again."],
+          error: ["Couldn't connect Gmail", "Something went wrong. Close this tab and try Connect again."],
+        }[status] || ["Gmail", "You can close this tab and go back to TrackTrail."];
+        document.getElementById("title").textContent = text[0];
+        document.getElementById("msg").textContent = text[1];
+        // Drop the result from the address bar/history; leave nothing sensitive here anyway.
+        try { history.replaceState(null, "", location.pathname); } catch (e) {}
+      })();
+    </script>
   </body>
 </html>
