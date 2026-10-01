@@ -33,21 +33,40 @@
       <p id="msg">One moment.</p>
     </div>
     <script>
-      // The TrackTrail extension watches for this page, closes this tab and
-      // brings you back to the page where you clicked Connect. This page only
-      // reports the result (the extension re-checks the real status itself),
-      // and covers the case where the extension isn't able to do that.
       (function () {
-        var status = new URLSearchParams(location.search).get("gmail");
+        var params = new URLSearchParams(location.search);
+        var status = params.get("gmail") || "error";
+        var extensionId = params.get("extensionId");
+
         var text = {
-          connected: ["Gmail connected ✅", "You can close this tab and go back to TrackTrail. Your Email status will show Connected."],
-          no_refresh_token: ["Almost there", "Google didn't return a fresh permission grant. Remove TrackTrail's access at myaccount.google.com/permissions, then try Connect again."],
-          error: ["Couldn't connect Gmail", "Something went wrong. Close this tab and try Connect again."],
-        }[status] || ["Gmail", "You can close this tab and go back to TrackTrail."];
+          connected: ["Gmail connected", "Returning to TrackTrail…"],
+          no_refresh_token: ["Almost there", "Returning to TrackTrail…"],
+          error: ["Couldn't connect Gmail", "Returning to TrackTrail…"]
+        }[status] || ["Gmail", "Returning to TrackTrail…"];
+
         document.getElementById("title").textContent = text[0];
         document.getElementById("msg").textContent = text[1];
-        // Drop the result from the address bar/history; leave nothing sensitive here anyway.
-        try { history.replaceState(null, "", location.pathname); } catch (e) {}
+
+        // Only the configured TrackTrail extension ID can receive this message.
+        // The extension validates that sender.url is this server's own origin.
+        if (!extensionId || !/^[a-p]{32}$/.test(extensionId)) {
+          document.getElementById("msg").textContent = "You can close this page.";
+          return;
+        }
+
+        try {
+          chrome.runtime.sendMessage(
+            extensionId,
+            { type: "TRACKTRAIL_GMAIL_OAUTH_COMPLETE", status: status },
+            function () {
+              if (chrome.runtime.lastError) {
+                document.getElementById("msg").textContent = "TrackTrail extension was not available. You can close this page.";
+              }
+            }
+          );
+        } catch (e) {
+          document.getElementById("msg").textContent = "TrackTrail extension was not available. You can close this page.";
+        }
       })();
     </script>
   </body>

@@ -52,20 +52,24 @@ router.get("/auth-url", auth, (req, res) => {
     const statePayload = { id: req.user.id, sid: req.user.sid, source, purpose: "gmail_oauth" };
 
     if (source === "extension") {
-      const redirectUri = extensionOAuthRedirectUrl();
-      if (!redirectUri) {
+      // The extension does NOT use chrome.identity.launchWebAuthFlow().
+      // Google still redirects to GOOGLE_REDIRECT_URI, then this server sends
+      // the browser to its own same-origin relay page. The relay page signals
+      // the extension service worker, which returns THIS SAME TAB to dashboard.html.
+      const relayUrl = extensionLandingUrl();
+      const configuredRedirect = extensionOAuthRedirectUrl();
+      let extensionId = "";
+      try {
+        if (configuredRedirect) extensionId = new URL(configuredRedirect).hostname.split(".")[0];
+      } catch { /* invalid optional config */ }
+      if (!relayUrl || !/^[a-p]{32}$/.test(extensionId)) {
         return res.status(503).json({
           message: "Gmail extension OAuth is not configured on the server.",
           code: "extension_oauth_not_configured",
         });
       }
-      if (req.query.redirectUri && req.query.redirectUri !== redirectUri) {
-        return res.status(400).json({
-          message: "The extension OAuth redirect URI does not match the server configuration.",
-          code: "extension_redirect_mismatch",
-        });
-      }
-      statePayload.redirectUri = redirectUri;
+      statePayload.extensionRelayUrl = relayUrl;
+      statePayload.extensionId = extensionId;
     } else if (source === "mobile") {
       const redirectUri = req.query.redirectUri;
       if (!isAllowedGmailRedirect(redirectUri)) {
@@ -109,8 +113,9 @@ router.get("/auth-url", auth, (req, res) => {
 //
 // Where it returns to:
 //   web       -> <origin that started the flow><page that started it>?gmail=<status>
-//   extension -> Chrome's chromiumapp.org identity callback; launchWebAuthFlow()
-//                resolves in the extension without creating a normal browser tab.
+//   extension -> the server's same-origin relay page, which messages the
+//                extension service worker; the service worker returns the SAME tab
+//                to dashboard.html.
 //   mobile    -> the app's own gmail-callback deep link, consumed by the in-app auth session.
 router.get("/callback", async (req, res) => {
   res.set("Cache-Control", "no-store");
@@ -119,8 +124,13 @@ router.get("/callback", async (req, res) => {
 
   function redirectTarget(status, ctx = {}) {
     const { source = "web", mobileRedirectUri, returnOrigin, returnPath } = ctx;
-    if (source === "extension" && extensionOAuthRedirectUrl() === ctx.extensionRedirectUri) {
-      return withParam(ctx.extensionRedirectUri, "gmail", status);
+    if (source === "extension" && ctx.extensionRelayUrl) {
+      const u = new URL(ctx.extensionRelayUrl);
+      u.searchParams.set("gmail", status);
+      if (/^[a-p]{32}$/.test(ctx.extensionId || "")) {
+        u.searchParams.set("extensionId", ctx.extensionId);
+      }
+      return u.toString();
     }
     if (source === "mobile" && isAllowedGmailRedirect(mobileRedirectUri)) {
       const sep = mobileRedirectUri.includes("?") ? "&" : "?";
@@ -135,9 +145,9 @@ router.get("/callback", async (req, res) => {
   let ctx = { source: "web" };
 
   try {
-    const { code, state } = req.query;
+    const { code, state, error: oauthError } = req.query;
 
-    if (typeof code !== "string" || typeof state !== "string" || !code || !state) {
+    if (typeof state !== "string" || !state) {
       return res.redirect(redirectTarget("error", ctx));
     }
 
@@ -146,10 +156,18 @@ router.get("/callback", async (req, res) => {
     ctx = {
       source: decoded.source === "extension" ? "extension" : decoded.source === "mobile" ? "mobile" : "web",
       mobileRedirectUri: decoded.redirectUri,
-      extensionRedirectUri: decoded.redirectUri,
+      extensionRelayUrl: decoded.extensionRelayUrl,
+      extensionId: decoded.extensionId,
       returnOrigin: decoded.returnOrigin,
       returnPath: decoded.returnPath,
     };
+    if (typeof oauthError === "string" && oauthError) {
+      return res.redirect(redirectTarget("error", ctx));
+    }
+    if (typeof code !== "string" || !code) {
+      return res.redirect(redirectTarget("error", ctx));
+    }
+
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);

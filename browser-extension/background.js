@@ -213,12 +213,15 @@ function isExtensionPage(sender) {
   }
 }
 
-// ---------- Gmail connect (Chrome Identity OAuth) -------------------------
-// Do NOT open Google with chrome.tabs.create(). That creates a normal browser tab
-// and makes the extension responsible for watching the OAuth redirect.
-// chrome.identity.launchWebAuthFlow() is the supported extension OAuth primitive:
-// Chrome owns the interactive OAuth UI and resolves the promise when the server
-// redirects to this extension's chromiumapp.org callback URL.
+// ---------- Gmail connect (same extension tab) ----------------------------
+// The extension tab itself is used for the entire OAuth navigation. We do NOT
+// use chrome.identity.launchWebAuthFlow(), because Chrome owns that UI in a
+// separate authentication window. We also do NOT use tabs.create().
+//
+// Flow:
+//   extension dashboard tab -> Google -> TrackTrail callback -> relay page
+//   -> relay sends an external message to this extension -> SAME tab returns
+//   to dashboard.html.
 const GOOGLE_AUTH_ORIGIN = "https://accounts.google.com";
 const GMAIL_FLOW_KEY = "gmailFlow";
 
@@ -233,62 +236,83 @@ function notifyGmailResult(status) {
   } catch { /* nobody listening */ }
 }
 
-function getExtensionOAuthRedirectUrl() {
-  const url = chrome.identity.getRedirectURL("gmail");
-  return new URL(url);
-}
-
-function parseGmailOAuthResult(rawUrl, expectedRedirect) {
-  let u;
-  try { u = new URL(rawUrl); } catch { throw new TTError(GENERIC_MESSAGE, { code: "bad_oauth_result" }); }
-  if (u.origin !== expectedRedirect.origin || u.pathname !== expectedRedirect.pathname) {
-    throw new TTError(GENERIC_MESSAGE, { code: "bad_oauth_result" });
+async function startGmailConnect(tabId) {
+  if (!Number.isInteger(tabId)) {
+    throw new TTError("Gmail connection must start from the extension dashboard.", { code: "invalid_tab" });
   }
-  const status = u.searchParams.get("gmail");
-  return ["connected", "no_refresh_token", "error"].includes(status) ? status : "error";
-}
 
-async function startGmailConnect() {
   const existing = await sessionStore().get(GMAIL_FLOW_KEY);
   if (existing?.[GMAIL_FLOW_KEY]?.startedAt) return { reused: true };
 
-  const redirect = getExtensionOAuthRedirectUrl();
   const query = new URLSearchParams({ source: "extension" });
-  // The server validates this against its configured EXTENSION_OAUTH_REDIRECT_URI
-  // and signs the exact value into OAuth state. It is never trusted from the
-  // callback request itself.
-  query.set("redirectUri", redirect.toString());
+  const { url } = await apiJson(
+    `/gmail/auth-url?${query.toString()}`,
+    {},
+    "Couldn't start the Gmail connection"
+  );
 
-  const { url } = await apiJson(`/gmail/auth-url?${query.toString()}`, {}, "Couldn't start the Gmail connection");
   let target;
   try { target = new URL(url); } catch { target = null; }
-  if (!target || target.origin !== GOOGLE_AUTH_ORIGIN) {
+  if (!target || target.origin !== GOOGLE_AUTH_ORIGIN || target.protocol !== "https:") {
     throw new TTError(GENERIC_MESSAGE, { code: "bad_auth_url" });
   }
 
-  await sessionStore().set({ [GMAIL_FLOW_KEY]: { startedAt: Date.now(), redirectUri: redirect.toString() } });
+  await sessionStore().set({
+    [GMAIL_FLOW_KEY]: { startedAt: Date.now(), tabId },
+  });
 
   try {
-    const resultUrl = await chrome.identity.launchWebAuthFlow({
-      url: target.toString(),
-      interactive: true,
-    });
-    const status = parseGmailOAuthResult(resultUrl, redirect);
-    await clearGmailFlow();
-    notifyGmailResult(status);
-    return { reused: false, status };
+    // IMPORTANT: navigate the tab that already contains the extension dashboard.
+    // This is the browser tab the user is already looking at.
+    await chrome.tabs.update(tabId, { url: target.toString(), active: true });
+    return { reused: false, status: "started" };
   } catch (err) {
     await clearGmailFlow();
-    // User cancellation is intentionally reported separately; provider/server
-    // errors stay generic so raw OAuth/network details never reach the UI.
-    const message = String(err?.message || "").toLowerCase();
-    if (message.includes("canceled") || message.includes("cancelled") || message.includes("user")) {
-      notifyGmailResult("cancelled");
-      return { reused: false, status: "cancelled" };
-    }
-    throw new TTError(GENERIC_MESSAGE, { code: "oauth_failed" });
+    throw new TTError(GENERIC_MESSAGE, { code: "oauth_navigation_failed" });
   }
 }
+
+async function finishGmailConnect(tabId, status) {
+  const flow = await sessionStore().get(GMAIL_FLOW_KEY);
+  const current = flow?.[GMAIL_FLOW_KEY];
+  if (!current?.startedAt || current.tabId !== tabId) return;
+
+  await clearGmailFlow();
+
+  // Return to the exact same tab that was used for Google authentication.
+  await chrome.tabs.update(tabId, {
+    url: chrome.runtime.getURL(`dashboard.html?gmail=${encodeURIComponent(status || "error")}`),
+    active: true,
+  });
+}
+
+
+// The server-side Gmail completion page is the only external web page allowed
+// by manifest.json to message this extension. It lives on our own API origin.
+chrome.runtime.onMessageExternal?.addListener((message, sender, sendResponse) => {
+  (async () => {
+    try {
+      if (message?.type !== "TRACKTRAIL_GMAIL_OAUTH_COMPLETE") return;
+      if (!sender?.tab?.id || typeof sender.url !== "string") return;
+
+      const apiOrigin = new URL(await getApiBaseUrl()).origin;
+      if (new URL(sender.url).origin !== apiOrigin) return;
+
+      const status = ["connected", "no_refresh_token", "error"].includes(message.status)
+        ? message.status
+        : "error";
+
+      await finishGmailConnect(sender.tab.id, status);
+      sendResponse({ ok: true });
+    } catch (err) {
+      try {
+        if (sender?.tab?.id) await finishGmailConnect(sender.tab.id, "error");
+      } catch { /* best effort */ }
+      sendResponse({ ok: false });
+    }
+  })();
+  return true;
+});
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   (async () => {
@@ -349,7 +373,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ ok: false, error: "Request not allowed.", code: "forbidden" });
             break;
           }
-          const r = await startGmailConnect(sender);
+          const r = await startGmailConnect(sender?.tab?.id);
           sendResponse({ ok: true, ...r });
           break;
         }
