@@ -11,7 +11,6 @@ const {
   withParam,
   isAllowedGmailRedirect,
   extensionLandingUrl,
-  extensionOAuthRedirectUrl,
 } = require("../utils/oauthReturn");
 
 const prisma = require("../lib/prisma");
@@ -57,11 +56,7 @@ router.get("/auth-url", auth, (req, res) => {
       // the browser to its own same-origin relay page. The relay page signals
       // the extension service worker, which returns THIS SAME TAB to dashboard.html.
       const relayUrl = extensionLandingUrl();
-      const configuredRedirect = extensionOAuthRedirectUrl();
-      let extensionId = "";
-      try {
-        if (configuredRedirect) extensionId = new URL(configuredRedirect).hostname.split(".")[0];
-      } catch { /* invalid optional config */ }
+      const extensionId = String(process.env.EXTENSION_ID || "").trim();
       if (!relayUrl || !/^[a-p]{32}$/.test(extensionId)) {
         return res.status(503).json({
           message: "Gmail extension OAuth is not configured on the server.",

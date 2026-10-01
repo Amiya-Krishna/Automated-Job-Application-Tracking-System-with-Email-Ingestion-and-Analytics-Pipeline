@@ -79,11 +79,13 @@ function isAllowedGmailRedirect(url, env = process.env) {
   return isAllowedResetRedirect(url.replace(/gmail-callback$/, "reset-password"), env);
 }
 
-// The browser extension uses chrome.identity.launchWebAuthFlow(). Google still
-// redirects to the server callback (GOOGLE_REDIRECT_URI), and the server then
-// redirects to Chrome's identity callback (https://<extension-id>.chromiumapp.org/...).
-// This value MUST be explicitly configured so an authenticated caller cannot
-// choose an arbitrary chromiumapp.org destination.
+// The browser extension uses the SAME browser tab for Gmail OAuth. Google
+// redirects to GOOGLE_REDIRECT_URI, and the server then redirects to its own
+// same-origin relay page. The relay page messages the extension service worker,
+// which returns the original tab to dashboard.html.
+//
+// Kept as a compatibility helper for older deployments/tests, but it is NOT
+// used by the same-tab extension flow.
 function extensionOAuthRedirectUrl(env = process.env) {
   const configured = env.EXTENSION_OAUTH_REDIRECT_URI || env.EXTENSION_REDIRECT_URL;
   if (!configured) return null;

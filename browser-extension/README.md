@@ -7,9 +7,9 @@ dashboard: browse, search, filter, add, change status, and delete jobs.
 
 ## Gmail OAuth in the browser extension
 
-The extension uses `chrome.identity.launchWebAuthFlow()` for Gmail. It does **not** open a normal Google tab with `chrome.tabs.create()`.
+The extension uses `chrome.tabs.update() on the existing extension tab` for Gmail. It does **not** open a normal Google tab with `chrome.tabs.create()`.
 
-The server must have `EXTENSION_OAUTH_REDIRECT_URI` set to the exact value returned by `chrome.identity.getRedirectURL("gmail")`, for example `https://<extension-id>.chromiumapp.org/gmail`. The server signs that redirect into the Gmail OAuth state and redirects to it after the Google callback. Gmail refresh tokens remain server-side.
+The server must have `EXTENSION_ID` set to the exact value returned by `chrome.identity.getRedirectURL("gmail")`, for example `<extension-id> (Chrome extension ID)`. The server signs that redirect into the Gmail OAuth state and redirects to it after the Google callback. Gmail refresh tokens remain server-side.
 
 The Google OAuth client continues to use the server callback in `GOOGLE_REDIRECT_URI`; do not replace it with the `chromiumapp.org` URL.
 
