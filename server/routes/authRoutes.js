@@ -33,8 +33,19 @@ function readCookie(req, name) {
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
 }
 function refreshCookieOptions(req, rememberMe = true) {
+  // The web client is hosted separately from the API (for example Vercel ->
+  // Render). In that deployment the refresh cookie is cross-site and therefore
+  // must be Secure + SameSite=None. Render terminates TLS at its proxy, so use
+  // req.secure as well as NODE_ENV instead of relying on NODE_ENV alone.
   const production = process.env.NODE_ENV === "production";
-  const options = { httpOnly: true, secure: production, sameSite: production ? "none" : "lax", path: "/api/auth" };
+  const forwardedProto = String(req.get("x-forwarded-proto") || "").split(",")[0].trim().toLowerCase();
+  const secure = production || req.secure === true || forwardedProto === "https";
+  const options = {
+    httpOnly: true,
+    secure,
+    sameSite: secure ? "none" : "lax",
+    path: "/api/auth",
+  };
   if (rememberMe) options.maxAge = (Number(process.env.REFRESH_TOKEN_TTL_DAYS) || 60) * 86400 * 1000;
   return options;
 }

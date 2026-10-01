@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 const EXT_ID = "abcdefghijklmnopabcdefghijklmnop";
 const API = "https://job-application-tracker-portal-o1ls.onrender.com";
 const GOOGLE_URL = "https://accounts.google.com/o/oauth2/v2/auth?state=signed-state";
-const dashboardUrl = `chrome-extension://${EXT_ID}/dashboard.html?gmail=connected`;
+const dashboardUrl = `chrome-extension://${EXT_ID}/dashboard.html?gmail=connected#emailTab`;
 const dashboardSender = {
   id: EXT_ID,
   url: `chrome-extension://${EXT_ID}/dashboard.html#emailTab`,
@@ -74,7 +74,7 @@ test("Connect navigates the existing extension tab to Google — no popup/new ta
   assert.equal(t.store.gmailFlow.tabId, 42);
 });
 
-test("Server completion returns the SAME tab to the extension dashboard", async () => {
+test("Server completion returns the SAME tab to the extension Email page", async () => {
   const t = await boot();
   await t.send({ type: "GMAIL_CONNECT" }, dashboardSender);
   const r = await t.external({ type: "TRACKTRAIL_GMAIL_OAUTH_COMPLETE", status: "connected" }, externalSender);

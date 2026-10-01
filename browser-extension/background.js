@@ -279,9 +279,14 @@ async function finishGmailConnect(tabId, status) {
 
   await clearGmailFlow();
 
-  // Return to the exact same tab that was used for Google authentication.
+  // Return to the exact same tab that was used for Google authentication and
+  // open the Email tab. Gmail OAuth is an email integration flow, so returning
+  // to the default dashboard (Matched Jobs) is misleading and makes the user
+  // think the integration disappeared. Keep the result in the query string
+  // and select the Email panel via the hash.
+  const result = encodeURIComponent(status || "error");
   await chrome.tabs.update(tabId, {
-    url: chrome.runtime.getURL(`dashboard.html?gmail=${encodeURIComponent(status || "error")}`),
+    url: chrome.runtime.getURL(`dashboard.html?gmail=${result}#emailTab`),
     active: true,
   });
 }
