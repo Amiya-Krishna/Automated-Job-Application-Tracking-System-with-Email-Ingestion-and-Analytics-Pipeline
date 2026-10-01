@@ -9,7 +9,7 @@ dashboard: browse, search, filter, add, change status, and delete jobs.
 
 The extension uses `chrome.tabs.update() on the existing extension tab` for Gmail. It does **not** open a normal Google tab with `chrome.tabs.create()`.
 
-The server must have `EXTENSION_ID` set to the exact value returned by `chrome.identity.getRedirectURL("gmail")`, for example `<extension-id> (Chrome extension ID)`. The server signs that redirect into the Gmail OAuth state and redirects to it after the Google callback. Gmail refresh tokens remain server-side.
+The server derives the extension ID from the authenticated `chrome-extension://<id>` request when available, with `EXTENSION_ID` kept as a fallback for environments that omit `Origin`. The server signs the relay URL and extension ID into the Gmail OAuth state and redirects to its same-origin `/extension/gmail-success.html` page after the Google callback. Gmail refresh tokens remain server-side.
 
 The Google OAuth client continues to use the server callback in `GOOGLE_REDIRECT_URI`; do not replace it with the `chromiumapp.org` URL.
 

@@ -191,26 +191,28 @@ test("EXTENSION: callback lands on the same-origin relay, session untouched, Gma
   }
 });
 
-test("EXTENSION: OAuth requires a valid configured extension ID", async () => {
+test("EXTENSION: OAuth uses the actual extension origin and falls back to configured ID", async () => {
   reset();
   delete process.env.EXTENSION_ID;
   delete process.env.EXTENSION_REDIRECT_URL;
   const s = await login("extension");
 
-  const missing = await authUrl(s.accessToken, "?source=extension", {
+  const originId = "mkmccbmcbhgnjejhhmnhibiepdadloia";
+  const fromOrigin = await authUrl(s.accessToken, "?source=extension", {
     "x-client": "extension",
-    Origin: "chrome-extension://mkmccbmcbhgnjejhhmnhibiepdadloia",
+    Origin: `chrome-extension://${originId}`,
   });
-  assert.equal(missing.res.status, 503);
+  assert.equal(fromOrigin.res.status, 200);
+  assert.equal(fromOrigin.decoded.extensionId, originId);
+  assert.equal(fromOrigin.decoded.source, "extension");
 
-  process.env.EXTENSION_ID = "mkmccbmcbhgnjejhhmnhibiepdadloia";
+  process.env.EXTENSION_ID = originId;
   try {
     const configured = await authUrl(s.accessToken, "?source=extension", {
       "x-client": "extension",
-      Origin: `chrome-extension://${process.env.EXTENSION_ID}`,
     });
     assert.equal(configured.res.status, 200);
-    assert.equal(configured.decoded.extensionId, process.env.EXTENSION_ID);
+    assert.equal(configured.decoded.extensionId, originId);
     assert.equal(configured.decoded.source, "extension");
   } finally {
     delete process.env.EXTENSION_ID;

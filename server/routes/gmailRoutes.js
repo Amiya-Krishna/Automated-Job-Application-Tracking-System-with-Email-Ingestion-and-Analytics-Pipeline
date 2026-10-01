@@ -56,7 +56,14 @@ router.get("/auth-url", auth, (req, res) => {
       // the browser to its own same-origin relay page. The relay page signals
       // the extension service worker, which returns THIS SAME TAB to dashboard.html.
       const relayUrl = extensionLandingUrl();
-      const extensionId = String(process.env.EXTENSION_ID || "").trim();
+      // Prefer the actual extension origin that made this authenticated request.
+      // This prevents an unpacked/reinstalled extension from getting stuck on the
+      // relay page because a stale EXTENSION_ID is still configured on Render.
+      // Keep EXTENSION_ID as a fallback for environments that do not send Origin.
+      const requestOrigin = String(req.get("origin") || "").trim();
+      const originMatch = requestOrigin.match(/^chrome-extension:\/\/([a-p]{32})$/);
+      const configuredExtensionId = String(process.env.EXTENSION_ID || "").trim();
+      const extensionId = originMatch?.[1] || configuredExtensionId;
       if (!relayUrl || !/^[a-p]{32}$/.test(extensionId)) {
         return res.status(503).json({
           message: "Gmail extension OAuth is not configured on the server.",
