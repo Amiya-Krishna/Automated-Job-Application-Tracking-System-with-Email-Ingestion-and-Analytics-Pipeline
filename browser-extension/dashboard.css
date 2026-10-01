@@ -231,6 +231,66 @@ textarea:focus {
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+/* ---------- Gmail connection buttons ---------- */
+
+.gmail-connect-btn {
+  min-width: 130px;
+}
+
+.gmail-connect-btn.is-connected {
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+  cursor: default;
+  opacity: 1;
+}
+
+.gmail-connect-btn.is-connected:hover {
+  background: #ecfdf5;
+  border-color: #a7f3d0;
+}
+
+.gmail-connect-btn:disabled {
+  cursor: default;
+}
+
+.gmail-disconnect-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.gmail-disconnect-btn:not(:disabled) {
+  color: var(--danger);
+  border-color: #fca5a5;
+}
+
+.gmail-disconnect-btn:not(:disabled):hover {
+  background: #fef2f2;
+  border-color: var(--danger);
+}
+
+/* Gmail buttons in dark mode */
+[data-theme="dark"] .gmail-connect-btn.is-connected {
+  background: #052e16;
+  color: #86efac;
+  border-color: #166534;
+}
+
+[data-theme="dark"] .gmail-connect-btn.is-connected:hover {
+  background: #052e16;
+  border-color: #166534;
+}
+
+[data-theme="dark"] .gmail-disconnect-btn:not(:disabled) {
+  color: #fca5a5;
+  border-color: #7f1d1d;
+}
+
+[data-theme="dark"] .gmail-disconnect-btn:not(:disabled):hover {
+  background: #450a0a;
+  border-color: #dc2626;
+}
+
 .ghost-btn:hover {
   background: #f1f5f9;
   border-color: #94a3b8;

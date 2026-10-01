@@ -653,24 +653,50 @@ const emailError = document.getElementById("emailError");
 
 async function loadGmailStatus() {
   emailError.textContent = "";
+
+  // Loading state
   gmailStatusBadge.textContent = "Checking...";
   gmailStatusBadge.className = "badge badge-new";
-  gmailConnectBtn.classList.add("hidden");
-  gmailDisconnectBtn.classList.add("hidden");
+
+  gmailConnectBtn.textContent = "Checking...";
+  gmailConnectBtn.disabled = true;
+  gmailConnectBtn.classList.remove("is-connected");
+
+  gmailDisconnectBtn.disabled = true;
 
   try {
     const result = await apiAuth("/gmail/status");
+
     if (result.connected) {
+      // Connected state
       gmailStatusBadge.textContent = "Connected";
       gmailStatusBadge.className = "badge badge-connected";
-      gmailDisconnectBtn.classList.remove("hidden");
+
+      gmailConnectBtn.textContent = "Gmail Connected";
+      gmailConnectBtn.disabled = true;
+      gmailConnectBtn.classList.add("is-connected");
+
+      gmailDisconnectBtn.disabled = false;
     } else {
+      // Not connected state
       gmailStatusBadge.textContent = "Not connected";
       gmailStatusBadge.className = "badge badge-disconnected";
-      gmailConnectBtn.classList.remove("hidden");
+
+      gmailConnectBtn.textContent = "Connect Gmail";
+      gmailConnectBtn.disabled = false;
+      gmailConnectBtn.classList.remove("is-connected");
+
+      gmailDisconnectBtn.disabled = true;
     }
   } catch (err) {
     gmailStatusBadge.textContent = "Unknown";
+
+    gmailConnectBtn.textContent = "Connect Gmail";
+    gmailConnectBtn.disabled = false;
+    gmailConnectBtn.classList.remove("is-connected");
+
+    gmailDisconnectBtn.disabled = true;
+
     setError(emailError, err, loadGmailStatus);
   }
 }
@@ -711,22 +737,24 @@ gmailConnectBtn.addEventListener("click", async () => {
   } catch (err) {
     setError(emailError, err);
   } finally {
-    gmailConnectBtn.disabled = false;
+    await loadGmailStatus();
   }
 });
 
 gmailDisconnectBtn.addEventListener("click", async () => {
   emailError.textContent = "";
   gmailDisconnectBtn.disabled = true;
+
   try {
     await apiAuth("/gmail/disconnect", { method: "POST" });
-    await loadGmailStatus();
+
     emailList.innerHTML = "";
     emailEmpty.classList.add("hidden");
+
+    await loadGmailStatus();
   } catch (err) {
     setError(emailError, err);
-  } finally {
-    gmailDisconnectBtn.disabled = false;
+    await loadGmailStatus();
   }
 });
 
