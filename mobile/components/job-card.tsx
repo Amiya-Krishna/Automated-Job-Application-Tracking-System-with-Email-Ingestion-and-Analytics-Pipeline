@@ -86,10 +86,12 @@ export const JobCard = memo(function JobCard({ item, sourceName, appliedStatus, 
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 16,
     gap: Spacing.two,
-    minHeight: 44,
+    minHeight: 112,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: '#E7EAF0',
   },
   header: {
     flexDirection: 'row',

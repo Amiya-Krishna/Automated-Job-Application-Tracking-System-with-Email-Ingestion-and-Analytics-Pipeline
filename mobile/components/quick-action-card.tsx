@@ -1,8 +1,7 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ChevronRightIcon } from '@/components/icons';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -10,10 +9,21 @@ interface QuickActionCardProps {
   label: string;
   onPress: () => void;
   hint?: string;
+  icon?: string;
+  tone?: 'purple' | 'blue' | 'pink' | 'green' | 'orange';
 }
 
-export function QuickActionCard({ label, onPress, hint }: QuickActionCardProps) {
+const tones = {
+  purple: ['#7C3AED', '#EDE9FE'],
+  blue: ['#2563EB', '#DBEAFE'],
+  pink: ['#DB2777', '#FCE7F3'],
+  green: ['#059669', '#D1FAE5'],
+  orange: ['#EA580C', '#FFEDD5'],
+} as const;
+
+export function QuickActionCard({ label, onPress, hint, icon = '✦', tone = 'purple' }: QuickActionCardProps) {
   const theme = useTheme();
+  const [accent, soft] = tones[tone];
   return (
     <Pressable
       accessibilityRole="button"
@@ -21,29 +31,32 @@ export function QuickActionCard({ label, onPress, hint }: QuickActionCardProps) 
       accessibilityHint={hint}
       onPress={onPress}
       style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}>
-      <ThemedView type="backgroundElement" style={[styles.card, { borderColor: theme.border }]}>
-        <ThemedText type="smallBold" numberOfLines={2} style={styles.label}>
-          {label}
-        </ThemedText>
+      <View style={[styles.card, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+        <View style={[styles.icon, { backgroundColor: soft }]}>
+          <ThemedText style={[styles.iconText, { color: accent }]}>{icon}</ThemedText>
+        </View>
+        <View style={styles.copy}>
+          <ThemedText type="smallBold" numberOfLines={2}>{label}</ThemedText>
+          {hint ? <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>{hint}</ThemedText> : null}
+        </View>
         <ChevronRightIcon color={theme.textSecondary} size={16} />
-      </ThemedView>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   pressable: { flexGrow: 1, flexBasis: '47%' },
-  pressed: { opacity: 0.7 },
+  pressed: { transform: [{ scale: 0.98 }], opacity: 0.9 },
   card: {
-    borderRadius: 18,
+    borderRadius: 22,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingVertical: 14,
-    paddingHorizontal: Spacing.three,
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
+    padding: 14,
+    minHeight: 108,
     justifyContent: 'space-between',
-    gap: Spacing.two,
+    gap: 10,
   },
-  label: { flexShrink: 1 },
+  icon: { width: 38, height: 38, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  iconText: { fontSize: 19, lineHeight: 22, fontWeight: '800' },
+  copy: { flex: 1, gap: 2 },
 });

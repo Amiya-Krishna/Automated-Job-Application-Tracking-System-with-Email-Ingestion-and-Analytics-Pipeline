@@ -274,34 +274,12 @@ export default function HomeScreen() {
               <SectionHeader title="Quick actions" />
 
               <ThemedView style={styles.quickActionGrid}>
-                <QuickActionCard
-                  label="Add job"
-                  onPress={() => router.push('/application/add')}
-                />
-
-                <QuickActionCard
-                  label="Tailor resume"
-                  hint="Paste a job description"
-                  onPress={() => router.push('/tailor')}
-                />
-
-                <QuickActionCard
-                  label="Gmail sync"
-                  onPress={() => router.push('/account/gmail')}
-                />
-
-                <QuickActionCard
-                  label="Upload resume"
-                  onPress={() => router.push('/resumes')}
-                />
-
-                <QuickActionCard
-                  label="Analytics"
-                  onPress={() => router.navigate('/analytics')}
-                />
-
-                <QuickActionCard
-                  label="Saved jobs"
+                <QuickActionCard label="ATS score" hint="Paste a job description" icon="◎" tone="purple" onPress={() => router.push('/tailor')} />
+                <QuickActionCard label="Tailor resume" hint="Create a targeted version" icon="✦" tone="pink" onPress={() => router.push('/tailor')} />
+                <QuickActionCard label="Upload resume" hint="PDF or DOCX" icon="↑" tone="blue" onPress={() => router.push('/resumes')} />
+                <QuickActionCard label="Add application" hint="Track a new opportunity" icon="+" tone="green" onPress={() => router.push('/application/add')} />
+                <QuickActionCard label="Analytics" hint="See your progress" icon="◒" tone="orange" onPress={() => router.navigate('/analytics')} />
+                <QuickActionCard label="Saved jobs" icon="★" tone="purple"
                   onPress={() => router.push('/saved-jobs')}
                 />
               </ThemedView>

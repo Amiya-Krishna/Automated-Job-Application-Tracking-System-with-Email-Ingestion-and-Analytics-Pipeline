@@ -47,10 +47,10 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    borderRadius: 17,
+    paddingHorizontal: 17,
     paddingVertical: 13,
     fontSize: 16,
-    minHeight: 52, // accessible touch target
+    minHeight: 56, // accessible touch target
   },
 });

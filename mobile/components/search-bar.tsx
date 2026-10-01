@@ -16,7 +16,7 @@ export function SearchBar({ onSubmit, ...rest }: SearchBarProps) {
         styles.container,
         { backgroundColor: theme.backgroundElement, borderColor: theme.border },
       ]}>
-      <TextInput
+      <View style={styles.searchGlyph}><TextInput
         placeholderTextColor={theme.textSecondary}
         autoCapitalize="none"
         autoCorrect={false}
@@ -24,18 +24,19 @@ export function SearchBar({ onSubmit, ...rest }: SearchBarProps) {
         onSubmitEditing={onSubmit}
         style={[styles.input, { color: theme.text }]}
         {...rest}
-      />
+      /></View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  searchGlyph: { flex:1, justifyContent:'center', paddingLeft:22 },
   container: {
     borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 16,
+    borderRadius: 18,
+    paddingHorizontal: 15,
     justifyContent: 'center',
-    minHeight: 52,
+    minHeight: 54,
   },
   input: {
     fontSize: 16,

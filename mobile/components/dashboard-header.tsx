@@ -43,44 +43,36 @@ export function DashboardHeader({ name }: DashboardHeaderProps) {
 
   return (
     <View style={styles.container}>
-      <View style={styles.topRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open menu"
-          hitSlop={Spacing.two}
-          onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
-          style={styles.menuButton}>
-          <View style={[styles.hamburgerLine, { backgroundColor: theme.text }]} />
-          <View style={[styles.hamburgerLine, { backgroundColor: theme.text }]} />
-          <View style={[styles.hamburgerLine, styles.hamburgerLineShort, { backgroundColor: theme.text }]} />
-        </Pressable>
-
-        <Avatar name={name} size={40} />
-
-        <View style={styles.greetingBlock}>
-          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-            {getGreeting()}{firstName ? `, ${firstName}` : ''}
-          </ThemedText>
-          <ThemedText type="headline" numberOfLines={1} accessibilityRole="header">
-            Let&apos;s find your next role
-          </ThemedText>
+      <View style={[styles.hero, { backgroundColor: theme.tint }]}>
+        <View style={[styles.orb, styles.orbOne]} />
+        <View style={[styles.orb, styles.orbTwo]} />
+        <View style={styles.heroTop}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            hitSlop={Spacing.two}
+            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+            style={styles.heroMenu}>
+            <View style={styles.hamburgerLine} />
+            <View style={styles.hamburgerLine} />
+            <View style={[styles.hamburgerLine, styles.hamburgerLineShort]} />
+          </Pressable>
+          <View style={styles.heroCopy}>
+            <ThemedText type="small" style={styles.heroEyebrow}>{getGreeting()}{firstName ? `, ${firstName}` : ''}</ThemedText>
+            <ThemedText type="subtitle" style={styles.heroTitle}>Let&apos;s land your next role</ThemedText>
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+            hitSlop={Spacing.two}
+            onPress={() => router.navigate('/notifications')}
+            style={styles.heroBell}>
+            <BellIcon color="#fff" />
+            {unreadCount > 0 ? <View style={styles.heroBadge}><ThemedText type="caption" style={styles.badgeText}>{unreadCount > 9 ? '9+' : unreadCount}</ThemedText></View> : null}
+          </Pressable>
         </View>
-
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-          hitSlop={Spacing.two}
-          onPress={() => router.navigate('/notifications')}
-          style={styles.bellButton}>
-          <BellIcon color={theme.text} />
-          {unreadCount > 0 ? (
-            <View style={[styles.badge, { backgroundColor: theme.danger }]}>
-              <ThemedText type="caption" style={styles.badgeText} maxFontSizeMultiplier={1}>
-                {unreadCount > 9 ? '9+' : unreadCount}
-              </ThemedText>
-            </View>
-          ) : null}
-        </Pressable>
+        <Avatar name={name} size={46} />
+        <ThemedText type="small" style={styles.heroSub}>Track applications, score resumes, and tailor faster.</ThemedText>
       </View>
 
       <SearchBar
@@ -94,57 +86,21 @@ export function DashboardHeader({ name }: DashboardHeaderProps) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: 16,
-  },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  menuButton: {
-    width: 46,
-    height: 46,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  hamburgerLine: {
-    width: 18,
-    height: 2,
-    borderRadius: 1,
-  },
-  hamburgerLineShort: {
-    width: 12,
-  },
-  greetingBlock: {
-    flex: 1,
-    gap: 3,
-  },
-  bellButton: {
-    width: 46,
-    height: 46,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  bellIcon: {
-    fontSize: 22,
-  },
-  badge: {
-    position: 'absolute',
-    top: 4,
-    right: 4,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    paddingHorizontal: 3,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: {
-    color: '#ffffff',
-    fontSize: 10,
-    lineHeight: 12,
-    fontWeight: '700',
-  },
+  container: { gap: 16 },
+  hero: { borderRadius: 30, padding: 20, minHeight: 205, overflow: 'hidden', gap: 12 },
+  heroTop: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  heroMenu: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'flex-start', justifyContent: 'center', paddingLeft: 11, gap: 4 },
+  heroCopy: { flex: 1, gap: 1 },
+  heroEyebrow: { color: 'rgba(255,255,255,0.78)' },
+  heroTitle: { color: '#fff', fontSize: 19, lineHeight: 26 },
+  heroBell: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.16)', alignItems:'center', justifyContent:'center' },
+  heroBadge: { position:'absolute', top:2, right:2, minWidth:17, height:17, borderRadius:9, backgroundColor:'#F43F5E', alignItems:'center', justifyContent:'center' },
+  badgeText: { color:'#fff', fontSize:9, lineHeight:11, fontWeight:'800' },
+  orb: { position:'absolute', borderRadius:999, backgroundColor:'rgba(255,255,255,0.10)' },
+  orbOne: { width:170, height:170, right:-70, top:-65 },
+  orbTwo: { width:115, height:115, left:-45, bottom:-45, backgroundColor:'rgba(236,72,153,0.24)' },
+  heroSub: { color:'rgba(255,255,255,0.82)', maxWidth:290 },
+  hamburgerLine: { width:17, height:2, borderRadius:2, backgroundColor:'#fff' },
+  hamburgerLineShort: { width:11 },
+  topRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
 });

@@ -26,12 +26,12 @@ export function Card({ variant = 'flat', padding = 'three', style, children, ...
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 20,
+    borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
   elevated: Platform.select({
-    ios: { shadowColor: '#101828', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.10, shadowRadius: 20 },
+    ios: { shadowColor: '#101828', shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.075, shadowRadius: 20 },
     android: { elevation: 5 },
     default: {},
   }),

@@ -19,6 +19,12 @@ export interface ThemePalette {
   tint: string;
   danger: string;
   border: string;
+  accent: string;
+  accentSoft: string;
+  success: string;
+  warning: string;
+  purple: string;
+  pink: string;
 }
 
 export const Colors: { light: ThemePalette; dark: ThemePalette } = {
@@ -33,6 +39,12 @@ export const Colors: { light: ThemePalette; dark: ThemePalette } = {
     tint: '#4F46E5',
     danger: '#DC2626', // 6.5:1 on white, 5.9:1 on backgroundElement (WCAG AA for small text)
     border: '#E7EAF0',
+    accent: '#7C3AED',
+    accentSoft: '#F3E8FF',
+    success: '#10B981',
+    warning: '#F59E0B',
+    purple: '#8B5CF6',
+    pink: '#EC4899',
   },
   dark: {
     text: '#F8FAFC',
@@ -43,6 +55,12 @@ export const Colors: { light: ThemePalette; dark: ThemePalette } = {
     tint: '#818CF8',
     danger: '#F87171',
     border: '#263044',
+    accent: '#A78BFA',
+    accentSoft: '#2E214A',
+    success: '#34D399',
+    warning: '#FBBF24',
+    purple: '#A78BFA',
+    pink: '#F472B6',
   },
 };
 
