@@ -16,6 +16,8 @@ process.env.RL_LOGIN_MAX = "1000";
 process.env.RL_REFRESH_MAX = "1000";
 process.env.CLIENT_URL = "https://app.example.test,http://localhost:5173";
 process.env.GOOGLE_REDIRECT_URI = "https://api.example.test/api/gmail/callback";
+// Keep this test deterministic; production Expo Go behaviour is tested explicitly.
+process.env.NODE_ENV = "development";
 delete process.env.SERVER_URL;
 delete process.env.EXTENSION_REDIRECT_URL;
 
@@ -154,26 +156,28 @@ test("SECURITY: the callback re-validates the origin inside the signed state (de
 });
 
 // ============================ EXTENSION ======================================
-test("EXTENSION: callback lands on Chrome Identity redirect, session untouched, Gmail connected", async () => {
+test("EXTENSION: callback lands on the same-origin relay, session untouched, Gmail connected", async () => {
   reset();
-  process.env.EXTENSION_OAUTH_REDIRECT_URI = "https://mkmccbmcbhgnjejhhmnhibiepdadloia.chromiumapp.org/gmail";
+  process.env.EXTENSION_ID = "mkmccbmcbhgnjejhhmnhibiepdadloia";
+  process.env.EXTENSION_REDIRECT_URL = "https://api.example.test/extension/gmail-success.html";
   try {
     const s = await login("extension");
     const before = sessionSnapshot();
     const start = await authUrl(
       s.accessToken,
-      `?source=extension&redirectUri=${encodeURIComponent(process.env.EXTENSION_OAUTH_REDIRECT_URI)}`,
+      "?source=extension",
       { "x-client": "extension", Origin: "chrome-extension://mkmccbmcbhgnjejhhmnhibiepdadloia" }
     );
     assert.equal(start.res.status, 200);
     assert.equal(start.decoded.source, "extension");
-    assert.equal(start.decoded.redirectUri, process.env.EXTENSION_OAUTH_REDIRECT_URI);
+    assert.equal(start.decoded.extensionId, process.env.EXTENSION_ID);
+    assert.equal(start.decoded.extensionRelayUrl, process.env.EXTENSION_REDIRECT_URL);
     assert.equal(new URL(start.body.url).origin, "https://accounts.google.com");
 
     const cb = await callback(start.state);
     assert.equal(cb.status, 302);
     const loc = cb.headers.get("location");
-    assert.equal(loc, `${process.env.EXTENSION_OAUTH_REDIRECT_URI}?gmail=connected`);
+    assert.equal(loc, `${process.env.EXTENSION_REDIRECT_URL}?gmail=connected&extensionId=${process.env.EXTENSION_ID}`);
     assert.equal(cb.headers.get("set-cookie"), null);
     assert.equal(sessionSnapshot(), before);
 
@@ -181,41 +185,71 @@ test("EXTENSION: callback lands on Chrome Identity redirect, session untouched, 
     assert.equal(me.status, 200);
     const status = await fetch(`${base}/api/gmail/status`, { headers: { token: s.accessToken, "x-client": "extension" } });
     assert.deepEqual(await status.json(), { connected: true });
-  } finally { delete process.env.EXTENSION_OAUTH_REDIRECT_URI; }
+  } finally {
+    delete process.env.EXTENSION_ID;
+    delete process.env.EXTENSION_REDIRECT_URL;
+  }
 });
 
-test("EXTENSION: redirect URI must be explicitly configured and must match the extension", async () => {
+test("EXTENSION: OAuth requires a valid configured extension ID", async () => {
   reset();
-  delete process.env.EXTENSION_OAUTH_REDIRECT_URI;
+  delete process.env.EXTENSION_ID;
   delete process.env.EXTENSION_REDIRECT_URL;
   const s = await login("extension");
-  const missing = await authUrl(s.accessToken, "?source=extension", { "x-client": "extension" });
+
+  const missing = await authUrl(s.accessToken, "?source=extension", {
+    "x-client": "extension",
+    Origin: "chrome-extension://mkmccbmcbhgnjejhhmnhibiepdadloia",
+  });
   assert.equal(missing.res.status, 503);
 
-  process.env.EXTENSION_OAUTH_REDIRECT_URI = "https://mkmccbmcbhgnjejhhmnhibiepdadloia.chromiumapp.org/gmail";
+  process.env.EXTENSION_ID = "mkmccbmcbhgnjejhhmnhibiepdadloia";
   try {
-    const mismatch = await authUrl(s.accessToken, `?source=extension&redirectUri=${encodeURIComponent("https://other.chromiumapp.org/gmail")}`, { "x-client": "extension" });
-    assert.equal(mismatch.res.status, 400);
-  } finally { delete process.env.EXTENSION_OAUTH_REDIRECT_URI; }
+    const configured = await authUrl(s.accessToken, "?source=extension", {
+      "x-client": "extension",
+      Origin: `chrome-extension://${process.env.EXTENSION_ID}`,
+    });
+    assert.equal(configured.res.status, 200);
+    assert.equal(configured.decoded.extensionId, process.env.EXTENSION_ID);
+    assert.equal(configured.decoded.source, "extension");
+  } finally {
+    delete process.env.EXTENSION_ID;
+  }
 });
 
-test("EXTENSION: invalid configured redirect values are rejected", () => {
-  const { extensionOAuthRedirectUrl } = require("../../utils/oauthReturn");
-  const valid = "https://abcdefghijklmnop.chromiumapp.org/gmail";
-  assert.equal(extensionOAuthRedirectUrl({ EXTENSION_OAUTH_REDIRECT_URI: valid }), valid);
+test("EXTENSION: invalid configured relay values are rejected", () => {
+  const { extensionLandingUrl, extensionOAuthRedirectUrl } = require("../../utils/oauthReturn");
+  assert.equal(
+    extensionLandingUrl({ EXTENSION_REDIRECT_URL: "https://api.example.test/extension/gmail-success.html" }),
+    "https://api.example.test/extension/gmail-success.html"
+  );
+  assert.equal(
+    extensionLandingUrl({ EXTENSION_REDIRECT_URL: "http://localhost:5000/extension/gmail-success.html" }),
+    "http://localhost:5000/extension/gmail-success.html"
+  );
   for (const value of [
     "chrome-extension://abcdefghijklmnop/dashboard.html",
-    "https://evil.example/gmail",
-    "http://abcdefghijklmnop.chromiumapp.org/gmail",
-    "https://abcdefghijklmnop.chromiumapp.org/gmail?x=1",
-  ]) assert.equal(extensionOAuthRedirectUrl({ EXTENSION_OAUTH_REDIRECT_URI: value }), null, value);
+    "javascript:alert(1)",
+    "not a url",
+  ]) {
+    assert.equal(extensionLandingUrl({ EXTENSION_REDIRECT_URL: value }), "http://localhost:5000/extension/gmail-success.html", value);
+  }
+  // Compatibility helper remains intentionally strict for old deployments.
+  const validLegacy = "https://abcdefghijklmnop.chromiumapp.org/gmail";
+  assert.equal(extensionOAuthRedirectUrl({ EXTENSION_OAUTH_REDIRECT_URI: validLegacy }), validLegacy);
 });
 
-test("EXTENSION: the legacy landing page remains available but is not used by the new OAuth state", async () => {
-  const res = await fetch(`${base}/extension/gmail-success.html?gmail=connected`);
+test("EXTENSION: same-origin relay page is available and contains the extension handoff script", async () => {
+  const res = await fetch(`${base}/extension/gmail-success.html?gmail=connected&extensionId=mkmccbmcbhgnjejhhmnhibiepdadloia`);
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.match(html, /Gmail connected/);
+  assert.match(html, /id="title"/);
+  assert.match(html, /\/extension\/gmail-success\.js/);
+
+  const js = await (await fetch(`${base}/extension/gmail-success.js`)).text();
+  assert.match(js, /Gmail connected/);
+  assert.match(js, /TRACKTRAIL_GMAIL_OAUTH_COMPLETE/);
+  assert.match(js, /chrome\.runtime\.sendMessage/);
 });
 
 // ============================== MOBILE =======================================

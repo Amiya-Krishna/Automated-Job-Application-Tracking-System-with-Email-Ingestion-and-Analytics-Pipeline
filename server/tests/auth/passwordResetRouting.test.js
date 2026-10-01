@@ -12,6 +12,8 @@ process.env.JWT_SECRET = "test-secret";
 process.env.RL_FORGOT_MAX = "1000"; // this file fires many requests from one IP; limiter behaviour is covered elsewhere
 process.env.RL_RESET_MAX = "1000";
 process.env.CLIENT_URL = "https://app.example.test,https://other.example.test";
+process.env.APP_LINK_BASE_URL = "";
+process.env.NODE_ENV = "development";
 
 const user = { id: 7, email: "a@b.co", password: bcrypt.hashSync("oldpass1", 4) };
 const sent = [];

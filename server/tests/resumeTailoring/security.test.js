@@ -53,7 +53,10 @@ test("web client, mobile app and browser extension contain NO provider hostnames
 });
 
 test("AI provider hosts and key variables are referenced ONLY inside server/services/resumeTailoring/providers", () => {
-  const all = [...walk(ROOT)].filter((f) => !/\.md$|\.env\.example$/.test(f));
+  // Real deployment .env files are configuration, not source code. They may
+  // contain a provider base URL and must never be committed. Templates remain
+  // scanned by the frontend checks above.
+  const all = [...walk(ROOT)].filter((f) => !/\.md$|(^|[\\/])\.env(?:\.|$)/.test(f));
   const hosts = grep(all, PROVIDER_HOSTS);
   assert.ok(hosts.length > 0);
   for (const f of hosts) assert.ok(f.startsWith(path.join("server", "services", "resumeTailoring", "providers")), `${f} references an AI provider host outside the providers module`);

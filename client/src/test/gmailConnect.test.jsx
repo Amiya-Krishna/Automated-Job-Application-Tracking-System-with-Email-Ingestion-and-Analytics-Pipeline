@@ -27,18 +27,26 @@ beforeEach(() => {
   vi.clearAllMocks();
   Object.defineProperty(window, "location", { configurable: true, value: { ...realLocation, href: "http://localhost:5173/integrations" } });
 });
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  sessionStorage.removeItem("tracktrail:web-oauth-handoff");
+  const { clearAccessToken } = await import("../utils/auth");
+  clearAccessToken();
   Object.defineProperty(window, "location", { configurable: true, value: realLocation });
 });
 
 describe("web Gmail connect", () => {
-  it("sends the current route as returnTo and then navigates to Google", async () => {
+  it("sends the current route as returnTo and preserves the access token for the same-tab OAuth handoff", async () => {
+    const { setAccessToken } = await import("../utils/auth");
+    setAccessToken("access-token-for-oauth");
     api.get.mockImplementation((path) => (path === "/gmail/status" ? Promise.resolve({ data: { connected: false } }) : Promise.resolve({ data: { url: GOOGLE } })));
     renderAt("/integrations?tab=email");
     await userEvent.click(await screen.findByRole("button", { name: "Connect Gmail" }));
     await waitFor(() => expect(window.location.href).toBe(GOOGLE));
     expect(api.get).toHaveBeenCalledWith("/gmail/auth-url", { params: { returnTo: "/integrations?tab=email" } });
+    const handoff = JSON.parse(sessionStorage.getItem("tracktrail:web-oauth-handoff"));
+    expect(handoff.token).toBe("access-token-for-oauth");
+    expect(handoff.expiresAt).toBeGreaterThan(Date.now());
   });
 
   it("after returning with ?gmail=connected the page shows Gmail connected immediately and cleans the URL", async () => {

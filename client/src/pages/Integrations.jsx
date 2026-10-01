@@ -4,6 +4,7 @@ import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
 import { parseJobEmail } from "../utils/emailParser";
+import { getAccessToken } from "../utils/auth";
 
 function Integrations() {
   const navigate = useNavigate();
@@ -56,6 +57,20 @@ function Integrations() {
       // returnTo: the page the button was clicked on. The server validates it (same-origin
       // path only) and signs it into the OAuth state; it is not trusted as a URL.
       const res = await api.get("/gmail/auth-url", { params: { returnTo: `${location.pathname}${location.search}` } });
+
+      // Gmail OAuth is a full top-level navigation (TrackTrail -> Google -> API -> SPA).
+      // The access token intentionally lives in memory, so preserve it only for this
+      // short OAuth handoff in sessionStorage. It survives the same-tab navigation but
+      // is not a durable login credential across browser restarts. AuthContext consumes
+      // and removes it immediately when the SPA returns.
+      const token = getAccessToken();
+      if (token) {
+        sessionStorage.setItem("tracktrail:web-oauth-handoff", JSON.stringify({
+          token,
+          expiresAt: Date.now() + 10 * 60 * 1000,
+        }));
+      }
+
       window.location.href = res.data.url;
     } catch (err) {
       toast.error(
