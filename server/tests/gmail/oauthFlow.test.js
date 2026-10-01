@@ -124,6 +124,34 @@ test("WEB: logged-in user starts from /integrations on the SECOND allowed origin
   assert.equal(db.users[0].gmailRefreshToken, "rt-good");
 });
 
+test("WEB POPUP: callback returns an HTML bridge that posts only the Gmail status to the opener", async () => {
+  reset();
+  const s = await login("web");
+  const before = sessionSnapshot();
+  const start = await authUrl(
+    s.accessToken,
+    "?returnTo=%2Fintegrations%3Ftab%3Demail%26popup%3Dtest&popup=1",
+    { "x-client": "web", Origin: "http://localhost:5173" },
+  );
+
+  assert.equal(start.res.status, 200);
+  assert.equal(start.decoded.source, "web");
+  assert.equal(start.decoded.popup, true);
+
+  const cb = await callback(start.state);
+  assert.equal(cb.status, 200);
+  assert.equal(cb.headers.get("set-cookie"), null);
+  assert.match(cb.headers.get("content-type"), /text\/html/);
+
+  const html = await cb.text();
+  assert.match(html, /tracktrail:gmail-oauth/);
+  assert.match(html, /targetOrigin/);
+  assert.match(html, /connected/);
+  assert.doesNotMatch(html, /accessToken|refreshToken|eyJ/);
+  assert.equal(sessionSnapshot(), before);
+  assert.equal(connected(1), true);
+});
+
 test("WEB: with no usable Origin or returnTo it falls back to the first allowed origin and /integrations", async () => {
   const s = await login("web");
   const start = await authUrl(s.accessToken, "", { "x-client": "web" });

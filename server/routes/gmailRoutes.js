@@ -61,6 +61,7 @@ router.get("/auth-url", auth, (req, res) => {
       }
       statePayload.redirectUri = redirectUri;
     } else if (source === "web") {
+      statePayload.popup = req.query.popup === "1";
       // Return to the origin that started the flow (not "whichever CLIENT_URL
       // entry is first") and to the page the button was clicked on.
       statePayload.returnOrigin = resolveWebReturnOrigin(req.get("origin"));
@@ -116,12 +117,63 @@ router.get("/callback", async (req, res) => {
     return `${origin}${path}${path.includes("?") ? "&" : "?"}gmail=${status}`;
   }
 
-  let ctx = { source: "web" };
+  function renderWebPopup(status, ctx = {}) {
+    const origin = allowedOrigins.includes(ctx.returnOrigin)
+      ? ctx.returnOrigin
+      : defaultWebOrigin;
+    const path = sanitizeReturnPath(ctx.returnPath);
+    const returnUrl = `${origin}${path}${path.includes("?") ? "&" : "?"}gmail=${status}`;
+
+    // These values are server-generated and origin/path validated above. Escape
+    // '<' before embedding JSON in a script so even a deliberately crafted path
+    // cannot terminate the script element. No login/session token is exposed.
+    const payload = JSON.stringify({
+      type: "tracktrail:gmail-oauth",
+      status,
+    }).replace(/</g, "\\u003c");
+    const targetOrigin = JSON.stringify(origin).replace(/</g, "\\u003c");
+    const fallbackUrl = JSON.stringify(returnUrl).replace(/</g, "\\u003c");
+
+    res.type("html").send(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex,nofollow">
+    <title>TrackTrail — Gmail</title>
+  </head>
+  <body>
+    <p>Gmail connection finished. You can close this window.</p>
+    <script>
+      (() => {
+        const message = ${payload};
+        const targetOrigin = ${targetOrigin};
+        const fallbackUrl = ${fallbackUrl};
+
+        if (window.opener && !window.opener.closed) {
+          window.opener.postMessage(message, targetOrigin);
+          setTimeout(() => window.close(), 150);
+          return;
+        }
+
+        // If the popup was detached or opened without an opener, preserve the
+        // old web fallback instead of leaving the user on a blank page.
+        window.location.replace(fallbackUrl);
+      })();
+    </script>
+  </body>
+</html>`);
+  }
+
+  let ctx = { source: "web", popup: false };
 
   try {
-    const { code, state } = req.query;
+    const { code, state, error: googleError } = req.query;
 
-    if (typeof code !== "string" || typeof state !== "string" || !code || !state) {
+    // Google can return an OAuth denial with `state` but without `code`. Decode
+    // the signed state first so popup flows can report that failure to the
+    // still-open parent window instead of falling back to a full-page redirect.
+    if (typeof state !== "string" || !state) {
       return res.redirect(redirectTarget("error", ctx));
     }
 
@@ -132,12 +184,20 @@ router.get("/callback", async (req, res) => {
       mobileRedirectUri: decoded.redirectUri,
       returnOrigin: decoded.returnOrigin,
       returnPath: decoded.returnPath,
+      popup: decoded.source === "web" && decoded.popup === true,
     };
+
+    if (googleError || typeof code !== "string" || !code) {
+      if (ctx.source === "web" && ctx.popup) return renderWebPopup("error", ctx);
+      return res.redirect(redirectTarget("error", ctx));
+    }
+
     const oauth2Client = getOAuthClient();
 
     const { tokens } = await oauth2Client.getToken(code);
 
     if (!tokens.refresh_token) {
+      if (ctx.source === "web" && ctx.popup) return renderWebPopup("no_refresh_token", ctx);
       return res.redirect(redirectTarget("no_refresh_token", ctx));
     }
 
@@ -147,9 +207,11 @@ router.get("/callback", async (req, res) => {
       data: { gmailRefreshToken: tokens.refresh_token },
     });
 
+    if (ctx.source === "web" && ctx.popup) return renderWebPopup("connected", ctx);
     res.redirect(redirectTarget("connected", ctx));
   } catch (err) {
     console.error("[gmail-oauth] callback failed");
+    if (ctx.source === "web" && ctx.popup) return renderWebPopup("error", ctx);
     res.redirect(redirectTarget("error", ctx));
   }
 });

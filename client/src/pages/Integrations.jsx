@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
@@ -15,6 +15,35 @@ function Integrations() {
   const [isScanning, setIsScanning] = useState(false);
   const [results, setResults] = useState(null);
   const [savingId, setSavingId] = useState(null);
+  const gmailPopupRef = useRef(null);
+
+  useEffect(() => {
+    const handleGmailOAuthMessage = (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "tracktrail:gmail-oauth") return;
+
+      const status = event.data.status;
+
+      if (status === "connected") {
+        setConnected(true);
+        toast.success("Gmail connected");
+      } else if (status === "no_refresh_token") {
+        toast.error(
+          "Google didn't return a fresh permission grant. Remove TrackTrail's access at myaccount.google.com/permissions and try connecting again."
+        );
+      } else {
+        toast.error("Couldn't connect Gmail. Please try again.");
+      }
+
+      if (gmailPopupRef.current && !gmailPopupRef.current.closed) {
+        gmailPopupRef.current.close();
+      }
+      gmailPopupRef.current = null;
+    };
+
+    window.addEventListener("message", handleGmailOAuthMessage);
+    return () => window.removeEventListener("message", handleGmailOAuthMessage);
+  }, []);
 
   useEffect(() => {
     const status = searchParams.get("gmail");
@@ -52,12 +81,38 @@ function Integrations() {
   }, []);
 
   const connectGmail = async () => {
+    // Do not navigate the main tab to Google. The access token is intentionally
+    // memory-only, so a full-page OAuth navigation would unload React and lose
+    // the current authenticated state. Open the OAuth flow in a child window
+    // and let the callback post the result back to this still-authenticated page.
+    const popup = window.open(
+      "about:blank",
+      "tracktrail-gmail-oauth",
+      "popup,width=520,height=720,resizable=yes,scrollbars=yes"
+    );
+
+    if (!popup) {
+      toast.error("Please allow pop-ups for TrackTrail to connect Gmail.");
+      return;
+    }
+
+    gmailPopupRef.current = popup;
+
     try {
-      // returnTo: the page the button was clicked on. The server validates it (same-origin
-      // path only) and signs it into the OAuth state; it is not trusted as a URL.
-      const res = await api.get("/gmail/auth-url", { params: { returnTo: `${location.pathname}${location.search}` } });
-      window.location.href = res.data.url;
+      // returnTo: the page the button was clicked on. The server validates it
+      // (same-origin path only) and signs it into the OAuth state.
+      const res = await api.get("/gmail/auth-url", {
+        params: {
+          returnTo: `${location.pathname}${location.search}`,
+          popup: "1",
+        },
+      });
+
+      popup.location.href = res.data.url;
+      popup.focus();
     } catch (err) {
+      if (!popup.closed) popup.close();
+      gmailPopupRef.current = null;
       toast.error(
         err.response?.data?.message ||
           "Gmail integration isn't configured on the backend yet"
