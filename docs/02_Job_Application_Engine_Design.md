@@ -13,20 +13,14 @@
 > all exist in the current codebase — see the README for what's actually
 > running today versus what below is still aspirational design.
 >
-> **Important correction on ingestion sources:** the "Playwright Scrapers
-> (LinkedIn, Indeed)" shown below as the primary ingestion path were never
-> wired into the active pipeline. The feature that actually shipped — Job
-> Discovery — uses **Remotive's public API** (no scraping, no anti-bot
-> workarounds) as its one real, working provider; LinkedIn/Indeed adapters
-> exist but honestly report "unavailable," since neither platform offers a
-> public search API and this project deliberately does not scrape them. A
-> standalone script matching the design below (`server/services/scraper.js`)
-> does exist in the repo with real LinkedIn/Indeed DOM-scraping code, but it
-> is not invoked by any worker or route — it predates the Remotive-based
-> redesign and was left in place, disconnected, rather than deleted. See the
-> README's "Job Discovery" and "Known Limitations" sections. A browser
-> extension (`content.js`) still does manual capture, feeding the same
-> `/api/ingest` entrypoint as Job Discovery.
+> **Current implementation correction:** Job Discovery now has three active
+> providers. Remotive uses its public API; LinkedIn and Indeed use the shared
+> Playwright scraper in `server/services/scraper.js`, invoked through their
+> adapters by the BullMQ scrape worker. All three sources feed the same
+> `ingestJob()` normalization/deduplication path. The browser extension still
+> provides manual capture through `/api/ingest`. Playwright discovery is not an
+> anti-bot bypass mechanism: CAPTCHA, authentication walls, rate limits, and
+> provider-side blocking are surfaced as errors/blocked states.
 
 ---
 
@@ -280,8 +274,8 @@ This is simple enough to explain end-to-end in an interview (it's essentially a 
    `server/lib/prisma.js`). Single database for the whole app, not a
    dual-write or a long-term Mongo/Postgres split.
 2. **Browser extension stays** — it does manual capture, feeding the same
-   `/api/ingest` entrypoint that Job Discovery's Remotive adapter also feeds
+   `/api/ingest` entrypoint that all Job Discovery adapters also feed
    (not the Playwright scraper shown in the diagram above — see the
    correction note at the top of this document).
 3. **Auth (JWT + bcrypt, already in `authRoutes.js`)** carries over as-is; it's orthogonal to this redesign — only its storage layer changed (Postgres via Prisma instead of Mongo).
-4. **What's actually been built since this doc was written:** dedup logic, the TF-IDF matcher, live per-user analytics endpoints, the Playwright apply flow (generic + Greenhouse adapters, human-in-the-loop, never auto-submits), the learning loop, and an async Job Discovery pipeline (BullMQ-backed, Remotive as the real provider) — see the README for the current, accurate module map. Genuine remaining future work: a stage-history model for analytics (current implementation is current-status-only, not historical), real LinkedIn/Indeed partner integration, and additional ATS adapters beyond Greenhouse/generic.
+4. **What's actually been built since this doc was written:** dedup logic, the TF-IDF matcher, live per-user analytics endpoints, the Playwright apply flow (generic + Greenhouse adapters, human-in-the-loop, never auto-submits), the learning loop, and an async Job Discovery pipeline (BullMQ-backed, Remotive + Playwright-based LinkedIn/Indeed discovery) — see the README for the current, accurate module map. Genuine remaining future work: a stage-history model for analytics (current implementation is current-status-only, not historical), stronger scraper fixtures/observability for LinkedIn/Indeed markup drift, and additional ATS adapters beyond Greenhouse/generic.

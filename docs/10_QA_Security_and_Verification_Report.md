@@ -88,7 +88,7 @@ Status legend: **PASS** / **FAIL** / **PARTIAL** / **BLOCKED** / **PRE-EXISTING*
 | Node | v22 (project's own toolchain) |
 | Database | PostgreSQL, run from the `embedded-postgres` npm package (real `postgres`/`initdb`/`pg_ctl` binaries), schema built from `server/prisma/schema.prisma` |
 | Prisma client | Generated with a WASM query engine + `@prisma/adapter-pg`, because `binaries.prisma.sh` (the native-engine CDN) is blocked by this sandbox's network policy. This is a **test-harness workaround only** — nothing in `server/` was changed to require it, and the project still uses the normal `prisma-client-js` generator. |
-| Redis | **Not available.** BullMQ-backed queue paths (engine job ingestion, matching, scraping, analytics workers) could not be exercised end-to-end. |
+| Redis | **Not available in that verification run.** BullMQ-backed queue paths (engine job ingestion, matching, scraping, analytics workers) could not be exercised end-to-end in that environment. The current discovery implementation now includes Remotive, LinkedIn, and Indeed; live browser-provider verification requires Redis + worker + Playwright Chromium. |
 | Browser | Real Chromium (Playwright, Google Chrome for Testing 131) — used for the web app, the browser extension (loaded unpacked, real service worker), and the mobile app exported for web (`expo export --platform web`) |
 | Mobile native | **Not available.** No Android SDK, no emulator, no device. Native deep-link handling (cold start, backgrounded, killed) was **not** tested on a real OS. |
 | Email | No SMTP/Resend key configured — the app's own documented dev fallback (logging the reset link) was used to retrieve real, server-issued tokens for testing |

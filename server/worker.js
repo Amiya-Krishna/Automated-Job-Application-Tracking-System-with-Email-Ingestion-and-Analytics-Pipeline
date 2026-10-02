@@ -1,7 +1,7 @@
 // Runs the BullMQ workers as a separate process from the API server
 // (`npm run worker`), so a Playwright crash or a slow scrape never takes
 // the REST API down with it.
-require("dotenv").config();
+require("./config/loadEnv").loadEnv();
 
 const { seedJobSources } = require("./services/seedSources");
 seedJobSources()

@@ -12,9 +12,13 @@ const configuredBaseUrl =
 // intentional: the refresh cookie is scoped to the web origin, so honoring a
 // VITE_API_BASE_URL that points directly at Render would bypass the Vercel
 // rewrite and bring back the cross-site session problem.
+const useRemoteApi = import.meta.env.VITE_USE_REMOTE_API === "true";
+
 const baseUrl = import.meta.env.PROD
   ? ""
-  : configuredBaseUrl || "http://localhost:5000";
+  : useRemoteApi
+    ? configuredBaseUrl || "http://localhost:5000"
+    : "http://localhost:5000";
 
 const axiosConfig = {
   baseURL: `${baseUrl}/api`,

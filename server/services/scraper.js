@@ -50,7 +50,9 @@ async function scrapeLinkedIn(searchQuery, context, options = {}) {
     return [];
   }
 
-  const cards = await page.$$eval("h3.base-search-card__title, a.base-card__full-link", (nodes) => {
+  const cards = await page.$$eval(
+    "h3.base-search-card__title, a.base-card__full-link",
+    (nodes, limit) => {
     // Multiple anchors/titles can belong to the same card, so dedupe by
     // walking each match up to its nearest <li> (falling back a few
     // parentElement hops if the <li> wrapper is missing) and keying by
@@ -77,8 +79,10 @@ async function scrapeLinkedIn(searchQuery, context, options = {}) {
       });
     }
 
-    return results.slice(0, Math.max(1, Number(options.limit) || 25));
-  });
+    return results.slice(0, Math.max(1, Number(limit) || 25));
+    },
+    Math.max(1, Number(options.limit) || 25)
+  );
 
   const results = [];
   for (const card of cards) {

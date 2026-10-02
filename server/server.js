@@ -1,9 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const { buildCorsOptions } = require("./middleware/corsOptions");
-const dotenv = require("dotenv");
-
-dotenv.config();
+require("./config/loadEnv").loadEnv();
 
 // jobs.id, applications.id, and applications.job_id are Postgres BigInt in
 // prisma/schema.prisma. JSON.stringify (used by res.json()) throws on raw

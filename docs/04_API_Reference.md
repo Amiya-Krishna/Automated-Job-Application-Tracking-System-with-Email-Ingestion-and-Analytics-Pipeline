@@ -320,12 +320,7 @@ the README's "Job Discovery" section for the full architecture. All endpoints
 below require the `token` header and are ownership-scoped to the
 authenticated user (a user can only see/act on their own runs).
 
-**Discovery providers:** `remotive` is the only functional provider — a
-free, public API with no credentials required. `linkedin` and `indeed` are
-registered as valid `sources` values but their adapters always report
-`status: "unavailable"` — this project does not scrape either platform or
-attempt to bypass anti-bot protection, and no official partner API
-integration exists yet for either one.
+**Discovery providers:** `remotive`, `linkedin`, and `indeed` are all active `sources` values. Remotive uses its public API. LinkedIn and Indeed use Playwright through their discovery adapters and the shared `server/services/scraper.js` implementation. Their results enter the same ingestion/deduplication pipeline. Browser/runtime failures and provider blocking are returned as per-source `error`/`blocked` results rather than fabricated empty success.
 
 ### 12. Start a Discovery Run
 
@@ -337,7 +332,7 @@ integration exists yet for either one.
 {
   "query": "backend engineer",
   "location": "remote",
-  "sources": ["remotive"],
+  "sources": ["linkedin", "indeed", "remotive"],
   "limit": 25
 }
 ```
@@ -350,7 +345,7 @@ defaults to all registered sources if omitted; any value not in
 **Response (202):**
 
 ```json
-{ "status": "queued", "runId": 14, "sources": ["remotive"] }
+{ "status": "queued", "runId": 14, "sources": ["linkedin", "indeed", "remotive"] }
 ```
 
 **Error (400):** invalid query/sources/limit.
@@ -372,7 +367,7 @@ Returns the authenticated user's most recent runs (newest first, capped at
 ```json
 {
   "data": [
-    { "id": 14, "query": "backend engineer", "sources": ["remotive"], "status": "succeeded", "createdAt": "2026-08-20T10:00:00.000Z" }
+    { "id": 14, "query": "backend engineer", "sources": ["linkedin", "indeed", "remotive"], "status": "succeeded", "createdAt": "2026-08-20T10:00:00.000Z" }
   ]
 }
 ```
@@ -397,8 +392,12 @@ the API with this behavior; nothing else was changed.
     "id": 14,
     "status": "succeeded",
     "query": "backend engineer",
-    "sources": ["remotive"],
-    "results": { "remotive": { "status": "ok", "found": 12, "ingested": 9 } },
+    "sources": ["linkedin", "indeed", "remotive"],
+    "results": {
+      "linkedin": { "status": "ok", "found": 10, "ingested": 8 },
+      "indeed": { "status": "ok", "found": 12, "ingested": 9 },
+      "remotive": { "status": "ok", "found": 12, "ingested": 9 }
+    },
     "createdAt": "2026-08-20T10:00:00.000Z"
   }
 }
@@ -443,7 +442,7 @@ Analytics. **All endpoints in this section require the `token` header**
 
 **POST** `/api/ingest`
 
-Shared entrypoint used by Job Discovery (Remotive results), the browser
+Shared entrypoint used by Job Discovery (Remotive, LinkedIn, and Indeed results), the browser
 extension's manual capture, and the manual tracker's engine bridge — one
 normalization/dedup code path for all three.
 
@@ -864,13 +863,13 @@ curl -X GET http://localhost:5000/api/jobs \
   -H "token: <your_token>"
 ```
 
-### Start a Discovery Run (Remotive)
+### Start a Discovery Run (Remotive, LinkedIn, or Indeed)
 
 ```bash
 curl -X POST http://localhost:5000/api/scrape/run \
   -H "token: <your_token>" \
   -H "Content-Type: application/json" \
-  -d '{"query": "backend engineer", "sources": ["remotive"], "limit": 25}'
+  -d '{"query": "backend engineer", "location": "India", "sources": ["linkedin", "indeed", "remotive"], "limit": 25}'
 ```
 
 ### Poll a Run

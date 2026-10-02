@@ -66,8 +66,8 @@ TrackTrail/
 │   │
 │   ├── 📁 adapters/                      # Two unrelated kinds of adapter live in this one folder:
 │   │   ├── remotiveJobsAdapter.js        #   Job Discovery: Remotive's public API (real, working)
-│   │   ├── linkedinJobsAdapter.js        #   Job Discovery: reports "unavailable" — no official API integration
-│   │   ├── indeedJobsAdapter.js          #   Job Discovery: reports "unavailable" — no official API integration
+│   │   ├── linkedinJobsAdapter.js        #   Job Discovery: Playwright-based LinkedIn discovery
+│   │   ├── indeedJobsAdapter.js          #   Job Discovery: Playwright-based Indeed discovery
 │   │   ├── greenhouseAdapter.js          #   Apply engine: per-ATS field-mapping for Greenhouse
 │   │   ├── genericAdapter.js             #   Apply engine: fallback field-mapping for unrecognized ATS platforms
 │   │   └── index.js                      #   Apply engine: selects an adapter for a given application URL
@@ -115,7 +115,7 @@ TrackTrail/
 │   │   │   ├── Dashboard.jsx             # `/dashboard`
 │   │   │   ├── AddJob.jsx                # Add-job entry point
 │   │   │   ├── JobForm.jsx               # `/add-job`, `/edit-job/:id`
-│   │   │   ├── JobDiscovery.jsx          # `/job-discovery` — trigger/poll/remove Remotive discovery runs
+│   │   │   ├── JobDiscovery.jsx          # `/job-discovery` — trigger/poll/remove multi-source discovery runs
 │   │   │   ├── AppliedJobs.jsx           # `/applied-jobs` — the unified tracked_jobs view (manual + engine-applied)
 │   │   │   ├── Integrations.jsx          # `/integrations` — Gmail connect/scan
 │   │   │   ├── Profile.jsx               # `/profile` — user_profile table (per-user)
@@ -258,7 +258,7 @@ GET    /api/gmail/scan             - Scan inbox for interview/offer/rejection em
 #### `scrapeRoutes.js` — mounted at `/api/scrape`
 
 ```
-POST   /api/scrape/run             - Start an async discovery run (Remotive; LinkedIn/Indeed report "unavailable")
+POST   /api/scrape/run             - Start an async discovery run (Remotive, LinkedIn, and/or Indeed)
 GET    /api/scrape/runs            - List the caller's recent runs
 GET    /api/scrape/runs/:id        - Poll a run's status (Cache-Control: no-store — see README)
 DELETE /api/scrape/runs/:id        - Remove one of the caller's own run-history rows
@@ -397,8 +397,8 @@ api.js → POST /api/scrape/run   (token header attached automatically)
     ↓
 scrapeRoutes.js creates a ScrapeRun row (status: queued), enqueues on BullMQ
     ↓
-scrapeWorker.js picks it up → calls the Remotive adapter (or reports
-    LinkedIn/Indeed as "unavailable")
+scrapeWorker.js picks it up → calls the selected Remotive, LinkedIn, and/or
+    Indeed discovery adapters
     ↓
 Results go through ingestJob() → normalize → dedup → insert → enqueue match
     ↓

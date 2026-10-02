@@ -7,7 +7,7 @@ A backend-heavy system that treats job search as a data pipeline, not a CRUD app
 - Ingestion → deduplication → scoring → application → analytics pipeline
 - Multi-user: every account gets its own tracked jobs, resume profile, match scores, and analytics — enforced by ownership checks on every query, not just a login screen
 - Async architecture using BullMQ (API latency independent of scraping/automation)
-- Real, no-auth job discovery via Remotive's public API, alongside an honest "not yet available" status for LinkedIn/Indeed (no scraping, no anti-bot workarounds — see [Job Discovery](#job-discovery) below)
+- Multi-source job discovery via Remotive's public API plus Playwright-based LinkedIn and Indeed discovery, all running asynchronously through the BullMQ scrape worker (see [Job Discovery](#job-discovery) below)
 - Duplicate suppression (~65%) using hash + bounded fuzzy matching
 - Explainable job ranking (TF-IDF + adaptive skill weights) — deterministic scoring, not a trained ML model
 - Human-in-the-loop Playwright automation (no blind submissions)
@@ -91,6 +91,8 @@ The API is a thin layer. It validates input, does minimal synchronous writes (au
 flowchart LR
   Extension[Chrome Extension] --> Ingest[Ingestion API]
   Remotive[Remotive Public API] --> Discovery[Job Discovery Adapter]
+  LinkedIn[LinkedIn via Playwright] --> Discovery
+  Indeed[Indeed via Playwright] --> Discovery
   Discovery --> Ingest
   Gmail[Gmail Read-Only Scan] --> API[Express API]
   API --> DB[(PostgreSQL via Prisma)]
@@ -108,12 +110,12 @@ flowchart LR
   Dashboard -- polls run status --> API
 ```
 
-> Key constraint: External job platforms mostly provide no stable, credential-free search API.
-> Remotive is the exception — a free, public, no-auth API that the Job Discovery
-> feature uses for real results today. LinkedIn and Indeed have no such API; this
-> project deliberately does not scrape them or work around anti-bot measures, so
-> those two sources honestly report "unavailable" until real partner credentials
-> exist (see Job Discovery, below).
+> Key constraint: external job platforms differ in availability, markup stability, and
+> anti-bot behavior. Remotive provides a free public API; LinkedIn and Indeed are
+> accessed by the discovery worker through Playwright. The implementation does not
+> attempt to bypass CAPTCHAs, authentication walls, or other anti-bot controls. A
+> provider can therefore legitimately return an error or blocked result when the
+> platform does not permit the automated browser flow.
 
 **Why the API and workers are separate processes:**
 
@@ -128,7 +130,7 @@ flowchart LR
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | API layer              | Auth, request validation, thin Prisma-backed reads, queue enqueueing. No scraping, scoring, or browser work inline.                                          | `routes/`, `middleware/authMiddleware.js`, `lib/prisma.js`                                                                             |
 | Ingestion              | Single entrypoint (`ingestJob`) shared by Job Discovery, the extension's manual capture, and the manual tracker's engine bridge — one place for normalization/dedup. | `services/ingestionService.js`, `services/engineBridge.js`, `adapters/`                                                                |
-| Job Discovery          | Client-triggered async discovery runs. Remotive is the real, working provider; LinkedIn/Indeed honestly report "unavailable" pending official partner access. | `services/jobDiscovery/`, `adapters/remotiveJobsAdapter.js`, `adapters/linkedinJobsAdapter.js`, `adapters/indeedJobsAdapter.js`, `routes/scrapeRoutes.js`, `workers/scrapeWorker.js` |
+| Job Discovery          | Client-triggered async discovery runs across Remotive, LinkedIn, and Indeed. Remotive uses its public API; LinkedIn/Indeed use the existing Playwright scraper with per-source normalization and honest error/blocked reporting. | `services/jobDiscovery/`, `adapters/remotiveJobsAdapter.js`, `adapters/linkedinJobsAdapter.js`, `adapters/indeedJobsAdapter.js`, `services/scraper.js`, `routes/scrapeRoutes.js`, `workers/scrapeWorker.js` |
 | Deduplication          | Exact hash match first, then a bounded fuzzy pass scoped to the same company within a 14-day window.                                                         | `services/dedupService.js`                                                                                                             |
 | Matching / scoring     | Deterministic TF-IDF cosine similarity plus curated skill-vocabulary overlap against the candidate's resume — not a trained/AI model. Runs per job in a worker. | `services/matchingService.js`, `workers/matchWorker.js`, `services/skills.js`                                                          |
 | Apply engine           | Playwright, per-ATS field detection, stops before final submit — never auto-submits. Domain-scoped rate limiting via Redis.                                  | `services/applyEngine.js`, `adapters/greenhouseAdapter.js`, `adapters/genericAdapter.js`, `services/rateLimiter.js`, `workers/applyWorker.js` |
@@ -187,7 +189,7 @@ flowchart LR
 
 ## Where This System Breaks (Real Constraints)
 
-- LinkedIn/Indeed job discovery is not available — this project deliberately never scraped or anti-bot-bypassed those platforms, so real results there require official partner API access that doesn't exist yet
+- LinkedIn/Indeed discovery is browser-driven and therefore sensitive to Playwright browser availability, site markup changes, authentication walls, CAPTCHAs, rate limits, and provider-side blocking. The worker reports these conditions instead of bypassing them
 - Remotive is remote-only, so it can't cover on-site/hybrid roles
 - Fuzzy deduplication introduces false negatives at scale → threshold tuning becomes critical
 - Playwright automation fails on dynamic multi-step forms → requires adapter expansion
@@ -199,7 +201,7 @@ flowchart LR
 
 ## Data Flow
 
-1. A job enters through a Job Discovery run (Remotive today), a manual save from the extension, or the manual tracker's engine bridge, producing a raw payload: title, company, description, source, external id.
+1. A job enters through a Job Discovery run (Remotive, LinkedIn, or Indeed), a manual save from the extension, or the manual tracker's engine bridge, producing a raw payload: title, company, description, source, external id.
 2. The ingestion route normalizes the payload (lowercase, strip punctuation, collapse whitespace; HTML is stripped from Remotive descriptions before this), resolves or inserts the company, and computes a `content_hash`.
 3. Deduplication runs inline, before the row commits. Exact hash match → inserted as a duplicate pointing at the existing row. No exact match → fuzzy pass against same-company listings within ±14 days.
 4. A genuinely new job is inserted with `status='new'`, `canonical_job_id` pointing at itself, and `match:score` is enqueued.
@@ -287,8 +289,8 @@ This is what turns the matcher from a static keyword filter into a system that s
 
 **Discovery provider failure**
 
-- Cause: Remotive's API is unreachable, times out, or returns a malformed/unexpected response; or a user selects LinkedIn/Indeed, which have no working integration.
-- Mitigation: each adapter reports a distinct `status` (`ok` / `error` / `unavailable`) with a human-readable `message` rather than silently returning zero results as if the search legitimately found nothing — the run's per-source results are visible in the dashboard. Discovery deliberately does not scrape LinkedIn/Indeed or attempt to work around anti-bot protections to compensate; those sources stay honestly unavailable until real partner API access exists.
+- Cause: a discovery provider times out, returns malformed data, the Playwright browser is unavailable, the site's markup changes, or the provider blocks the automated browser flow.
+- Mitigation: each adapter reports a distinct `status` (`ok` / `error` / `blocked` / `unavailable`) with a human-readable `message` rather than silently returning zero results as if the search legitimately found nothing. The run's per-source results are visible in the dashboard. LinkedIn/Indeed discovery uses Playwright but does not attempt to bypass anti-bot protections or authentication barriers.
 
 **Worker crash**
 
@@ -379,7 +381,7 @@ CREATE TABLE jobs (
 - Analytics conversion is based on each `tracked_jobs` row's *current* status, not a full historical stage-transition log — the schema doesn't store stage history, so "Applied → Interview" means "currently at Interview," not "ever reached Interview." See Analytics, below.
 - Playwright form-filling is best-effort. Non-standard markup, JS-rendered forms without `<label for>`, or multi-step wizards fall back to `pending_review` with fields flagged unmapped rather than failing silently — but adapter coverage (Greenhouse + generic fallback today) directly bounds how much of the pipeline is hands-off.
 - The learning loop is sparse early on and only becomes meaningful once enough outcomes have been recorded.
-- LinkedIn and Indeed have no public, credential-free search API. This project does not scrape them or work around anti-bot protections to compensate, so those two sources honestly report "unavailable" rather than returning results. Remotive (free, public, no-auth) is the only search provider that's actually functional today.
+- LinkedIn and Indeed do not expose the same public API path as Remotive, so the active discovery integration uses Playwright browser automation. This is inherently less stable than a documented API: browser binaries must be installed, selectors/markup can change, and provider-side blocking can prevent a run. Remotive remains the simplest no-auth provider because it uses a public API.
 
 ---
 
@@ -388,7 +390,7 @@ CREATE TABLE jobs (
 - Add a stage-history table (or per-stage timestamp columns) so Analytics can measure "ever reached Interview/Offer" instead of only current status.
 - Add a reliable "outcome recorded at" timestamp so Average Response Time can be computed honestly instead of staying `—`.
 - Move matching to embeddings with `pgvector` once corpus size makes a live cosine scan too slow for TF-IDF to stay the right default; the `scoreEmbedding` interface already exists for this.
-- Real LinkedIn/Indeed integration — official partner API access (LinkedIn Talent Solutions, an approved Indeed feed), not just the existing env-var placeholders.
+- Harden LinkedIn/Indeed browser discovery against provider markup changes and add stronger observability/fixtures for scraper regressions. If official partner APIs become available, they can be added behind the existing adapter interface without changing the ingestion pipeline.
 - Add ATS adapters (Lever, Workday, LinkedIn Easy Apply) behind the existing apply-engine adapter interface — additive, not a rewrite.
 - Replace the hand-tuned `0.85` fuzzy dedup threshold with a value backed by a labeled dataset and measured precision/recall.
 - Scale workers horizontally for discovery, matching, and analytics as volume grows.
@@ -413,7 +415,7 @@ Client: polls GET /api/scrape/runs/:id until the run reaches a final status
 
 **Remotive** (`server/adapters/remotiveJobsAdapter.js`) is the real, working provider: a free, public API (`https://remotive.com/api/remote-jobs`) that needs no credentials and no login. It's on by default. The adapter handles a request timeout, non-200 responses, malformed/unexpected response shapes, invalid dates, and incomplete records — all reported as an honest `status`/`message` rather than silently returning zero results.
 
-**LinkedIn and Indeed** (`linkedinJobsAdapter.js` / `indeedJobsAdapter.js`) are registered as providers but report `status: "unavailable"` — by design. Neither platform has a public, credential-free search API; this project does not scrape their pages or attempt to bypass anti-bot protection to compensate. If official partner API credentials (`LINKEDIN_TALENT_API_TOKEN`, `INDEED_PARTNER_FEED_URL`) are ever configured, the adapters still have no real API call implemented behind them yet — that integration work hasn't been done. They stay off by default in the UI and are labeled accordingly.
+**LinkedIn and Indeed** (`linkedinJobsAdapter.js` / `indeedJobsAdapter.js`) are active Job Discovery adapters. They launch Playwright, create an isolated browser context, call the shared `services/scraper.js` functions, normalize the results, and pass them into the same `ingestJob()` path used by Remotive. Each source accepts the dashboard query, location, and limit (1–50). The integration does not bypass CAPTCHAs, login walls, or anti-bot controls; those conditions are surfaced as provider errors/blocked states. Playwright Chromium must be installed on the worker host for these sources to run.
 
 **Polling is intentionally non-cacheable.** `GET /api/scrape/runs/:id` sends `Cache-Control: no-store` and skips Express's default ETag generation for that one route, so a browser can never receive a `304 Not Modified` for it. Left to Express's defaults, a byte-identical poll response would 304, and since the frontend's axios client only treats 2xx as success, a raw 304 reaching it would throw and permanently stop the polling loop — freezing the UI on a stale status. This fix is scoped to this one dynamic endpoint; no other route's caching behavior changed.
 
@@ -467,8 +469,8 @@ Zero-denominator behavior is intentional: a metric with no denominator (e.g. `In
 | `PLAYWRIGHT_PROFILE_DIR` / `PLAYWRIGHT_HEADLESS` | Optional | Apply-engine browser session config |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Optional | Forgot-password emails; skipped (logged, not sent) if unset |
 | `SERVER_URL` / `EXTENSION_REDIRECT_URL` | Optional | Used to build Gmail OAuth success/callback redirects for the extension flow |
-| `LINKEDIN_TALENT_API_TOKEN` | Provider-specific, optional | Only flips `linkedinJobsAdapter`'s availability flag — no real LinkedIn Talent Solutions API call is implemented behind it yet, so setting this does not make LinkedIn search work |
-| `INDEED_PARTNER_FEED_URL` | Provider-specific, optional | Same caveat as above, for Indeed |
+| `LINKEDIN_TALENT_API_TOKEN` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current LinkedIn discovery path uses Playwright and does not require this token |
+| `INDEED_PARTNER_FEED_URL` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current Indeed discovery path uses Playwright and does not require this feed URL |
 
 Remotive requires **no environment variable at all** — it's a public API with no auth.
 
@@ -497,7 +499,7 @@ See `mobile/README.md` for setup, environment variables, and the full list of kn
 - Why async queues (BullMQ + Redis) instead of synchronous processing?
 - How would you redesign deduplication at scale?
 - How would you replace TF-IDF with embeddings?
-- Why does Remotive work but LinkedIn/Indeed don't — what would real integration require?
+- Why can LinkedIn/Indeed discovery fail even though the adapters are implemented — what browser/runtime or provider-side conditions should be checked?
 - Why does the run-status polling endpoint need `Cache-Control: no-store`, and what actually broke without it?
 - What happens if Redis goes down?
 - How is multi-user isolation actually enforced — which tables are per-user vs. genuinely shared, and why?
@@ -555,13 +557,14 @@ npm run web                 # runs it as a web app too, in the browser
 POST /api/scrape/run
 {
   "query": "backend engineer",
-  "sources": ["remotive"],
+  "location": "India",
+  "sources": ["linkedin", "indeed", "remotive"],
   "limit": 25
 }
--> 202 { "status": "queued", "runId": 14, "sources": ["remotive"] }
+-> 202 { "status": "queued", "runId": 14, "sources": ["linkedin", "indeed", "remotive"] }
 
 GET /api/scrape/runs/14
--> { "data": { "id": 14, "status": "succeeded", "results": { "remotive": { "status": "ok", "found": 12, "ingested": 9 } }, ... } }
+-> { "data": { "id": 14, "status": "succeeded", "results": { "linkedin": { "status": "ok", "found": 10, "ingested": 8 }, "indeed": { "status": "ok", "found": 12, "ingested": 9 }, "remotive": { "status": "ok", "found": 12, "ingested": 9 } }, ... } }
 ```
 
 ---
@@ -573,7 +576,7 @@ GET /api/scrape/runs/14
 - Queue: Redis (Upstash / self-hosted) — required for the worker process; without it, discovery/matching/apply/analytics jobs never run
 - Client: static build (`npm run build`) on any static host (Vercel, Netlify, etc.), pointed at the API via `VITE_API_BASE_URL`
 - Remotive needs no credentials in any environment — it just works once the server can reach `remotive.com`
-- LinkedIn/Indeed are not deployable as working search providers in any environment; that requires official partner integration work that doesn't exist yet, not just an environment variable
+- LinkedIn/Indeed require a worker host with Playwright Chromium installed and outbound browser access. They do not require the old partner API environment variables because the active implementation uses browser discovery. Production deployments must account for provider-side blocking, markup drift, and browser-runtime availability
 
 Production considerations:
 
@@ -586,11 +589,11 @@ Production considerations:
 ## Known Limitations
 
 - **Remotive is remote-only.** It's a real, additional discovery source, not a LinkedIn/Indeed replacement — every result has `remoteType: "remote"`.
-- **LinkedIn and Indeed have no working search integration.** Both platforms lack a public, credential-free search API, and this project deliberately does not scrape them or bypass anti-bot protection. Real search there requires official partner API access that hasn't been obtained; setting the provider-specific env vars alone does not make them work (see Environment Variables, above).
+- **LinkedIn and Indeed use active Playwright discovery.** They are subject to browser-runtime requirements, dynamic markup, authentication walls, CAPTCHA/rate limits, and provider-side blocking. The implementation does not bypass these protections. When discovery is blocked or fails, the per-source run result reports the reason rather than pretending that zero jobs were found.
 - **Remotive's location data is free-form**, not structured — `candidate_required_location` is whatever text Remotive supplies (e.g. "USA", "Worldwide"), not a normalized country/region field.
 - **Analytics conversion reflects current status, not stage history.** "Applied → Interview" means "currently at Interview," not "ever reached Interview" — see Analytics, above.
 - **Average response time is unavailable**, not approximated — the schema has no reliable stage-transition timestamp to compute it from.
-- **A separate, disconnected legacy script** (`server/services/scraper.js`, run manually via `npm run scrape`) contains real Playwright-based LinkedIn/Indeed DOM scraping. It predates the Remotive-based Job Discovery feature, is not invoked by any worker or route, and is not part of the active pipeline — see "Code issues discovered but intentionally not modified" in project history for why it wasn't removed as part of a documentation-only pass.
+- **LinkedIn/Indeed discovery depends on Playwright.** `server/services/scraper.js` is now the shared implementation invoked by the active `linkedinJobsAdapter.js` and `indeedJobsAdapter.js` adapters from the BullMQ scrape worker. It requires the Chromium browser runtime and can be affected by provider markup changes, authentication walls, CAPTCHA/rate limits, or blocking. The system does not bypass those protections.
 - Fuzzy deduplication and the `0.85` similarity threshold are hand-tuned, not backed by a labeled dataset.
 - The learning loop needs a meaningful number of recorded outcomes before it contributes anything beyond flat skill weighting (cold-start problem).
 - **Mobile password reset deep link doesn't work for an already-logged-in device.** The handoff (see Mobile App, above) lands on a route guarded to unauthenticated sessions only; a user with an active session on that device would need to log out first. Not yet fixed.
@@ -604,7 +607,7 @@ Production considerations:
 - Understanding of real-world constraints (noisy data, unreliable/absent external APIs, multi-user data isolation)
 - Trade-off driven engineering (accuracy vs cost, automation vs risk, live queries vs precomputed rollups)
 - Building beyond CRUD into decision-making systems
-- Willingness to honestly report a feature as "unavailable" rather than fake it (LinkedIn/Indeed, average response time)
+- Willingness to report provider failures/blocking honestly rather than fabricating discovery results (especially for LinkedIn/Indeed), while keeping the ingestion and matching pipeline deterministic
 
 ## AI resume tailoring
 
@@ -612,3 +615,9 @@ TrackTrail can tailor your resume to a job **without ever inventing anything**: 
 rewords what is already on your resume, and you approve every change. An LLM provider
 (Gemini, Groq, OpenRouter, Anthropic, OpenAI) is optional and configured **server-side only**.
 See [`docs/RESUME_TAILORING.md`](docs/RESUME_TAILORING.md), especially *AI Provider Configuration*.
+
+## Local Development Without Deployment
+
+TrackTrail supports separate local and production environments. During local development, the web client targets `http://localhost:5000` and the backend can load `server/.env.local` before the shared `.env`. Production variables remain unchanged on the deployment platform.
+
+This means changes can be tested from VS Code before committing or pushing to GitHub. See `docs/03_Setup_Installation_and_Contributing.md` for the exact setup.

@@ -232,18 +232,21 @@ GOOGLE_REDIRECT_URI=
 # ===== PLAYWRIGHT APPLY ENGINE (optional) =====
 PLAYWRIGHT_PROFILE_DIR=./playwright-profile
 PLAYWRIGHT_HEADLESS=true
+# Required for LinkedIn/Indeed Job Discovery and the Playwright apply engine
+# Install once after npm install: npx playwright install chromium
 
 # ===== FORGOT-PASSWORD EMAILS (optional) =====
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
 
-# ===== LINKEDIN/INDEED PARTNER APIS (optional, provider-specific) =====
-# Setting these only flips the adapters' "configured" flag — no official
-# LinkedIn Talent Solutions or Indeed partner API call is implemented
-# behind them yet, so setting these alone does not make search work.
+# ===== LEGACY LINKEDIN/INDEED PARTNER API SETTINGS (optional) =====
+# These are retained for older deployments/configuration only. The active
+# LinkedIn/Indeed discovery path uses Playwright and does not require them.
 LINKEDIN_TALENT_API_TOKEN=
 INDEED_PARTNER_FEED_URL=
 ```
+
+The variables below are legacy compatibility settings; the current LinkedIn/Indeed discovery path uses Playwright and does not require partner API credentials.
 
 Remotive (the working Job Discovery provider) needs **no environment variable at all** — it's a public API with no auth requirement.
 
@@ -257,7 +260,7 @@ Remotive (the working Job Discovery provider) needs **no environment variable at
 | `CLIENT_URL` | Required | Frontend URL(s) for CORS, comma-separated |
 | `REDIS_URL` | Optional (required for `npm run worker`) | Queue backend for discovery/matching/apply/analytics; defaults to `redis://127.0.0.1:6379` if unset |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` | Optional | Gmail OAuth — see [09_Gmail_Integration_and_Resume_Tailoring.md](09_Gmail_Integration_and_Resume_Tailoring.md) |
-| `PLAYWRIGHT_PROFILE_DIR` / `PLAYWRIGHT_HEADLESS` | Optional | Apply-engine browser session config |
+| `PLAYWRIGHT_PROFILE_DIR` / `PLAYWRIGHT_HEADLESS` | Optional | Playwright browser/session config for apply automation and LinkedIn/Indeed discovery |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Optional | Forgot-password emails; skipped (logged, not sent) if unset |
 | `SERVER_URL` / `EXTENSION_REDIRECT_URL` | Optional | Gmail OAuth redirect handling for the browser extension flow |
 | `LINKEDIN_TALENT_API_TOKEN` / `INDEED_PARTNER_FEED_URL` | Optional, provider-specific | Only flips an availability flag — no real API call is implemented behind either yet |
@@ -341,7 +344,7 @@ Open your browser and go to:
 http://localhost:5173
 ```
 
-You should see the landing page. Register a new account and start tracking! To try Job Discovery, go to `/job-discovery` and search — Remotive works out of the box with no extra setup; LinkedIn/Indeed will show as "unavailable" (see the README's Job Discovery section for why).
+You should see the landing page. Register a new account and start tracking! To try Job Discovery, go to `/job-discovery` and search. Remotive works through its public API; LinkedIn and Indeed launch Playwright and require Chromium to be installed on the worker host (`npx playwright install chromium`). Provider-side blocking or markup changes are surfaced in the per-source run result.
 
 ---
 
@@ -391,7 +394,7 @@ Expected: Job appears in your Applied Jobs list.
 2. Search for a role (Remotive is on by default)
 3. Poll status until it reaches `succeeded`
 
-Expected: Real Remotive listings appear; LinkedIn/Indeed (if selected) show as "unavailable".
+Expected: Remotive listings appear; LinkedIn/Indeed attempt browser discovery when selected and report either `ok` results or an explicit provider/browser error or blocked status.
 
 ### Verification checklist
 
@@ -404,6 +407,7 @@ Expected: Real Remotive listings appear; LinkedIn/Indeed (if selected) show as "
 - [ ] Can access the dashboard (dashboard displays)
 - [ ] Can add a job application
 - [ ] Can trigger a Job Discovery search against Remotive (if the worker is running)
+- [ ] Can trigger LinkedIn/Indeed discovery after `npx playwright install chromium` (if the worker is running)
 - [ ] No console errors
 
 ---
@@ -1100,3 +1104,37 @@ By contributing, you agree your code will be licensed under the project's MIT Li
 Thank you for contributing! 🎉
 
 Your efforts help make this project better for everyone.
+
+## Local Development vs Production Configuration
+
+TrackTrail supports both configurations without changing source code before each test cycle.
+
+### Local development
+
+Use a separate `server/.env.local` for local backend/worker configuration and a local PostgreSQL database. It takes precedence over `server/.env` when `NODE_ENV` is not `production` or `staging`.
+
+```text
+server/.env.local.example -> server/.env.local
+client/.env.local.example -> client/.env.local
+```
+
+Run the local stack from VS Code:
+
+```bash
+cd server
+npm run dev
+npm run worker:dev
+
+cd ../client
+npm run dev
+```
+
+The web app uses `http://localhost:5000/api` locally by default. No GitHub push or deployment is required to test code changes.
+
+### Production
+
+Keep the existing deployed environment variables in the production platform. Production continues to use the deployed API/web origins and the existing deployment configuration. `server/.env.local` is ignored by Git and must never be committed.
+
+### Safety rule
+
+Local development should use a separate PostgreSQL database and Redis instance. Do not use the production `DATABASE_URL` from a local `.env` when testing migrations, deletes, seed operations, or worker jobs.

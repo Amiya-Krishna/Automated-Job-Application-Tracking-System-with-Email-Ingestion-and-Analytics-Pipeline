@@ -20,7 +20,7 @@
 // Usage (from the server/ directory, with your real .env in place):
 //   node scripts/clearApplyQueue.js
 
-require("dotenv").config();
+require("../config/loadEnv").loadEnv();
 const { applyQueue, connection } = require("../queue");
 
 async function main() {

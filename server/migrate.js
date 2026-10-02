@@ -1,7 +1,7 @@
 // migrate.js
 const { Client } = require("pg");
 const fs = require("fs");
-require("dotenv").config();
+require("./config/loadEnv").loadEnv();
 
 const client = new Client({
   connectionString: process.env.DATABASE_URL || process.env.DATABASE_URL,

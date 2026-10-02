@@ -407,8 +407,8 @@ the analytics rollup — deploy both if you want those features working.
    - It needs the same `DATABASE_URL` as the API, plus `REDIS_URL`
 
 3. **Job Discovery provider availability**
-   - Remotive (the working discovery provider) needs no credentials in any environment — it just needs the worker to be able to reach `remotive.com`
-   - LinkedIn and Indeed are not deployable as functional search providers in any environment; both require official partner API access that this project doesn't currently have, not just an environment variable — see the README's Job Discovery section
+   - Remotive needs no credentials; the worker only needs outbound access to `remotive.com`
+   - LinkedIn and Indeed use Playwright browser discovery. The worker host must have the Playwright Chromium runtime installed (`npx playwright install chromium`) and enough CPU/memory for browser sessions. These sources may fail or be blocked when the provider presents CAPTCHA/authentication/rate-limit challenges or changes its markup; the system reports those conditions instead of bypassing them
 
 ---
 
