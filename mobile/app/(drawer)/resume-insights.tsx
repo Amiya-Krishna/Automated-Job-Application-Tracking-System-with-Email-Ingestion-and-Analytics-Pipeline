@@ -23,6 +23,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useProfile } from '@/hooks/use-profile';
+import { useResumeDetail, useResumes } from '@/hooks/use-resume';
 
 interface ChecklistItem {
   label: string;
@@ -33,11 +34,19 @@ interface ChecklistItem {
 export default function ResumeInsightsScreen() {
   const theme = useTheme();
   const profile = useProfile();
+  const resumes = useResumes();
+  const activeResumeId = resumes.data?.activeResumeId ?? null;
+  const activeResumeDetail = useResumeDetail(activeResumeId);
 
-  if (profile.isLoading) return <LoadingState label="Loading your profile…" />;
+  if (profile.isLoading || resumes.isLoading) return <LoadingState label="Loading your profile…" />;
   if (profile.isError) return <ErrorState error={profile.error} onRetry={profile.refetch} />;
 
   const data = profile.data;
+  const activeResumeText = activeResumeId
+    ? activeResumeDetail.data?.resumeText ?? ''
+    : data?.resume_text ?? '';
+  const previewLoading = activeResumeId !== null && activeResumeDetail.isLoading;
+  const previewError = activeResumeId !== null && activeResumeDetail.isError;
   const checklist: ChecklistItem[] = [
     {
       label: 'Resume text added',
@@ -107,17 +116,30 @@ export default function ResumeInsightsScreen() {
             ))}
           </ThemedView>
 
-          {data?.resume_text ? (
-            <ThemedView style={styles.section}>
-              <SectionHeader title="Resume preview" />
-              <ResumeDocumentPreview text={data.resume_text} name={data.full_name || 'Resume'} />
-            </ThemedView>
-          ) : (
-            <EmptyState
-              title="No resume text yet"
-              subtitle="Add your resume text in Edit Profile to see a preview here and improve your job matches."
-            />
-          )}
+          <ThemedView style={styles.section}>
+            <SectionHeader title="Resume preview" />
+            {previewLoading ? (
+              <Card>
+                <ThemedText type="small" themeColor="textSecondary">Loading full resume…</ThemedText>
+              </Card>
+            ) : previewError ? (
+              <Card>
+                <ThemedText type="small" themeColor="danger">
+                  Could not load the full resume preview. Open Resume Manager to retry.
+                </ThemedText>
+              </Card>
+            ) : activeResumeText.trim() ? (
+              <ResumeDocumentPreview
+                text={activeResumeText}
+                name={activeResumeDetail.data?.resume.name || data?.full_name || 'Resume'}
+              />
+            ) : (
+              <EmptyState
+                title="No resume text yet"
+                subtitle="Add your resume text or upload a resume to see the full preview here."
+              />
+            )}
+          </ThemedView>
 
           {data?.skills?.length ? (
             <ThemedView style={styles.section}>

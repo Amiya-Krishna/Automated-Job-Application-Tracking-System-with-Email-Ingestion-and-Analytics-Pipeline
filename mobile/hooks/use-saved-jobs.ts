@@ -40,8 +40,8 @@ export function useSavedJobs() {
   const isSaved = (jobId: number) => jobs.some((job) => job.id === jobId);
 
   const toggleSaved = async (job: EngineJob) => {
-    // Publish from the storage service so every mounted Jobs/Saved Jobs card
-    // updates immediately, not only after the next app restart.
+    // The storage service performs an optimistic publish, so every mounted
+    // Jobs/Saved Jobs view updates immediately and rolls back on storage failure.
     if (isSaved(job.id)) {
       await unsaveJob(job.id);
     } else {

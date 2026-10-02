@@ -15,8 +15,10 @@ const STORAGE_KEY = '@tracktrail/saved-jobs';
 
 type SavedJobsListener = (jobs: EngineJob[]) => void;
 const listeners = new Set<SavedJobsListener>();
+let cachedJobs: EngineJob[] | null = null;
 
 function publish(jobs: EngineJob[]) {
+  cachedJobs = jobs;
   listeners.forEach((listener) => listener(jobs));
 }
 
@@ -26,28 +28,55 @@ export function subscribeSavedJobs(listener: SavedJobsListener) {
 }
 
 export async function getSavedJobs(): Promise<EngineJob[]> {
+  if (cachedJobs !== null) return cachedJobs;
+
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw) as EngineJob[];
-  } catch {
-    return [];
+  if (!raw) {
+    cachedJobs = [];
+    return cachedJobs;
   }
+
+  try {
+    cachedJobs = JSON.parse(raw) as EngineJob[];
+  } catch {
+    cachedJobs = [];
+  }
+  return cachedJobs;
 }
 
 export async function saveJob(job: EngineJob): Promise<EngineJob[]> {
   const current = await getSavedJobs();
   if (current.some((item) => item.id === job.id)) return current;
+
+  const previous = current;
   const next = [job, ...current];
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+
+  // Optimistic update: every mounted screen reflects the tap immediately.
   publish(next);
-  return next;
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  } catch (error) {
+    // Storage is the durable source of truth; restore the last known value if it fails.
+    publish(previous);
+    throw error;
+  }
 }
 
 export async function unsaveJob(jobId: number): Promise<EngineJob[]> {
   const current = await getSavedJobs();
+  if (!current.some((item) => item.id === jobId)) return current;
+
+  const previous = current;
   const next = current.filter((item) => item.id !== jobId);
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+
+  // Optimistic update: the star disappears immediately.
   publish(next);
-  return next;
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    return next;
+  } catch (error) {
+    publish(previous);
+    throw error;
+  }
 }
