@@ -123,8 +123,10 @@ async function scrapeIndeed(searchQuery, context, options = {}) {
     return [];
   }
 
-  const cards = await page.$$eval("div.job_seen_beacon", (nodes) =>
-    nodes.slice(0, Math.max(1, Number(options.limit) || 25)).map((n) => {
+  const cards = await page.$$eval(
+    "div.job_seen_beacon",
+    (nodes, limit) =>
+      nodes.slice(0, Math.max(1, Number(limit) || 25)).map((n) => {
       const link = n.querySelector("a.jcs-JobTitle, h2.jobTitle a");
       return {
         title:
@@ -135,7 +137,8 @@ async function scrapeIndeed(searchQuery, context, options = {}) {
         externalJobId: link?.getAttribute("data-jk") || n.getAttribute("data-jk"),
         sourceUrl: link?.href,
       };
-    })
+      }),
+    Math.max(1, Number(options.limit) || 25)
   );
 
   await page.close();
