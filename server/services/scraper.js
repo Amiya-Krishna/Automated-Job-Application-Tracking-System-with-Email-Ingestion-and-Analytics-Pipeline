@@ -9,7 +9,7 @@
 const { chromium } = require("playwright");
 const { ingestJob } = require("./ingestionService");
 
-async function scrapeLinkedIn(searchQuery, context) {
+async function scrapeLinkedIn(searchQuery, context, options = {}) {
   const page = await context.newPage();
 
   // The old code hit https://www.linkedin.com/jobs/search/?... — that's the
@@ -21,7 +21,7 @@ async function scrapeLinkedIn(searchQuery, context) {
   // search engines) through its "guest" endpoint, which renders plain
   // server-side HTML instead of the SPA shell.
   await page.goto(
-    `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(searchQuery)}&start=0`,
+    `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(searchQuery)}${options.location ? `&location=${encodeURIComponent(options.location)}` : ""}&start=0`,
     { waitUntil: "domcontentloaded" }
   );
 
@@ -73,10 +73,11 @@ async function scrapeLinkedIn(searchQuery, context) {
         company: container.querySelector(".base-search-card__subtitle")?.innerText?.trim(),
         location: container.querySelector(".job-search-card__location")?.innerText?.trim(),
         sourceUrl: link?.href?.split("?")[0],
+        externalJobId: (link?.href?.match(/\/(?:view|jobs\/view)\/(\d+)/)?.[1]) || null,
       });
     }
 
-    return results.slice(0, 25);
+    return results.slice(0, Math.max(1, Number(options.limit) || 25));
   });
 
   const results = [];
@@ -92,9 +93,9 @@ async function scrapeLinkedIn(searchQuery, context) {
   return results;
 }
 
-async function scrapeIndeed(searchQuery, context) {
+async function scrapeIndeed(searchQuery, context, options = {}) {
   const page = await context.newPage();
-  await page.goto(`https://www.indeed.com/jobs?q=${encodeURIComponent(searchQuery)}`, {
+  await page.goto(`https://www.indeed.com/jobs?q=${encodeURIComponent(searchQuery)}${options.location ? `&l=${encodeURIComponent(options.location)}` : ""}`, {
     waitUntil: "domcontentloaded",
   });
 
@@ -123,7 +124,7 @@ async function scrapeIndeed(searchQuery, context) {
   }
 
   const cards = await page.$$eval("div.job_seen_beacon", (nodes) =>
-    nodes.slice(0, 25).map((n) => {
+    nodes.slice(0, Math.max(1, Number(options.limit) || 25)).map((n) => {
       const link = n.querySelector("a.jcs-JobTitle, h2.jobTitle a");
       return {
         title:

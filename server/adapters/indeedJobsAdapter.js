@@ -1,43 +1,51 @@
-// Indeed job discovery adapter for the dashboard-triggered scrape flow.
-// Same policy as linkedinJobsAdapter.js: no Playwright/HTML scraping, no
-// Cloudflare-challenge workarounds. server/services/scraper.js's Indeed
-// path is left unused for the same reason.
-//
-// Indeed's public Job Search Publisher API stopped accepting new
-// publishers years ago; current programmatic access is through Indeed's
-// employer/ATS-partner APIs (XML job feeds, Indeed Apply), which require
-// an approved partner or employer account, not a general-purpose search
-// key. Without that, there is no compliant way to pull search results, so
-// this adapter reports "unavailable" rather than scraping indeed.com.
+const { chromium } = require("playwright");
+const { scrapeIndeed } = require("../services/scraper");
 
-const AVAILABLE = Boolean(process.env.INDEED_PARTNER_FEED_URL);
+const DEFAULT_LIMIT = 25;
+const MAX_LIMIT = 50;
 
 async function discover({ query, location, limit }) {
-  if (!AVAILABLE) {
+  const parsedLimit = Math.min(Math.max(Number(limit) || DEFAULT_LIMIT, 1), MAX_LIMIT);
+  let browser;
+  let context;
+  try {
+    browser = await chromium.launch({ headless: process.env.PLAYWRIGHT_HEADLESS !== "false" });
+    context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+        "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+      viewport: { width: 1366, height: 850 },
+      locale: "en-US",
+    });
+
+    const jobs = await scrapeIndeed(query, context, { location, limit: parsedLimit });
+    const normalized = jobs
+      .filter((job) => job.title && job.sourceUrl)
+      .map((job) => ({
+        ...job,
+        sourceName: "indeed",
+        description: job.description || "",
+        remoteType: job.remoteType || null,
+        externalJobId: job.externalJobId || job.sourceUrl,
+      }));
+
     return {
       source: "indeed",
-      status: "unavailable",
-      message:
-        "Indeed's public search API has been closed to new publishers; " +
-        "programmatic access now requires an approved Indeed partner/XML " +
-        "job feed, which this app doesn't have configured. Set " +
-        "INDEED_PARTNER_FEED_URL if you obtain one; until then, use the " +
-        "browser extension's \"Save to TrackTrail\" button while browsing " +
-        "Indeed to bring individual listings in compliantly.",
+      status: "ok",
+      message: null,
+      jobs: normalized,
+    };
+  } catch (err) {
+    return {
+      source: "indeed",
+      status: "error",
+      message: `Indeed discovery failed: ${err.message}`,
       jobs: [],
     };
-  }
-
-  // Placeholder for a real partner XML feed fetch + parse. Not implemented
-  // because there is no feed URL to build/test it against.
-  try {
-    throw new Error(
-      "INDEED_PARTNER_FEED_URL is set, but no feed parser is implemented " +
-        "yet. Add the real fetch + XML parse here.",
-    );
-  } catch (err) {
-    return { source: "indeed", status: "error", message: err.message, jobs: [] };
+  } finally {
+    if (context) await context.close().catch(() => {});
+    if (browser) await browser.close().catch(() => {});
   }
 }
 
-module.exports = { name: "indeed", discover, AVAILABLE };
+module.exports = { name: "indeed", discover, AVAILABLE: true };

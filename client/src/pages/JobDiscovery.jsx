@@ -22,8 +22,8 @@ import toast from "react-hot-toast";
 // implying they'd start working the moment a token is added.
 const SOURCES = [
   { value: "remotive", label: "Remotive", note: "Real remote listings — no setup needed" },
-  { value: "linkedin", label: "LinkedIn", note: "Not implemented — no official partner integration yet" },
-  { value: "indeed", label: "Indeed", note: "Not implemented — no official partner integration yet" },
+  { value: "linkedin", label: "LinkedIn", note: "Live browser discovery — requires Playwright worker" },
+  { value: "indeed", label: "Indeed", note: "Live browser discovery — requires Playwright worker" },
 ];
 const DEFAULT_SOURCES = ["remotive"];
 
