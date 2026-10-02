@@ -5,6 +5,7 @@ import { Alert, RefreshControl, ScrollView, StyleSheet, Switch, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
+import { ResumeDocumentPreview } from '@/components/resume-document-preview';
 import { Card } from '@/components/card';
 import { ErrorState } from '@/components/error-state';
 import { LoadingState } from '@/components/loading-state';
@@ -87,21 +88,19 @@ function ResumeCard({ r, busy, onUse, onDelete }: { r: ResumeListItem; busy: boo
       </View>
 
       {viewingText ? (
-        <ThemedView type="backgroundElement" style={styles.textPreview}>
+        <View style={styles.textPreview}>
           {detail.isLoading ? (
-            <ThemedText type="small" themeColor="textSecondary">
-              Loading…
-            </ThemedText>
+            <ThemedView type="backgroundElement" style={styles.loadingPreview}>
+              <ThemedText type="small" themeColor="textSecondary">Loading full resume…</ThemedText>
+            </ThemedView>
           ) : detail.isError ? (
-            <ThemedText type="small" themeColor="danger">
-              {errMsg(detail.error)}
-            </ThemedText>
+            <ThemedView type="backgroundElement" style={styles.loadingPreview}>
+              <ThemedText type="small" themeColor="danger">{errMsg(detail.error)}</ThemedText>
+            </ThemedView>
           ) : (
-            <ThemedText type="small" themeColor="textSecondary">
-              {detail.data?.resumeText || 'No parsed text available.'}
-            </ThemedText>
+            <ResumeDocumentPreview text={detail.data?.resumeText ?? ''} name={r.name} />
           )}
-        </ThemedView>
+        </View>
       ) : null}
 
       {open ? (
@@ -215,6 +214,7 @@ const styles = StyleSheet.create({
   headRow: { flexDirection: 'row', gap: Spacing.two, alignItems: 'flex-start' },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   versions: { gap: Spacing.two },
-  textPreview: { borderRadius: Spacing.two, padding: Spacing.three },
+  textPreview: { marginTop: Spacing.one },
+  loadingPreview: { borderRadius: 18, padding: Spacing.three },
   versionRow: { borderWidth: 1, borderRadius: Spacing.two, padding: Spacing.three, gap: Spacing.one },
 });

@@ -18,7 +18,14 @@ export const IS_DEV = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
 
 const stripSlash = (v: string | undefined) => (v ?? '').trim().replace(/\/+$/, '');
 
-export const API_ORIGIN = stripSlash(process.env.EXPO_PUBLIC_API_URL);
+const DEPLOYED_API_ORIGIN = 'https://job-application-tracker-portal-o1ls.onrender.com';
+
+// Release OTA updates must never lose the backend just because an EAS update
+// was published without re-inlining EXPO_PUBLIC_API_URL. The environment
+// variable remains the source of truth when present; the known deployed API
+// is a safe fallback for this app's staging/production release.
+export const API_ORIGIN = stripSlash(process.env.EXPO_PUBLIC_API_URL) ||
+  (IS_RELEASE_ENV ? DEPLOYED_API_ORIGIN : '');
 export const API_BASE_URL = `${API_ORIGIN}/api`;
 export const WEB_URL = stripSlash(process.env.EXPO_PUBLIC_WEB_URL);
 export const SENTRY_DSN = (process.env.EXPO_PUBLIC_SENTRY_DSN ?? '').trim();

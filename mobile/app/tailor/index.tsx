@@ -17,6 +17,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/button';
 import { Card } from '@/components/card';
+import { ResumeDocumentPreview } from '@/components/resume-document-preview';
 import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -926,9 +927,10 @@ export default function TailorScreen() {
                     : `Resume · ${version.status}`
                 }
               >
-                <ThemedText type="small" selectable>
-                  {shownText}
-                </ThemedText>
+                <ResumeDocumentPreview
+                  text={shownText}
+                  name={version.targetTitle ? `${version.targetTitle} · Tailored Resume` : 'Tailored Resume'}
+                />
               </Section>
 
               {/* 8. Change review */}

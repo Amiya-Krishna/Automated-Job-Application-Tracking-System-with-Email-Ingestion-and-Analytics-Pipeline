@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import { useApplications } from '@/hooks/use-applications';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useJobsInfinite } from '@/hooks/use-jobs';
+import { useSavedJobs } from '@/hooks/use-saved-jobs';
 import { useSourceNameById } from '@/hooks/use-sources';
 import { useTheme } from '@/hooks/use-theme';
 import type { EngineJob } from '@/types/jobs';
@@ -36,6 +37,7 @@ export default function JobsScreen() {
   const [searchText, setSearchText] = useState('');
   const [minScore, setMinScore] = useState<number | undefined>(undefined);
   const debouncedSearch = useDebouncedValue(searchText);
+  const { isSaved, toggleSaved } = useSavedJobs();
 
   const {
     data,
@@ -155,6 +157,8 @@ export default function JobsScreen() {
                 item={item}
                 sourceName={item.source_id ? sourceNameById.get(item.source_id) : undefined}
                 appliedStatus={appliedStatusByJobId.get(String(item.id))}
+                isSaved={isSaved(item.id)}
+                onToggleSaved={() => toggleSaved(item)}
               />
             )}
             ItemSeparatorComponent={() => <ThemedView style={{ height: Spacing.two }} />}

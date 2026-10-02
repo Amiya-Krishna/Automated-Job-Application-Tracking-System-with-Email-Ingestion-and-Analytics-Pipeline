@@ -21,7 +21,7 @@
  */
 import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig } from 'axios';
 
-import { API_BASE_URL, API_CONFIG_OK, API_TIMEOUT_MS, getAppInfo } from '@/services/config';
+import { API_BASE_URL, API_CONFIG_OK, API_ORIGIN, API_TIMEOUT_MS, getAppInfo } from '@/services/config';
 import { isOffline } from '@/services/connectivity';
 import { reportError } from '@/services/logger';
 import { ensureFreshAccessToken, refreshSession } from '@/services/session';
@@ -33,6 +33,7 @@ declare module 'axios' {
   interface InternalAxiosRequestConfig {
     _retryCount?: number;
     _authRetried?: boolean;
+    _healthWarmed?: boolean;
   }
 }
 
@@ -47,6 +48,26 @@ export const api: AxiosInstance = axios.create({
 });
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+// Render's free service can sleep after inactivity. A liveness request is
+// deliberately separate from `api`, so waking the service never recurses
+// through auth/refresh handling. It is only used after a GET has exhausted its
+// normal network retries, and a successful health response triggers one final
+// replay of the original request.
+const healthClient = axios.create({
+  baseURL: API_ORIGIN,
+  timeout: Math.max(API_TIMEOUT_MS, 60_000),
+});
+
+async function warmBackend(): Promise<boolean> {
+  if (!API_ORIGIN) return false;
+  try {
+    const response = await healthClient.get('/health');
+    return response.status === 200 && response.data?.status === 'ok';
+  } catch {
+    return false;
+  }
+}
 const isIdempotent = (c?: InternalAxiosRequestConfig) => ['get', 'head', 'options'].includes((c?.method ?? 'get').toLowerCase());
 const backoff = (attempt: number) => Math.min(500 * 2 ** attempt, 4000) + Math.floor(Math.random() * 250);
 
@@ -121,6 +142,17 @@ api.interceptors.response.use(
         await sleep(backoff(attempt));
         return api.request(config);
       }
+      // If the API is a sleeping Render instance, /health can wake it even
+      // though the original request timed out. Only safe idempotent requests
+      // get this extra recovery attempt; writes are never duplicated.
+      if (isIdempotent(config) && !config._healthWarmed && !isOffline()) {
+        config._healthWarmed = true;
+        if (await warmBackend()) {
+          config._retryCount = 0;
+          return api.request(config);
+        }
+      }
+
       const message = isTimeout
         ? 'The server is taking longer than usual to respond. It may be waking up — please try again in a moment.'
         : 'Unable to connect to the server. Check your internet connection and try again.';

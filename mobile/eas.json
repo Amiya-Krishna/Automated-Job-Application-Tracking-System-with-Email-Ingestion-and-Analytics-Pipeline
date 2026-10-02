@@ -22,7 +22,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "staging"
+        "EXPO_PUBLIC_APP_ENV": "staging",
+        "EXPO_PUBLIC_API_URL": "https://job-application-tracker-portal-o1ls.onrender.com"
       }
     },
     "preview": {
