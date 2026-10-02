@@ -8,20 +8,25 @@ import {
 const configuredBaseUrl =
   import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "");
 
-// Browser production builds must use the same-origin /api proxy. This is
-// intentional: the refresh cookie is scoped to the web origin, so honoring a
-// VITE_API_BASE_URL that points directly at Render would bypass the Vercel
-// rewrite and bring back the cross-site session problem.
+// Browser production builds use the same-origin /api proxy.
+// In development and Vitest, an explicitly configured
+// VITE_API_BASE_URL must be respected so integration tests
+// can point the client at their test server.
 const useRemoteApi = import.meta.env.VITE_USE_REMOTE_API === "true";
 
 const baseUrl = import.meta.env.PROD
   ? ""
-  : useRemoteApi
-    ? configuredBaseUrl || "http://localhost:5000"
-    : "http://localhost:5000";
+  : configuredBaseUrl ||
+    (useRemoteApi ? "http://localhost:5000" : "http://localhost:5000");
+
+const apiBaseURL = baseUrl
+  ? baseUrl.endsWith("/api")
+    ? baseUrl
+    : `${baseUrl}/api`
+  : "/api";
 
 const axiosConfig = {
-  baseURL: `${baseUrl}/api`,
+  baseURL: apiBaseURL,
   withCredentials: !import.meta.env.VITEST,
   timeout: 20_000,
 };
@@ -30,7 +35,7 @@ const api = axios.create(axiosConfig);
 
 /*
   Dedicated client for session refresh.
-  
+
   This client has no auth interceptors, so a failed refresh
   cannot recursively trigger another refresh attempt.
  */
@@ -46,20 +51,18 @@ const canRetry = (config) =>
 async function refreshAccessToken() {
   if (!refreshPromise) {
     refreshPromise = refreshApi
-      .post(
-        "/auth/refresh",
-        undefined,
-        {
-          headers: {
-            "x-client": "web",
-          },
-        }
-      )
+      .post("/auth/refresh", undefined, {
+        headers: {
+          "x-client": "web",
+        },
+      })
       .then(({ data }) => {
         const token = data.accessToken || data.token;
 
         if (!token) {
-          throw new Error("Refresh response did not contain an access token.");
+          throw new Error(
+            "Refresh response did not contain an access token."
+          );
         }
 
         setAccessToken(token);
@@ -117,6 +120,7 @@ api.interceptors.response.use(
     ) {
       if (response.status === 401 && !config?._skipAuthRefresh) {
         clearAccessToken();
+
         window.dispatchEvent(
           new Event("tracktrail:session-ended")
         );
@@ -139,22 +143,23 @@ api.interceptors.response.use(
 
       return api(config);
     } catch (refreshError) {
-        const refreshCode = refreshError?.response?.data?.code;
+      const refreshCode = refreshError?.response?.data?.code;
 
-        if (refreshCode === "refresh_in_progress") {
-          refreshError.userMessage =
-            "Your session is being restored. Please try again.";
-
-          return Promise.reject(refreshError);
-        }
-
-        clearAccessToken();
-        window.dispatchEvent(
-          new Event("tracktrail:session-ended")
-        );
+      if (refreshCode === "refresh_in_progress") {
+        refreshError.userMessage =
+          "Your session is being restored. Please try again.";
 
         return Promise.reject(refreshError);
       }
+
+      clearAccessToken();
+
+      window.dispatchEvent(
+        new Event("tracktrail:session-ended")
+      );
+
+      return Promise.reject(refreshError);
+    }
   }
 );
 
