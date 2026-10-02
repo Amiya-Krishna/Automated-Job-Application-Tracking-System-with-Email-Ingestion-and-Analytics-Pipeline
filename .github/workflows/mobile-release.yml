@@ -94,7 +94,7 @@ jobs:
         run: >
           eas update
           --channel staging
-          --environment staging
+          --environment preview
           --message "staging ${{ github.sha }}"
           --non-interactive
 
