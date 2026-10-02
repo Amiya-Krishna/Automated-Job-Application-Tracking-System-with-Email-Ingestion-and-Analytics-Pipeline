@@ -997,3 +997,205 @@ tr.skeleton { display: table-row; min-height: 0; height: 40px; }
   flex: 1; overflow: auto; margin: 12px 0 0; padding: 14px; white-space: pre-wrap; word-break: break-word;
   background: var(--bg); border: 1px solid var(--border); border-radius: 12px; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ======================================================================
+   TRACKTRAIL DASHBOARD — premium UI refresh
+   Visual-only layer. Existing JS selectors and API contracts unchanged.
+   ====================================================================== */
+:root {
+  --bg: #f5f7fb;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+  --dark: #111827;
+  --accent: #0ea5e9;
+  --accent-dark: #0284c7;
+  --radius: 14px;
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.05), 0 5px 16px rgba(15,23,42,.04);
+  --shadow-md: 0 18px 45px rgba(15,23,42,.10), 0 3px 12px rgba(15,23,42,.05);
+}
+body {
+  background: radial-gradient(circle at 70% 0%, rgba(14,165,233,.08), transparent 30%), var(--bg);
+  color: var(--text);
+}
+main { min-width: 0; }
+
+/* Sidebar/nav */
+.sidebar {
+  box-shadow: 12px 0 35px rgba(2,6,23,.10);
+}
+.sidebar .brand, .sidebarBrand, .navBrand { letter-spacing: -.025em; }
+.navItem, .sidebar button {
+  border-radius: 11px;
+  transition: background .15s ease, transform .15s ease, color .15s ease;
+}
+.navItem:hover { transform: translateX(2px); }
+
+/* Dashboard header */
+.dashboardHeader, .topbar, .pageHeader {
+  border-bottom-color: rgba(226,232,240,.8);
+}
+
+.dashPanel {
+  animation: tt-panel-in .18s ease both;
+}
+@keyframes tt-panel-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
+.filterBar {
+  gap: 8px;
+  padding: 11px;
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.78);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+}
+input, select, textarea {
+  border-color: #d1d5db;
+  border-radius: 10px;
+  background: rgba(255,255,255,.94);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(14,165,233,.12);
+}
+button, .ghost-btn {
+  border-radius: 10px;
+  transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+}
+button:hover, .ghost-btn:hover { transform: translateY(-1px); }
+.ghost-btn {
+  background: #fff;
+  border-color: #dbe1e8;
+  box-shadow: 0 1px 2px rgba(15,23,42,.04);
+}
+.ghost-btn:hover { background: #f8fafc; border-color: #cbd5e1; }
+.ghost-btn-primary {
+  background: linear-gradient(180deg, #1f2937, #111827);
+  color: #fff;
+  border-color: #111827;
+  box-shadow: 0 5px 12px rgba(15,23,42,.14);
+}
+.ghost-btn-primary:hover { background: linear-gradient(180deg, #273449, #111827); }
+
+/* Cards / stats */
+.cardGrid { gap: 14px; }
+.card, .dataCard, .appCard, .statCard, .emailCard, .dcard {
+  border-radius: 15px;
+  box-shadow: var(--shadow-sm);
+  border-color: var(--border);
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.card:hover, .dataCard:hover, .appCard:hover, .emailCard:hover, .dcard:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: #d7dee8;
+}
+.statsRow { gap: 12px; }
+.statCard { padding: 17px; background: rgba(255,255,255,.9); }
+.statCard .num { font-size: 28px; letter-spacing: -.045em; }
+
+/* Tables */
+.tableWrap {
+  border: 1px solid var(--border);
+  border-radius: 15px;
+  overflow: auto;
+  background: #fff;
+  box-shadow: var(--shadow-sm);
+}
+.dataTable { margin: 0; }
+.dataTable thead th {
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+.dataTable tbody tr { transition: background .15s ease; }
+.dataTable tbody tr:hover { background: #f8fafc; }
+
+/* Chips/status controls */
+.chips { gap: 6px; }
+.chip {
+  border-radius: 999px;
+  transition: all .15s ease;
+}
+.chip:hover { transform: translateY(-1px); }
+.chip.active { box-shadow: 0 3px 8px rgba(15,23,42,.12); }
+
+/* Resume manager */
+.resumeList { gap: 14px; }
+.resumeCard {
+  border-radius: 16px;
+  padding: 17px;
+  box-shadow: var(--shadow-sm);
+  transition: transform .16s ease, box-shadow .16s ease;
+}
+.resumeCard:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.resumeCardActive { box-shadow: 0 0 0 1px var(--accent) inset, var(--shadow-sm); }
+.resumeVersion {
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+/* Email / integration area */
+.emailStatusRow {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255,255,255,.82);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Empty/error states */
+.emptyState {
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  padding: 32px 20px;
+  background: rgba(255,255,255,.55);
+}
+.error { color: #b91c1c; }
+.success { color: #047857; }
+
+/* Modal */
+.resumeViewer { backdrop-filter: blur(5px); background: rgba(2,6,23,.62); }
+.resumeViewerBox {
+  border-radius: 20px;
+  box-shadow: 0 28px 80px rgba(2,6,23,.28);
+}
+.resumeViewerBody { line-height: 1.65; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+[data-theme="dark"] {
+  --bg: #070b13;
+  --card: #0f1724;
+  --border: #1e293b;
+  --text: #e5edf7;
+  --muted: #94a3b8;
+  --dark: #e5edf7;
+  --accent: #38bdf8;
+  --accent-dark: #0ea5e9;
+}
+[data-theme="dark"] body { background: radial-gradient(circle at 70% 0%, rgba(14,165,233,.12), transparent 32%), var(--bg); }
+[data-theme="dark"] .filterBar,
+[data-theme="dark"] .emailStatusRow,
+[data-theme="dark"] .tableWrap,
+[data-theme="dark"] .statCard,
+[data-theme="dark"] .card,
+[data-theme="dark"] .dataCard,
+[data-theme="dark"] .appCard,
+[data-theme="dark"] .emailCard,
+[data-theme="dark"] .dcard { background: rgba(15,23,36,.92); border-color: #1e293b; }
+[data-theme="dark"] .ghost-btn { background: #0f1724; color: #e5edf7; border-color: #334155; }
+[data-theme="dark"] .ghost-btn:hover { background: #162235; }
+[data-theme="dark"] .ghost-btn-primary { background: linear-gradient(180deg, #38bdf8, #0284c7); color: #042f3e; border-color: #0ea5e9; }
+[data-theme="dark"] .dataTable thead th { background: #111b2a; }
+[data-theme="dark"] .dataTable tbody tr:hover { background: #111c2d; }
+[data-theme="dark"] .emptyState { background: rgba(15,23,36,.55); border-color: #334155; }
+[data-theme="dark"] .resumeVersion { background: #0b1220; }
