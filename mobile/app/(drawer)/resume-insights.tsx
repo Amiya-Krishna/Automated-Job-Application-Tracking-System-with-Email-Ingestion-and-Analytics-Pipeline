@@ -12,6 +12,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Card } from '@/components/card';
+import { ResumeDocumentPreview } from '@/components/resume-document-preview';
 import { EmptyState } from '@/components/empty-state';
 import { ErrorState } from '@/components/error-state';
 import { LoadingState } from '@/components/loading-state';
@@ -109,11 +110,7 @@ export default function ResumeInsightsScreen() {
           {data?.resume_text ? (
             <ThemedView style={styles.section}>
               <SectionHeader title="Resume preview" />
-              <Card>
-                <ThemedText type="small" numberOfLines={8}>
-                  {data.resume_text}
-                </ThemedText>
-              </Card>
+              <ResumeDocumentPreview text={data.resume_text} name={data.full_name || 'Resume'} />
             </ThemedView>
           ) : (
             <EmptyState

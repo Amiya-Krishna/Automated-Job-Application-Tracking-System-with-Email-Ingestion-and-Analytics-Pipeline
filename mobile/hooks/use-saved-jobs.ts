@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { getSavedJobs, saveJob, unsaveJob } from '@/services/savedJobs';
+import { getSavedJobs, saveJob, subscribeSavedJobs, unsaveJob } from '@/services/savedJobs';
 import type { EngineJob } from '@/types/jobs';
 
 /**
@@ -17,24 +17,35 @@ export function useSavedJobs() {
 
   useEffect(() => {
     let cancelled = false;
+    const unsubscribe = subscribeSavedJobs((next) => {
+      if (!cancelled) {
+        setJobs(next);
+        setIsLoading(false);
+      }
+    });
+
     getSavedJobs().then((data) => {
       if (!cancelled) {
         setJobs(data);
         setIsLoading(false);
       }
     });
+
     return () => {
       cancelled = true;
+      unsubscribe();
     };
   }, []);
 
   const isSaved = (jobId: number) => jobs.some((job) => job.id === jobId);
 
   const toggleSaved = async (job: EngineJob) => {
+    // Publish from the storage service so every mounted Jobs/Saved Jobs card
+    // updates immediately, not only after the next app restart.
     if (isSaved(job.id)) {
-      setJobs(await unsaveJob(job.id));
+      await unsaveJob(job.id);
     } else {
-      setJobs(await saveJob(job));
+      await saveJob(job);
     }
   };
 

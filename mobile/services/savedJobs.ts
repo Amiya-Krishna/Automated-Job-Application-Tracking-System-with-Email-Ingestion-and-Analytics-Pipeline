@@ -13,6 +13,18 @@ import type { EngineJob } from '@/types/jobs';
 
 const STORAGE_KEY = '@tracktrail/saved-jobs';
 
+type SavedJobsListener = (jobs: EngineJob[]) => void;
+const listeners = new Set<SavedJobsListener>();
+
+function publish(jobs: EngineJob[]) {
+  listeners.forEach((listener) => listener(jobs));
+}
+
+export function subscribeSavedJobs(listener: SavedJobsListener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
 export async function getSavedJobs(): Promise<EngineJob[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
   if (!raw) return [];
@@ -28,6 +40,7 @@ export async function saveJob(job: EngineJob): Promise<EngineJob[]> {
   if (current.some((item) => item.id === job.id)) return current;
   const next = [job, ...current];
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  publish(next);
   return next;
 }
 
@@ -35,5 +48,6 @@ export async function unsaveJob(jobId: number): Promise<EngineJob[]> {
   const current = await getSavedJobs();
   const next = current.filter((item) => item.id !== jobId);
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  publish(next);
   return next;
 }
