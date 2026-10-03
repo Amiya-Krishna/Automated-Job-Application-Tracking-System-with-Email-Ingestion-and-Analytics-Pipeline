@@ -66,8 +66,9 @@ TrackTrail/
 │   │
 │   ├── 📁 adapters/                      # Two unrelated kinds of adapter live in this one folder:
 │   │   ├── remotiveJobsAdapter.js        #   Job Discovery: Remotive's public API (real, working)
-│   │   ├── linkedinJobsAdapter.js        #   Job Discovery: Playwright-based LinkedIn discovery
-│   │   ├── indeedJobsAdapter.js          #   Job Discovery: Playwright-based Indeed discovery
+│   │   ├── createJobBoardAdapter.js      #   Job Discovery: shared Playwright factory used by the LinkedIn and Indeed adapters
+│   │   ├── linkedinJobsAdapter.js        #   Job Discovery: LinkedIn discovery (thin wrapper over the factory)
+│   │   ├── indeedJobsAdapter.js          #   Job Discovery: Indeed discovery (thin wrapper over the factory)
 │   │   ├── greenhouseAdapter.js          #   Apply engine: per-ATS field-mapping for Greenhouse
 │   │   ├── genericAdapter.js             #   Apply engine: fallback field-mapping for unrecognized ATS platforms
 │   │   └── index.js                      #   Apply engine: selects an adapter for a given application URL
@@ -101,7 +102,6 @@ TrackTrail/
 │   │   ├── 📁 components/
 │   │   │   ├── Navbar.jsx
 │   │   │   ├── AuthShell.jsx             # Shared layout for login/register/forgot-password
-│   │   │   ├── DashboardCards.jsx        # Summary stat cards
 │   │   │   ├── StateViews.jsx            # Shared loading/empty/error state components
 │   │   │   ├── ThemeToggle.jsx           # Light/dark mode toggle
 │   │   │   └── ProtectedRoute.jsx        # Redirects to /login if not authenticated
@@ -113,7 +113,6 @@ TrackTrail/
 │   │   │   ├── ForgotPassword.jsx        # `/forgot-password`
 │   │   │   ├── ResetPassword.jsx         # `/reset-password`
 │   │   │   ├── Dashboard.jsx             # `/dashboard`
-│   │   │   ├── AddJob.jsx                # Add-job entry point
 │   │   │   ├── JobForm.jsx               # `/add-job`, `/edit-job/:id`
 │   │   │   ├── JobDiscovery.jsx          # `/job-discovery` — trigger/poll/remove multi-source discovery runs
 │   │   │   ├── AppliedJobs.jsx           # `/applied-jobs` — the unified tracked_jobs view (manual + engine-applied)
@@ -331,7 +330,6 @@ module map.
 | --------------------- | -------------------------------------------- |
 | `Navbar.jsx`          | Top navigation bar                          |
 | `AuthShell.jsx`       | Shared layout wrapper for Login/Register/ForgotPassword |
-| `DashboardCards.jsx`  | Summary stat cards                          |
 | `StateViews.jsx`      | Shared loading/empty/error state components |
 | `ThemeToggle.jsx`     | Light/dark mode toggle                      |
 | `ProtectedRoute.jsx`  | Redirects unauthenticated users to `/login` |

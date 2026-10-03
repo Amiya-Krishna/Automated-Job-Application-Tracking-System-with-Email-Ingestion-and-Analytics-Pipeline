@@ -131,7 +131,7 @@ eas build --profile development
 | Drawer navigation | `app/(drawer)/_layout.tsx`, `components/drawer-content.tsx` |
 | Notifications | `context/NotificationContext.tsx`, `services/notifications.ts`, `types/notifications.ts`, `hooks/use-notifications.ts`, `hooks/use-notification-preferences.ts` |
 | Saved Jobs | `services/savedJobs.ts`, `hooks/use-saved-jobs.ts` |
-| Reusable UI | `components/card.tsx`, `button.tsx`, `avatar.tsx`, `search-bar.tsx`, `screen-header.tsx`, `dashboard-header.tsx`, `theme-toggle.tsx`, `notification-item.tsx`, `charts/bar-chart.tsx`, `charts/donut-chart.tsx` |
+| Reusable UI | `components/card.tsx`, `button.tsx`, `avatar.tsx`, `search-bar.tsx`, `screen-header.tsx`, `dashboard-header.tsx`, `theme-toggle.tsx`, `themed-stack.tsx` (shared themed header Stack used by the feature `_layout.tsx` files), `notification-item.tsx`, `charts/bar-chart.tsx`, `charts/donut-chart.tsx` |
 | New screens | Dashboard (redesigned `index.tsx`), `notifications.tsx`, `(drawer)/resume-insights.tsx`, `saved-jobs.tsx`, `help.tsx`, `about.tsx`, `legal/privacy.tsx`, `legal/terms.tsx`; Settings redesigned |
 
 ### 5. Honest limitations (by design, not oversight)

@@ -55,5 +55,6 @@ Server (production):
 - Fixed Linux/CI build breakers: files were saved as `Notificationcontext.jsx`,
   `Notificationbell.jsx`, `notificationevents.js` but imported with different casing.
   Renamed to match imports.
-- Removed unused scaffold `components/JobTable.jsx` and `components/Sidebar.jsx` (no references).
+- Removed unused scaffold `components/JobTable.jsx`, `components/Sidebar.jsx` and `components/DashboardCards.jsx`, plus the superseded `pages/AddJob.jsx` (replaced by `pages/JobForm.jsx`). None were imported anywhere.
+- Removed the unused root-level `package.json` / `package-lock.json`; dependencies are managed per package (`client/`, `server/`, `mobile/`, `browser-extension/`).
 - Forgot/Reset Password pages read `?source=extension` (branding, copy, post-reset screen).
