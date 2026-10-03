@@ -21,7 +21,7 @@ import toast from "react-hot-toast";
 // below says "not implemented," not just "needs credentials," to avoid
 // implying they'd start working the moment a token is added.
 const SOURCES = [
-  { value: "remotive", label: "Remotive", note: "Real remote listings — requires Playwright worker" },
+  { value: "remotive", label: "Remotive", note: "Real remote listings — no setup needed" },
   { value: "linkedin", label: "LinkedIn", note: "Live browser discovery — requires Playwright worker" },
   { value: "indeed", label: "Indeed", note: "Live browser discovery — requires Playwright worker" },
 ];

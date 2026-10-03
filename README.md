@@ -614,7 +614,7 @@ Production considerations:
 TrackTrail can tailor your resume to a job **without ever inventing anything**: it only reorders and
 rewords what is already on your resume, and you approve every change. An LLM provider
 (Gemini, Groq, OpenRouter, Anthropic, OpenAI) is optional and configured **server-side only**.
-See [`docs/RESUME_TAILORING.md`](docs/09_Gmail_Integration_and_Resume_Tailoring.md), especially *AI Provider Configuration*.
+See [`docs/09_Gmail_Integration_and_Resume_Tailoring.md`](docs/09_Gmail_Integration_and_Resume_Tailoring.md), especially *AI Provider Configuration*.
 
 ## Local Development Without Deployment
 
