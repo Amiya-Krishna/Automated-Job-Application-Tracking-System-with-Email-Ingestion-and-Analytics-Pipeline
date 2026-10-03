@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { ThemedStack } from '@/components/themed-stack';
 
 /**
  * A plain (non-tab) Stack for everything reached from the Applications
@@ -11,20 +10,11 @@ import { Colors } from '@/constants/theme';
  * the same auth guard, it just isn't one of the five bottom tabs.
  */
 export default function ApplicationLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.tint,
-        headerTitleStyle: { color: colors.text },
-        headerShadowVisible: false,
-      }}>
+    <ThemedStack>
       <Stack.Screen name="[id]/index" options={{ title: 'Application' }} />
       <Stack.Screen name="[id]/edit" options={{ title: 'Edit Application' }} />
       <Stack.Screen name="add" options={{ title: 'Add Application' }} />
-    </Stack>
+    </ThemedStack>
   );
 }

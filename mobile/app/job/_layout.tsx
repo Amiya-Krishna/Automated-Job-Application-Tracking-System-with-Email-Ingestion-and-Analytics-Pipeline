@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { ThemedStack } from '@/components/themed-stack';
 
 /**
  * Mirrors app/application/_layout.tsx — a plain Stack for the Job Detail
@@ -9,18 +8,9 @@ import { Colors } from '@/constants/theme';
  * in the root layout's authenticated Stack.Protected block.
  */
 export default function JobLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.tint,
-        headerTitleStyle: { color: colors.text },
-        headerShadowVisible: false,
-      }}>
+    <ThemedStack>
       <Stack.Screen name="[id]" options={{ title: 'Job' }} />
-    </Stack>
+    </ThemedStack>
   );
 }

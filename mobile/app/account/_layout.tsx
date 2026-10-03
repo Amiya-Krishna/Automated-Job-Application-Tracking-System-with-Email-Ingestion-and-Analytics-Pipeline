@@ -1,7 +1,6 @@
 import { Stack } from 'expo-router';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { ThemedStack } from '@/components/themed-stack';
 
 /**
  * A plain (non-tab) Stack for the profile-edit form, reached from the
@@ -15,20 +14,11 @@ import { Colors } from '@/constants/theme';
  * `Stack.Protected` block (app/_layout.tsx).
  */
 export default function AccountLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.tint,
-        headerTitleStyle: { color: colors.text },
-        headerShadowVisible: false,
-      }}>
+    <ThemedStack>
       <Stack.Screen name="edit" options={{ title: 'Edit Profile' }} />
       <Stack.Screen name="settings" options={{ title: 'Settings' }} />
       <Stack.Screen name="gmail" options={{ title: 'Gmail Integration' }} />
-    </Stack>
+    </ThemedStack>
   );
 }

@@ -1,22 +1,12 @@
 import { Stack } from 'expo-router';
-import { useColorScheme } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { ThemedStack } from '@/components/themed-stack';
 
 export default function SourcesLayout() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'unspecified' ? 'light' : scheme];
-
   return (
-    <Stack
-      screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.tint,
-        headerTitleStyle: { color: colors.text },
-        headerShadowVisible: false,
-      }}>
+    <ThemedStack>
       <Stack.Screen name="index" options={{ title: 'Sources' }} />
       <Stack.Screen name="[id]" options={{ title: 'Source' }} />
-    </Stack>
+    </ThemedStack>
   );
 }
