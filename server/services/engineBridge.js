@@ -43,6 +43,8 @@ async function bridgeTrackedJobToEngine(trackedJob) {
     description: trackedJob.description || "",
     location: trackedJob.location || null,
     remoteType: null,
+    salaryText: trackedJob.salaryText || null,
+    skills: trackedJob.skills || [],
     sourceName: trackedJob.sourceName || "manual",
     sourceUrl:
       trackedJob.sourceUrl ||

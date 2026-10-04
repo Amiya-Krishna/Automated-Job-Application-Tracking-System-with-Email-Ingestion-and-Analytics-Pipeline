@@ -15,6 +15,7 @@ BigInt.prototype.toJSON = function () {
 const prisma = require('./lib/prisma');
 const { seedJobSources } = require('./services/seedSources');
 const auth = require('./middleware/authMiddleware');
+const requireAdmin = require('./middleware/requireAdmin');
 
 // Fail fast if Postgres isn't reachable, instead of discovering it on
 // the first request.
@@ -22,6 +23,7 @@ prisma.$connect()
   .then(() => console.log("Postgres connected"))
   .then(() => require("./lib/schemaCheck").warnIfSessionsTableMissing())
   .then(() => seedJobSources())
+  .then(() => require("./services/adminBootstrap").ensureAdmins())
   .then(() => console.log("job_sources seeded (manual/linkedin/indeed/gmail/extension)"))
   .catch((err) => console.error("Postgres connection error", err));
 
@@ -104,7 +106,11 @@ app.use("/api/notifications", require("./routes/notificationRoutes")); // routes
 // view; see appliedJobsService.js for how it's safely merged in only when
 // tied to a job this specific user actually tracked.
 app.use("/api/ingest", auth, require("./routes/ingestRoutes"));
-app.use("/api/scrape", require("./routes/scrapeRoutes")); // routes apply `auth` per-handler
+// Job Discovery is ADMIN-ONLY: auth + requireAdmin at the mount, so no scrape route can
+// be reached by a normal user even if a handler forgets a check.
+app.use("/api/scrape", auth, requireAdmin, require("./routes/scrapeRoutes"));
+// Admin Panel API (overview, users/roles, delete sources / companies / matched jobs).
+app.use("/api/admin", auth, requireAdmin, require("./routes/adminRoutes"));
 app.use("/api/engine/jobs", auth, require("./routes/engineJobsRoutes"));
 app.use("/api/applications", auth, require("./routes/applyRoutes"));
 app.use("/api/analytics", auth, require("./routes/analyticsRoutes"));

@@ -17,7 +17,14 @@ router.get("/", auth, async (req, res) => {
       where: { user_id: req.user.id },
     });
 
-    res.json({ data: profile || null });
+    // Autofill: a blank name/email in the profile form falls back to the account's own
+    // name and email (never stored until the user saves). `prefilled` tells clients which.
+    const account = await prisma.user.findUnique({ where: { id: req.user.id }, select: { name: true, email: true } });
+    const base = profile || { id: null, user_id: req.user.id, resume_text: null, skills: [], experience_years: null };
+    const full_name = (base.full_name || "").trim() || account?.name || "";
+    const email = (base.email || "").trim() || account?.email || "";
+    const prefilled = full_name !== (base.full_name || "") || email !== (base.email || "");
+    res.json({ data: { ...base, full_name, email, prefilled } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

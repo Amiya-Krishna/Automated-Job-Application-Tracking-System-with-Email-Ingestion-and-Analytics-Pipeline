@@ -257,10 +257,15 @@ GET    /api/gmail/scan             - Scan inbox for interview/offer/rejection em
 #### `scrapeRoutes.js` — mounted at `/api/scrape`
 
 ```
-POST   /api/scrape/run             - Start an async discovery run (Remotive, LinkedIn, and/or Indeed)
+POST   /api/scrape/run             - Start an async discovery run (Remotive, LinkedIn, Indeed, Naukri, Internshala, Wellfound and/or Unstop)
 GET    /api/scrape/runs            - List the caller's recent runs
 GET    /api/scrape/runs/:id        - Poll a run's status (Cache-Control: no-store — see README)
 DELETE /api/scrape/runs/:id        - Remove one of the caller's own run-history rows
+GET    /api/scrape/platforms       - Provider keys (admin only: whole router is auth + requireAdmin)
+
+#### `adminRoutes.js` — mounted at `/api/admin` (auth + requireAdmin)
+
+GET /overview · GET /users · PATCH /users/:id/role · DELETE /jobs/:id · DELETE /companies/:id · DELETE /sources/:id  (see docs/11)
 ```
 
 #### Engine routes — `ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js`, `companiesRoutes.js`, `sourcesRoutes.js`
@@ -309,7 +314,8 @@ module map.
 /dashboard           → Dashboard         (protected)
 /add-job             → JobForm           (protected)
 /edit-job/:id        → JobForm           (protected)
-/job-discovery       → JobDiscovery      (protected)
+/job-discovery       → JobDiscovery      (AdminRoute — admins only)
+/admin               → Admin             (AdminRoute — admins only)
 /applied-jobs        → AppliedJobs       (protected)
 /integrations        → Integrations      (protected)
 /profile             → Profile           (protected)

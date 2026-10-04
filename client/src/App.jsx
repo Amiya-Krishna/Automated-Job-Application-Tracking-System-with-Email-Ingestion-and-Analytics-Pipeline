@@ -17,10 +17,12 @@ const MatchedJobs = lazy(() => import("./pages/MatchedJobs"));
 const EngineApplications = lazy(() => import("./pages/EngineApplications"));
 const Companies = lazy(() => import("./pages/Companies"));
 const Sources = lazy(() => import("./pages/Sources"));
+const Admin = lazy(() => import("./pages/Admin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ResumeTailoring = lazy(() => import("./pages/ResumeTailoring"));
 const ResumeVersions = lazy(() => import("./pages/ResumeVersions"));
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminRoute from "./components/AdminRoute";
 
 function App() {
   return (
@@ -59,9 +61,17 @@ function App() {
         <Route
           path="/job-discovery"
           element={
-            <ProtectedRoute>
+            <AdminRoute>
               <JobDiscovery />
-            </ProtectedRoute>
+            </AdminRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <Admin />
+            </AdminRoute>
           }
         />
         <Route

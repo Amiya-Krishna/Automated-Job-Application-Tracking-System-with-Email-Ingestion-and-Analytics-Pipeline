@@ -369,7 +369,7 @@ function renderJobs() {
   if (filtered.length === 0) {
     const none = allJobs.length === 0;
     jobsEmptyText.textContent = none
-      ? "No saved jobs yet. Open a job on LinkedIn or Indeed and save it, or add one manually."
+      ? "No saved jobs yet. Open a job on LinkedIn, Indeed, Naukri, Internshala, Wellfound or Unstop and save it, or add one manually."
       : "No jobs match these filters.";
     jobsEmptyAdd.classList.toggle("hidden", !none);
     jobsEmpty.classList.remove("hidden");
@@ -381,11 +381,14 @@ function renderJobs() {
     const li = h("li", { class: "jobItem" });
 
     const badge = h("span", { class: `status-badge ${statusClass(job.status)}`, text: job.status || "Applied" });
+    // Direct link to the original posting (only real http(s) URLs are rendered as links).
+    const postingUrl = /^https?:\/\//i.test(job.sourceUrl || "") ? job.sourceUrl : null;
     li.append(
       h("div", { class: "jobItem-top" },
         h("div", {},
           h("div", { class: "jobItem-role", text: job.role || "Untitled role" }),
-          h("div", { class: "jobItem-company", text: job.company || "Unknown company" })),
+          h("div", { class: "jobItem-company", text: job.company || "Unknown company" }),
+          postingUrl ? h("a", { class: "jobItem-link", href: postingUrl, target: "_blank", rel: "noopener noreferrer", title: postingUrl, text: "View posting ↗" }) : null),
         badge));
 
     // Notes: activate to edit inline (same UPDATE_JOB message the status select uses).
@@ -543,7 +546,7 @@ forgotPasswordLink.addEventListener("click", async () => {
 // ---------- THIS PAGE: Detect → Understand → Save / Analyze → Confirm → Open ----------
 // phase: loading | unsupported | not_ready | none | error | ready | tracked | saved
 const page = { phase: "loading", saveJob: null, job: null, tracked: null, error: null, saving: false, opening: false, status: "Applied", incomplete: false, source: "", typed: { role: null, company: null } };
-const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed" };
+const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed", naukri: "Naukri", internshala: "Internshala", wellfound: "Wellfound", unstop: "Unstop" };
 
 function stateBox(kind, text, ...actions) {
   return h("div", { class: `stateBox ${kind}` }, h("p", { class: "stateBox-text", text }), ...actions);
@@ -562,7 +565,7 @@ function buildPage() {
     case "loading":
       return [h("div", { class: "skeleton", style: "height: 60px", "aria-hidden": "true" }), h("span", { class: "sr-only", text: "Checking this page…" })];
     case "unsupported":
-      return [stateBox("neutral", "Open a LinkedIn or Indeed job posting to save it here in one tap.")];
+      return [stateBox("neutral", "Open a job posting on LinkedIn, Indeed, Naukri, Internshala, Wellfound or Unstop to save it here in one tap.")];
     case "not_ready":
       return [stateBox("warn", "TrackTrail can't read this page yet. Reload the job page, then check again.",
         h("button", { type: "button", class: "secondary", "data-key": "recheck", text: "Check again", onclick: loadPage }))];

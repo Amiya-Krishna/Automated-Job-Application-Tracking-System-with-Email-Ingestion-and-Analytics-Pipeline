@@ -250,3 +250,11 @@ If you later want OTA updates, install `expo-updates` (`npx expo install expo-up
 and a `channel` in the `preview` and `production` profiles of `eas.json`. A test in `tests/config.test.cjs`
 fails if this is only partly configured, and if `expo-updates` is *not* installed it fails when any of those
 settings is present.
+
+## Roles
+
+`AuthUser.role` (`'user' | 'admin'`) comes from `/api/auth/me`. The Discovery
+panel on the Sources screen is shown to admins only (the API also returns 403
+to non-admins). The Analytics funnel no longer has a "Jobs discovered"
+(scraped) stage; bars are scaled to *Matched*. `/api/gmail/scan` now returns
+pre-filtered job mail with optional `company`/`role`/`status`/`contactEmail`.

@@ -38,6 +38,21 @@ function setError(el, err, retry) {
   }
 }
 
+// A saved job's own posting link. Only real http(s) URLs become clickable: the value
+// comes from the database and must never turn into a javascript:/internal: href.
+const isWebUrl = (u) => typeof u === "string" && /^https?:\/\//i.test(u);
+function postingLink(url, className = "dcard-link") {
+  if (!isWebUrl(url)) return null;
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.className = className;
+  a.textContent = "View posting ↗";
+  a.title = url;
+  return a;
+}
+
 // Loading placeholders (removed by the loader once data or an error arrives).
 function skeleton(container, count = 3, tag = "div") {
   for (let i = 0; i < count; i += 1) {
@@ -224,15 +239,8 @@ async function loadMatchedJobs() {
       const actions = document.createElement("div");
       actions.className = "dcard-actions";
 
-      if (job.source_url) {
-        const link = document.createElement("a");
-        link.href = job.source_url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        link.className = "dcard-link";
-        link.textContent = "View posting ↗";
-        actions.appendChild(link);
-      }
+      const matchedLink = postingLink(job.source_url);
+      if (matchedLink) actions.appendChild(matchedLink);
 
       const applyBtn = document.createElement("button");
       applyBtn.className = "primary";
@@ -364,6 +372,10 @@ async function loadApplications() {
       const actions = document.createElement("div");
       actions.className = "dcard-actions";
 
+      // The direct link to the original posting, saved with the job.
+      const savedLink = postingLink(job.sourceUrl);
+      if (savedLink) actions.appendChild(savedLink);
+
       const statusSelect = document.createElement("select");
       for (const opt of STATUS_OPTIONS) {
         const optionEl = document.createElement("option");
@@ -451,7 +463,6 @@ async function loadAnalytics() {
 
     const funnel = funnelRes.data || {};
     const stages = [
-      ["Scraped", funnel.scraped],
       ["Matched", funnel.matched],
       ["Applied", funnel.applied],
       ["Interview", funnel.interview],
@@ -818,7 +829,7 @@ gmailScanBtn.addEventListener("click", async () => {
 
       const meta = document.createElement("div");
       meta.className = "emailCard-meta";
-      meta.textContent = [msg.from, msg.date].filter(Boolean).join(" · ");
+      meta.textContent = [msg.from, msg.date, msg.contactEmail && `Contact: ${msg.contactEmail}`].filter(Boolean).join(" · ");
 
       const snippet = document.createElement("div");
       snippet.className = "emailCard-snippet";
@@ -830,7 +841,7 @@ gmailScanBtn.addEventListener("click", async () => {
       const companyInput = document.createElement("input");
       companyInput.type = "text";
       companyInput.placeholder = "Company name to save as...";
-      companyInput.value = guessCompanyFromEmail(msg.from);
+      companyInput.value = msg.company || guessCompanyFromEmail(msg.from);
 
       const importBtn = document.createElement("button");
       importBtn.type = "button";
@@ -848,8 +859,9 @@ gmailScanBtn.addEventListener("click", async () => {
             method: "POST",
             body: JSON.stringify({
               company,
-              role: msg.subject || "Untitled role",
-              status: "Applied",
+              role: msg.role || msg.subject || "Untitled role",
+              status: msg.status || "Applied",
+              contactEmail: msg.contactEmail || null,
               notes: msg.snippet || "",
               // Lets the backend attribute this row to the source email
               // (externalJobId) — never enough alone to bridge into the

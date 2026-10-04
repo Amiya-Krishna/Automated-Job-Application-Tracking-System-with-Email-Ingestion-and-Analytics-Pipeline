@@ -1,4 +1,4 @@
-// Runs on LinkedIn job pages and Indeed pages. Detection lives in jd-extract.js
+// Runs on job pages of LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop. Detection lives in jd-extract.js
 // (loaded first, see manifest.json) so it can be unit-tested; this file only
 // wires the page UI: a compact "dock" (Save job + Resume match) and the popup's
 // detection / open-panel messages. Nothing is invented: a field that can't be
@@ -7,9 +7,8 @@
 const detectJob = () => TrackTrailExtract.detectJob(document, window.location);
 const hasAnyDetails = (d) => Boolean(d.role || d.company);
 const hasFullDetails = (d) => Boolean(d.role && d.company);
-const looksLikeJobUrl = () =>
-  Boolean(TrackTrailExtract.extractLinkedInJobId(window.location.href) || TrackTrailExtract.extractIndeedJobId(window.location.href));
-const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed" };
+const looksLikeJobUrl = () => TrackTrailExtract.looksLikeJobPage(window.location);
+const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed", naukri: "Naukri", internshala: "Internshala", wellfound: "Wellfound", unstop: "Unstop" };
 const errorInfo = (r, fallback) => (globalThis.TrackTrailErrors ? TrackTrailErrors.describe(r, fallback) : { kind: "error", message: (r && r.error) || fallback, retryable: true });
 
 let panel = null;

@@ -25,3 +25,13 @@ The web client now has an explicit two-environment setup:
 - If local development intentionally needs the deployed API, set `VITE_USE_REMOTE_API=true`.
 
 For local development, copy `client/.env.local.example` to `client/.env.local`.
+
+## Roles (User / Admin)
+
+`AuthContext` exposes `isAdmin` (from `/auth/me` → `user.role`). Admin-only
+pieces: `/job-discovery` and `/admin` (wrapped in `components/AdminRoute.jsx`),
+the "Job Discovery"/"Admin" nav items, and `components/AdminDeleteButton.jsx`
+on Sources, Companies and Matched Jobs. The API enforces the same rules
+(`requireAdmin`), so hiding UI is only a convenience. Shared action-button
+styles (`.tt-btn`, `.tt-actions`) live in `src/index.css`. See
+`docs/11_Roles_Permissions_Platforms_and_Release_Notes.md`.

@@ -12,18 +12,19 @@ import toast from "react-hot-toast";
 //   ScrapeRun.status: queued | running | succeeded | failed | blocked
 //   ScrapeRun.results: { [sourceName]: { status, message, found, ingested } }
 //
-// Provider honesty: Remotive (server/adapters/remotiveJobsAdapter.js) is a
-// free, no-auth public API and actually returns real remote listings today
-// — it's on by default. LinkedIn and Indeed have no public self-serve
-// search API, and their adapters are unimplemented placeholders even when
-// a credential env var is set (see linkedinJobsAdapter.js's/
-// indeedJobsAdapter.js's "not implemented yet" placeholder) — so the copy
-// below says "not implemented," not just "needs credentials," to avoid
-// implying they'd start working the moment a token is added.
+// Providers: Remotive is a free public API and works with no setup. Every
+// other provider is a live Playwright browser adapter that needs the worker
+// process. Those sites can serve bot walls or change markup; a run then
+// finishes as "blocked"/"failed" with the reason instead of fabricating jobs.
+const BROWSER_NOTE = "Live browser discovery — requires Playwright worker";
 const SOURCES = [
   { value: "remotive", label: "Remotive", note: "Real remote listings — no setup needed" },
-  { value: "linkedin", label: "LinkedIn", note: "Live browser discovery — requires Playwright worker" },
-  { value: "indeed", label: "Indeed", note: "Live browser discovery — requires Playwright worker" },
+  { value: "linkedin", label: "LinkedIn", note: BROWSER_NOTE },
+  { value: "indeed", label: "Indeed", note: BROWSER_NOTE },
+  { value: "naukri", label: "Naukri", note: BROWSER_NOTE },
+  { value: "internshala", label: "Internshala", note: BROWSER_NOTE },
+  { value: "wellfound", label: "Wellfound", note: BROWSER_NOTE },
+  { value: "unstop", label: "Unstop", note: BROWSER_NOTE },
 ];
 const DEFAULT_SOURCES = ["remotive"];
 
@@ -203,7 +204,7 @@ function JobDiscovery() {
   useEffect(() => {
     // Same pattern already used throughout this codebase for the
     // initial data load (see AppliedJobs.jsx, MatchedJobs.jsx, etc.).
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     loadHistory();
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);

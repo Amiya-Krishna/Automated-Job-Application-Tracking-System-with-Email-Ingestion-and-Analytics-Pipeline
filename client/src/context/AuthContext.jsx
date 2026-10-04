@@ -42,11 +42,12 @@ export function AuthProvider({ children }) {
   useEffect(() => { restore(); const ended = () => { clearAccessToken(); setUser(null); setStatus("anonymous"); }; window.addEventListener("tracktrail:session-ended", ended); return () => window.removeEventListener("tracktrail:session-ended", ended); }, [restore]);
   const login = useCallback((data) => { setAccessToken(data.accessToken || data.token); setUser(data.user); setStatus("authenticated"); }, []);
   const logout = useCallback(async () => { try { await api.post("/auth/logout", undefined, { _skipAuthRefresh: true }); } catch { /* local sign-out still succeeds */ } clearAccessToken(); setUser(null); setStatus("anonymous"); }, []);
-  const value = useMemo(() => ({ status, user, login, logout, restore }), [status, user, login, logout, restore]);
+  const isAdmin = user?.role === "admin";
+  const value = useMemo(() => ({ status, user, isAdmin, login, logout, restore }), [status, user, isAdmin, login, logout, restore]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 export function useAuth(required = true) {
   const context = useContext(AuthContext);
   if (!context && required) throw new Error("useAuth must be used within AuthProvider");
-  return context || { status: "anonymous", user: null, logout: async () => clearAccessToken() };
+  return context || { status: "anonymous", user: null, isAdmin: false, logout: async () => clearAccessToken() };
 }

@@ -95,7 +95,7 @@
     ["NOT_FOUND", "Not found on your resume"],
   ];
   const GROUP_LIMIT = 6;
-  const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed" };
+  const SOURCE_LABEL = { linkedin: "LinkedIn", indeed: "Indeed", naukri: "Naukri", internshala: "Internshala", wellfound: "Wellfound", unstop: "Unstop" };
   const DEFAULT_ERROR = "Something went wrong.";
 
   function createPanel({ doc, chromeApi, extract, hostname, sleep, onClose }) {

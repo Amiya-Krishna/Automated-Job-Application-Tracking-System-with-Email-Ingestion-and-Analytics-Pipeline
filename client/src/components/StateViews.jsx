@@ -53,6 +53,10 @@ const SOURCE_STYLES = {
   gmail: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   linkedin: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   indeed: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  naukri: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  internshala: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
+  wellfound: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  unstop: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300",
   engine: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
 };
 

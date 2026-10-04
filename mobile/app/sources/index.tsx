@@ -13,19 +13,25 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useDeleteScrapeRun, useScrapeHistory, useScrapeRunStatus, useTriggerScrape } from '@/hooks/use-scrape';
+import { useAuth } from '@/hooks/use-auth';
 import { useSources } from '@/hooks/use-sources';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
 import type { ScrapeRun } from '@/types/scrape';
 
-// Same three adapters the web client offers (client/src/pages/JobDiscovery.jsx) —
+// Admin-only (rendered only when user.role === 'admin'; the API enforces it too).
+// Same adapters the web client offers (client/src/pages/JobDiscovery.jsx) —
 // LinkedIn/Indeed have no public self-serve search API and are unimplemented
 // placeholders server-side even with a source selected, so this says so rather
 // than implying they'll start working.
 const DISCOVERY_SOURCES = [
   { value: 'remotive', label: 'Remotive', note: 'Real remote listings' },
-  { value: 'linkedin', label: 'LinkedIn', note: 'Not implemented yet' },
-  { value: 'indeed', label: 'Indeed', note: 'Not implemented yet' },
+  { value: 'linkedin', label: 'LinkedIn', note: 'Browser discovery (worker)' },
+  { value: 'indeed', label: 'Indeed', note: 'Browser discovery (worker)' },
+  { value: 'naukri', label: 'Naukri', note: 'Browser discovery (worker)' },
+  { value: 'internshala', label: 'Internshala', note: 'Browser discovery (worker)' },
+  { value: 'wellfound', label: 'Wellfound', note: 'Browser discovery (worker)' },
+  { value: 'unstop', label: 'Unstop', note: 'Browser discovery (worker)' },
 ] as const;
 
 const RUN_STATUS_LABEL: Record<string, string> = {
@@ -193,6 +199,8 @@ function DiscoveryPanel() {
 
 export default function SourcesScreen() {
   const theme = useTheme();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const { data, isLoading, isError, error, refetch, isRefetching } = useSources();
 
   const maxJobs = useMemo(() => Math.max(1, ...(data ?? []).map((s) => s.jobCount || 0)), [data]);
@@ -210,7 +218,7 @@ export default function SourcesScreen() {
             refreshControl={
               <RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={theme.tint} />
             }>
-            <DiscoveryPanel />
+            {isAdmin ? <DiscoveryPanel /> : null}
 
             <ThemedText type="title" style={styles.title}>
               Job sources

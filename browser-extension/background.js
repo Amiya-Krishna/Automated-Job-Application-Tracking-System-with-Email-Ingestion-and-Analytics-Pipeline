@@ -188,7 +188,7 @@ async function lookupTracked(sj) {
 }
 
 // Pages the content script is declared for (keep in sync with manifest.json).
-const SUPPORTED_PAGE = /^https:\/\/([a-z0-9-]+\.)*(linkedin\.com\/jobs\/|indeed\.com\/)/i;
+const SUPPORTED_PAGE = /^https:\/\/([a-z0-9-]+\.)*(linkedin\.com\/jobs\/|indeed\.com\/|naukri\.com\/|internshala\.com\/|wellfound\.com\/|unstop\.com\/)/i;
 
 // ---- Resume Tailoring --------------------------------------------------
 // The extension holds NO tailoring/AI logic and NO AI credentials: it forwards

@@ -67,41 +67,93 @@
       const u = new URL(url);
       const fromQuery = u.searchParams.get("currentJobId");
       if (fromQuery) return fromQuery;
-      const viewMatch = u.pathname.match(/\/jobs\/view\/(\d+)/);
+      // /jobs/view/3912345678/ and the slug form /jobs/view/software-engineer-at-acme-3912345678
+      const viewMatch = u.pathname.match(/\/jobs\/view\/(?:[^/?#]*-)?(\d{6,})/);
       if (viewMatch) return viewMatch[1];
     } catch (e) { /* ignore malformed URL */ }
     return "";
   }
 
-  // Indeed job ids live in the URL as ?jk=xxxxxxxxxxxxxxxx
+  // Indeed job ids live in the URL as ?jk=xxxxxxxxxxxxxxxx on a posting page and as
+  // ?vjk=xxxxxxxxxxxxxxxx on a search page whose right-hand pane shows the posting.
   function extractIndeedJobId(url) {
-    try { return new URL(url).searchParams.get("jk") || ""; } catch (e) { return ""; }
+    try {
+      const p = new URL(url).searchParams;
+      return p.get("jk") || p.get("vjk") || "";
+    } catch (e) { return ""; }
   }
 
   // Canonical URLs: LinkedIn/Indeed URLs carry session/tracking params that
   // make identical postings look different to the backend's dedup logic.
   const canonicalLinkedInUrl = (jobId, href) => (jobId ? `https://www.linkedin.com/jobs/view/${jobId}/` : href.split("?")[0]);
-  const canonicalIndeedUrl = (jobId, href) => (jobId ? `https://www.indeed.com/viewjob?jk=${jobId}` : href.split("?")[0]);
+  // Indeed runs per-country hosts (in.indeed.com, uk.indeed.com, ...): keep the page's own host
+  // so the saved link opens the same posting, not a different country's site.
+  const canonicalIndeedUrl = (jobId, href, host) => (jobId ? `https://${host || "www.indeed.com"}/viewjob?jk=${jobId}` : href.split("?")[0]);
 
   const LI = {
     title: ["h1.job-details-jobs-unified-top-card__job-title", "h1.top-card-layout__title", '[role="heading"][aria-level="1"]', "h1"],
     company: [".job-details-jobs-unified-top-card__company-name a", ".job-details-jobs-unified-top-card__company-name", ".top-card-layout__second-subline a"],
     location: [".job-details-jobs-unified-top-card__primary-description-container .tvm__text", ".job-details-jobs-unified-top-card__bullet", ".top-card-layout__second-subline .topcard__flavor--bullet"],
-    description: ["#job-details", ".jobs-description__content", ".jobs-box__html-content", ".description__text"],
+    description: ["#job-details", ".jobs-description__content", ".jobs-box__html-content", ".show-more-less-html__markup", ".description__text"],
+    salary: [".job-details-jobs-unified-top-card__job-insight--highlight", ".salary.compensation__salary", ".compensation__salary", '[class*="salary"]'],
+    skills: [".job-details-how-you-match__skills-item-subtitle", ".job-details-preferences-and-skills a"],
+    jobLink: ['.job-details-jobs-unified-top-card__job-title a[href*="/jobs/view/"]', 'a.topcard__link[href*="/jobs/view/"]', 'a[href*="/jobs/view/"]'],
   };
   const IN = {
     title: ['[data-testid="jobsearch-JobInfoHeader-title"]', "h1.jobsearch-JobInfoHeader-title", "h1"],
     company: ['[data-testid="inlineHeader-companyName"]', ".jobsearch-InlineCompanyRating div"],
     location: ['[data-testid="inlineHeader-companyLocation"]', ".jobsearch-JobInfoHeader-subtitle .jobsearch-JobInfoHeader-locationText"],
-    description: ["#jobDescriptionText"],
+    description: ["#jobDescriptionText", ".jobsearch-JobComponent-description"],
+    salary: ["#salaryInfoAndJobType span", '[data-testid="jobsearch-OtherJobDetailsContainer"] [class*="salary"]', '[class*="salary"]', "#salaryInfoAndJobType"],
+    skills: ['[data-testid="list-item"] [class*="skill"]', '#jobDetailsSection [aria-label*="Skills" i] li'],
   };
+
+  const P = () => root.TrackTrailPlatforms || null;
+
+  // <link rel="canonical"> href, "" if absent (Indeed posting pages carry ?jk= here).
+  function canonicalLink(doc) {
+    try { return doc.querySelector('link[rel="canonical"]')?.href || ""; } catch (e) { return ""; }
+  }
+
+  // First absolute href matching one of `selectors`; used when the address bar
+  // does not carry the posting id (e.g. a search page with the pane open).
+  function firstHref(doc, selectors, base) {
+    for (const sel of selectors || []) {
+      try {
+        const a = doc.querySelector(sel);
+        const h = a && a.getAttribute("href");
+        if (h) return new URL(h, base).toString();
+      } catch (e) { /* try the next selector */ }
+    }
+    return "";
+  }
+
+  // Optional salary / skills for the two original platforms. Strictly additive:
+  // any failure yields {} so title/company/URL detection is never affected.
+  function extras(doc, sel, desc) {
+    try {
+      const X = P();
+      if (!X) return {};
+      const h = X.helpers;
+      const salaryText = h.salaryFromElementText(h.firstText(doc, sel.salary || [])) || h.findSalary((desc.description || "").slice(0, 1500));
+      const skills = h.allTexts(doc, sel.skills || []);
+      const contactEmail = h.findContactEmail(desc.descriptionStructured || desc.description);
+      const out = {};
+      if (salaryText) out.salaryText = salaryText;
+      if (skills.length) out.skills = skills;
+      if (contactEmail) out.contactEmail = contactEmail;
+      return out;
+    } catch (e) { return {}; }
+  }
 
   function describe(doc, sel) {
     const el = firstElement(doc, sel.description);
+    // line structure kept - this is what tailoring analyses; the flat text is derived from
+    // it, so hidden elements / scripts inside the description never leak into the saved job.
+    const structured = structuredText(el, doc.defaultView);
     return {
-      description: text(el),
-      // same element, line structure kept — this is what tailoring analyses
-      descriptionStructured: structuredText(el, doc.defaultView).slice(0, MAX_DESCRIPTION_CHARS),
+      description: structured.replace(/\s+/g, " ").trim(),
+      descriptionStructured: structured.slice(0, MAX_DESCRIPTION_CHARS),
     };
   }
 
@@ -129,8 +181,9 @@
       const og = doc.querySelector('meta[property="og:title"]');
       if (og && !role) role = og.content;
     }
-    const externalJobId = extractLinkedInJobId(loc.href);
-    return { role, company, location, ...desc, externalJobId, sourceUrl: canonicalLinkedInUrl(externalJobId, loc.href), sourceName: "linkedin" };
+    let externalJobId = extractLinkedInJobId(loc.href);
+    if (!externalJobId) externalJobId = extractLinkedInJobId(firstHref(doc, LI.jobLink, loc.href)) || extractLinkedInJobId(canonicalLink(doc));
+    return { role, company, location, ...desc, ...extras(doc, LI, desc), externalJobId, sourceUrl: canonicalLinkedInUrl(externalJobId, loc.href), sourceName: "linkedin" };
   }
 
   function detectIndeed(doc, loc) {
@@ -146,8 +199,9 @@
         if (!company) company = parts[1].trim();
       }
     }
-    const externalJobId = extractIndeedJobId(loc.href);
-    return { role, company, location, ...desc, externalJobId, sourceUrl: canonicalIndeedUrl(externalJobId, loc.href), sourceName: "indeed" };
+    let externalJobId = extractIndeedJobId(loc.href) || extractIndeedJobId(canonicalLink(doc));
+    if (!externalJobId) externalJobId = extractIndeedJobId(firstHref(doc, ['a[href*="viewjob?jk="]', 'a[href*="jk="]'], loc.href));
+    return { role, company, location, ...desc, ...extras(doc, IN, desc), externalJobId, sourceUrl: canonicalIndeedUrl(externalJobId, loc.href, loc.hostname), sourceName: "indeed" };
   }
 
   function detectJob(doc, loc) {
@@ -155,6 +209,13 @@
     loc = loc || root.location;
     if (loc.hostname.includes("linkedin.com")) return detectLinkedIn(doc, loc);
     if (loc.hostname.includes("indeed.com")) return detectIndeed(doc, loc);
+    const X = P();
+    const key = X && X.detectPlatform(loc.hostname);
+    if (key) {
+      const d = X.extractDetail(key, doc, loc);
+      // keep the same shape the dock / popup / panel already consume
+      return { ...d, sourceUrl: d.sourceUrl || loc.href };
+    }
     // never invent a source: report only what is genuinely on the page
     return { role: "", company: "", location: "", description: "", descriptionStructured: "", externalJobId: "", sourceUrl: loc.href, sourceName: "extension" };
   }
@@ -175,23 +236,40 @@
     };
   }
 
+  // Pages the content script treats as "a job page" (used for the unreadable-page hint).
+  function looksLikeJobPage(loc) {
+    const href = loc.href || "";
+    if (loc.hostname.includes("linkedin.com")) return Boolean(extractLinkedInJobId(href));
+    if (loc.hostname.includes("indeed.com")) return Boolean(extractIndeedJobId(href));
+    const X = P();
+    const key = X && X.detectPlatform(loc.hostname);
+    if (!key) return false;
+    try { return X.PLATFORMS[key].isJobUrl(new URL(href)); } catch (e) { return false; }
+  }
+
   /** The exact payload the original "Save to TrackTrail" button always sent. */
   function toSaveJob(d, hostname) {
-    return {
+    const payload = {
       company: d.company || "Unknown company",
       role: d.role || "Unknown role",
       status: "Applied",
-      notes: `Saved from ${hostname}`,
+      notes: d.contactEmail ? `Saved from ${hostname} · Contact: ${d.contactEmail}` : `Saved from ${hostname}`,
       // Full capture for the engine bridge — never fabricated, only what was
       // actually found on the page.
       location: d.location || null,
+      // The structured text keeps the headings/bullets the matcher and the
+      // tailoring analysis rely on; fall back to the flat text.
       description: d.description || null,
       sourceName: d.sourceName,
-      sourceUrl: d.sourceUrl,
+      // The page's own posting link. The server re-validates and normalises it.
+      sourceUrl: d.sourceUrl || null,
       externalJobId: d.externalJobId || null,
     };
+    if (d.salaryText) payload.salaryText = d.salaryText;
+    if (Array.isArray(d.skills) && d.skills.length) payload.skills = d.skills;
+    return payload;
   }
 
-  const api = { toSaveJob, text, firstMatch, structuredText, extractLinkedInJobId, extractIndeedJobId, detectLinkedIn, detectIndeed, detectJob, toApiJob };
+  const api = { toSaveJob, text, firstMatch, structuredText, extractLinkedInJobId, extractIndeedJobId, detectLinkedIn, detectIndeed, detectJob, toApiJob, looksLikeJobPage };
   root.TrackTrailExtract = api;
 })(typeof globalThis !== "undefined" ? globalThis : this);

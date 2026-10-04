@@ -344,7 +344,7 @@ Open your browser and go to:
 http://localhost:5173
 ```
 
-You should see the landing page. Register a new account and start tracking! To try Job Discovery, go to `/job-discovery` and search. Remotive works through its public API; LinkedIn and Indeed launch Playwright and require Chromium to be installed on the worker host (`npx playwright install chromium`). Provider-side blocking or markup changes are surfaced in the per-source run result.
+You should see the landing page. Register a new account and start tracking! Job Discovery is **admin-only**: make your account an admin first (`ADMIN_EMAILS=you@example.com` in `server/.env`, then restart; or `npm run make-admin -- you@example.com`), then go to `/job-discovery` and search. Remotive works through its public API; LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop launch Playwright and require Chromium to be installed on the worker host (`npx playwright install chromium`). Provider-side blocking or markup changes are surfaced in the per-source run result.
 
 ---
 

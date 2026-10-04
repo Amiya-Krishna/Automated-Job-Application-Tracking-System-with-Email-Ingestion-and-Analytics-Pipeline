@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import AdminDeleteButton from "../components/AdminDeleteButton";
+import { safeWebUrl } from "../utils/links";
 
 const STATUS_STYLES = {
   new: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
@@ -176,9 +178,9 @@ function MatchedJobs() {
                   )}
 
                   <div className="mt-4 flex items-center gap-2">
-                    {job.source_url && (
+                    {safeWebUrl(job.source_url) && (
                       <a
-                        href={job.source_url}
+                        href={safeWebUrl(job.source_url)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs font-semibold text-cyan-700 dark:text-cyan-400 hover:underline"
@@ -203,6 +205,15 @@ function MatchedJobs() {
                         ? "Queuing..."
                         : "Queue apply"}
                     </button>
+                    <AdminDeleteButton
+                      kind="jobs"
+                      id={job.id}
+                      label={job.title || "this job"}
+                      onDeleted={(id) => {
+                        setJobs((prev) => prev.filter((j) => j.id !== id));
+                        setMeta((m) => ({ ...m, total: Math.max(0, (m.total || 1) - 1) }));
+                      }}
+                    />
                   </div>
                 </div>
               );

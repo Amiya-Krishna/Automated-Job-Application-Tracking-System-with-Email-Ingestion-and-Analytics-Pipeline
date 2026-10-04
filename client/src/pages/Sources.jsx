@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import AdminDeleteButton from "../components/AdminDeleteButton";
 
 function Sources() {
   const [sources, setSources] = useState([]);
@@ -74,9 +75,18 @@ function Sources() {
                         </a>
                       )}
                     </div>
-                    <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
-                      {s.jobCount} jobs
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {s.jobCount} jobs
+                      </span>
+                      <AdminDeleteButton
+                        kind="sources"
+                        id={s.id}
+                        label={s.name}
+                        hasJobs={(s.jobCount || 0) > 0}
+                        onDeleted={(id) => setSources((prev) => prev.filter((x) => x.id !== id))}
+                      />
+                    </div>
                   </div>
                   <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
                     <div

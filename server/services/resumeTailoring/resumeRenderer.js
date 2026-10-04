@@ -119,69 +119,129 @@ async function toDocx(p) {
   return Packer.toBuffer(doc);
 }
 
+// ---- PDF -------------------------------------------------------------------
+// Single-column, ATS-friendly layout using the built-in Helvetica family (real,
+// selectable text; no images, tables or text boxes). Hierarchy: name > section
+// heading (ruled) > entry header (bold, dates right-aligned) > sub-line (italic) >
+// bullets (hanging indent). Headings and entry headers never strand at the bottom of
+// a page. The renderer receives only the parsed profile, so layout can never add,
+// omit or rewrite resume facts.
+const MONTH = "(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\\.?";
+const DATE_TAIL = new RegExp(
+  `^(.*?)[\\s|,\\u2013\\u2014-]*((?:${MONTH}\\s+)?\\d{4}\\s*(?:[\\u2013\\u2014-]|to)\\s*(?:Present|Current|Now|Ongoing|(?:${MONTH}\\s+)?\\d{4})|${MONTH}\\s+\\d{4}|(?:Expected\\s+)?(?:${MONTH}\\s+)?20\\d{2})\\s*$`,
+  "i",
+);
+
+/** "Acme Corp, Pune   Jan 2021 – Present" -> { left, date }; no trailing date -> { left: text }. */
+function splitTrailingDate(text) {
+  const m = String(text).match(DATE_TAIL);
+  if (m && m[1].trim().length >= 2) {
+    const left = m[1].trimEnd();
+    // `tail` is everything after the left part, separator included, so the printed line
+    // reads exactly like the source text ("... | Jun 2025 - Aug 2025"): lossless re-parse.
+    return { left, date: m[2].trim(), tail: String(text).slice(left.length) };
+  }
+  return { left: String(text) };
+}
+
 function toPdf(p) {
   const PDFDocument = require("pdfkit");
   return new Promise((resolve, reject) => {
-    // This is deliberately the one renderer used by both the untouched
-    // original and approved tailored exports. It receives only the parsed
-    // profile, so layout work can never add, omit or rewrite resume facts.
-    const margin = 54;
-    const doc = new PDFDocument({ size: "A4", margins: { top: margin, bottom: margin, left: margin, right: margin }, info: { Title: p.personalInfo?.name || "Resume", Author: "TrackTrail" } });
+    const M = { top: 44, bottom: 44, left: 50, right: 50 };
+    const doc = new PDFDocument({ size: "A4", margins: M, bufferPages: false, info: { Title: p.personalInfo?.name || "Resume", Author: p.personalInfo?.name || "TrackTrail", Creator: "TrackTrail" } });
     const chunks = [];
     doc.on("data", (c) => chunks.push(c));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
-    // Standard PDF fonts use WinAnsi (Windows-1252): Latin-1 plus common
-    // typographic punctuation (— – “ ” ‘ ’ • … € ™). Anything outside that
-    // set can't be drawn with a built-in font, so it is replaced with "?"
-    // to keep the file valid rather than failing.
-    const safe = (s) => s.replace(/[^\u0009\u0020-\u007E\u00A0-\u00FF\u2013\u2014\u2018\u2019\u201A\u201C\u201D\u201E\u2020\u2021\u2022\u2026\u2030\u2039\u203A\u20AC\u2122]/g, "?");
-    const pageBottom = () => doc.page.height - margin;
-    const ensureSpace = (height) => { if (doc.y + height > pageBottom()) doc.addPage(); };
-    const write = (text, options = {}) => {
-      const value = safe(text);
-      const height = doc.heightOfString(value, options);
-      ensureSpace(height);
-      doc.text(value, options);
-    };
-    const rule = () => {
-      ensureSpace(7);
-      doc.moveTo(margin, doc.y + 2).lineTo(doc.page.width - margin, doc.y + 2).lineWidth(0.7).strokeColor("#94A3B8").stroke();
-      doc.moveDown(0.34);
-    };
-    for (const b of toBlocks(p)) {
+
+    // Built-in fonts are WinAnsi (Windows-1252): anything outside it is replaced with "?"
+    // so the file stays valid.
+    const safe = (s) => String(s).replace(/[^\u0009 -~ -ÿ–—‘’‚“”„†‡•…‰‹›€™]/g, "?");
+    const W = doc.page.width - M.left - M.right;
+    const bottom = () => doc.page.height - M.bottom;
+    const ensure = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
+    const INK = "#111827", MUTED = "#4B5563", ACCENT = "#1F3A5F";
+    const font = (f, size, color) => doc.font(f).fontSize(size).fillColor(color);
+    const textH = (t, width, opts = {}) => doc.heightOfString(safe(t), { width, ...opts });
+
+    const blocks = toBlocks(p);
+    // style of the "line" blocks that follow an entry header (role/location/tech lines)
+    let afterEntry = false;
+
+    blocks.forEach((b, i) => {
+      const next = blocks[i + 1];
       switch (b.type) {
         case "name":
-          doc.font("Helvetica-Bold").fontSize(20).fillColor("#0F172A");
-          write(b.text, { align: "center", lineGap: 1 });
-          doc.moveDown(0.12);
+          font("Helvetica-Bold", 22, INK);
+          doc.text(safe(b.text), M.left, doc.y, { width: W, align: "center", lineGap: 0 });
+          doc.moveDown(0.2);
           break;
         case "contact":
-          doc.font("Helvetica").fontSize(9.2).fillColor("#334155");
-          write(b.text, { align: "center", lineGap: 1 });
+          font("Helvetica", 9, MUTED);
+          doc.text(safe(b.text), M.left, doc.y, { width: W, align: "center", lineGap: 1.5 });
           break;
-        case "heading":
-          doc.moveDown(0.62);
-          doc.font("Helvetica-Bold").fontSize(10.5).fillColor("#0F4C5C");
-          ensureSpace(doc.currentLineHeight() + 14);
-          write(b.text.toUpperCase(), { characterSpacing: 0.65, lineGap: 1 });
-          rule();
+        case "heading": {
+          afterEntry = false;
+          doc.moveDown(0.9);
+          font("Helvetica-Bold", 10.5, ACCENT);
+          // keep the heading with at least its first entry (header + one bullet)
+          ensure(14 + 6 + 34);
+          doc.text(safe(b.text.toUpperCase()), M.left, doc.y, { width: W, characterSpacing: 0.8, lineGap: 0 });
+          const y = doc.y + 2.5;
+          doc.moveTo(M.left, y).lineTo(M.left + W, y).lineWidth(0.8).strokeColor(ACCENT).stroke();
+          doc.y = y + 5;
           break;
-        case "entryHeader":
-          doc.moveDown(0.24);
-          doc.font("Helvetica-Bold").fontSize(10.1).fillColor("#172033");
-          write(b.text, { lineGap: 1 });
+        }
+        case "entryHeader": {
+          afterEntry = true;
+          doc.moveDown(0.35);
+          const { left, tail } = splitTrailingDate(b.text);
+          font("Helvetica-Bold", 10.2, INK);
+          const h = Math.max(textH(b.text, W), 12);
+          ensure(h + 14 + (next ? 12 : 0)); // header never stranded from what follows
+          if (tail) {
+            doc.text(safe(left), M.left, doc.y, { width: W, continued: true, lineGap: 0.5 });
+            font("Helvetica", 9.7, MUTED);
+            doc.text(safe(tail), { width: W, lineGap: 0.5 });
+          } else {
+            doc.text(safe(left), M.left, doc.y, { width: W, lineGap: 0.5 });
+          }
           break;
-        case "bullet":
-          doc.font("Helvetica").fontSize(9.7).fillColor("#243041");
-          write(`\u2022  ${b.text}`, { indent: 11, continued: false, lineGap: 2, paragraphGap: 1 });
+        }
+        case "bullet": {
+          const indent = 14;
+          font("Helvetica", 9.7, INK);
+          const h = textH(b.text, W - indent, { lineGap: 1.6 });
+          ensure(h + 2);
+          const y = doc.y;
+          doc.text("•", M.left + 4, y, { width: indent - 4, lineGap: 1.6 });
+          doc.text(safe(b.text), M.left + indent, y, { width: W - indent, lineGap: 1.6 });
+          doc.y = Math.max(doc.y, y + h) + 1.4;
           break;
-        case "gap": doc.moveDown(0.16); break;
-        default:
-          doc.font("Helvetica").fontSize(9.7).fillColor("#243041");
-          write(b.text, { lineGap: 2, paragraphGap: 1 });
+        }
+        case "gap":
+          doc.moveDown(0.25);
+          break;
+        default: {
+          // sub-lines under an entry header are italic; "Category: a, b" skills lines get a bold label
+          const m = !afterEntry && b.text.match(/^([^:]{2,30}):\s+(.+)$/);
+          if (m) {
+            font("Helvetica", 9.7, INK);
+            const h = textH(b.text, W, { lineGap: 1.6 });
+            ensure(h + 2);
+            doc.font("Helvetica-Bold").text(safe(`${m[1]}: `), M.left, doc.y, { continued: true, width: W, lineGap: 1.6 });
+            doc.font("Helvetica").text(safe(m[2]), { width: W, lineGap: 1.6 });
+            doc.moveDown(0.1);
+          } else {
+            font(afterEntry ? "Helvetica-Oblique" : "Helvetica", 9.5, afterEntry ? MUTED : INK);
+            const h = textH(b.text, W, { lineGap: 1.4 });
+            ensure(h + 2 + (next && next.type === "bullet" ? 12 : 0));
+            doc.text(safe(b.text), M.left, doc.y, { width: W, lineGap: 1.4 });
+            doc.moveDown(0.08);
+          }
+        }
       }
-    }
+    });
     doc.end();
   });
 }
@@ -198,4 +258,4 @@ async function exportProfile(profile, format, opts = {}) {
   return { buffer: body, mime: f.mime, ext: f.ext };
 }
 
-module.exports = { toBlocks, toText, toMarkdown, toHtml, exportProfile, EXPORT_FORMATS };
+module.exports = { splitTrailingDate, toBlocks, toText, toMarkdown, toHtml, exportProfile, EXPORT_FORMATS };

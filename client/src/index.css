@@ -14,3 +14,26 @@
 body {
   @apply bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100;
 }
+
+/* Row/card action buttons (Applied Jobs, Dashboard). One shared size, radius and
+   alignment so "Tailor Resume" and "Remove"/"Delete" always line up, and the
+   group wraps cleanly on narrow screens. */
+.tt-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; }
+.tt-actions--stretch { justify-content: stretch; }
+.tt-actions--stretch > .tt-btn { flex: 1 1 0; }
+.tt-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 2.25rem; padding: 0 0.875rem; border-radius: 0.75rem;
+  border: 1px solid transparent; font-size: 0.75rem; font-weight: 600; line-height: 1;
+  white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color .15s, border-color .15s;
+}
+.tt-btn:disabled { opacity: .6; cursor: not-allowed; }
+.tt-btn--primary { color: #0e7490; border-color: #a5f3fc; background: #ecfeff; }
+.tt-btn--primary:hover { background: #cffafe; }
+.tt-btn--danger { color: #e11d48; border-color: #fecdd3; background: #fff1f2; }
+.tt-btn--danger:hover { background: #ffe4e6; }
+.dark .tt-btn--primary { color: #67e8f9; border-color: #164e63; background: rgb(8 51 68 / .4); }
+.dark .tt-btn--primary:hover { background: rgb(8 51 68 / .7); }
+.dark .tt-btn--danger { color: #fb7185; border-color: #881337; background: rgb(76 5 25 / .35); }
+.dark .tt-btn--danger:hover { background: rgb(76 5 25 / .6); }
+@media (max-width: 640px) { .tt-btn { min-height: 2.5rem; } }

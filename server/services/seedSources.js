@@ -12,6 +12,10 @@ const REQUIRED_SOURCES = [
   { name: "linkedin", base_url: "https://www.linkedin.com" },
   { name: "indeed", base_url: "https://www.indeed.com" },
   { name: "remotive", base_url: "https://remotive.com" },
+  { name: "naukri", base_url: "https://www.naukri.com" },
+  { name: "internshala", base_url: "https://internshala.com" },
+  { name: "wellfound", base_url: "https://wellfound.com" },
+  { name: "unstop", base_url: "https://unstop.com" },
   { name: "gmail", base_url: null },
   { name: "extension", base_url: null },
 ];

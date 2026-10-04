@@ -21,7 +21,7 @@ export interface GmailAuthUrl {
 }
 
 /**
- * GET /api/gmail/scan -> { messages: GmailScanMessage[] }
+ * GET /api/gmail/scan -> { messages: GmailScanMessage[], stats }
  *
  * Matches gmailRoutes.js's `/scan` route exactly: metadata only (subject,
  * from, date, snippet) — the backend never returns full email bodies.
@@ -32,6 +32,11 @@ export interface GmailScanMessage {
   from: string;
   date: string;
   snippet: string;
+  /** Server-side extraction (backend filters to job-related mail first); all optional. */
+  company?: string | null;
+  role?: string | null;
+  status?: string | null;
+  contactEmail?: string | null;
 }
 
 /**

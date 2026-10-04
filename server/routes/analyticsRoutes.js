@@ -80,35 +80,21 @@ router.get("/summary", async (req, res) => {
   }
 });
 
-// GET /api/analytics/funnel -> scraped -> matched -> applied -> interview -> offer
+// GET /api/analytics/funnel -> matched -> applied -> interview -> offer
 //
-// FIX (same multi-user-scoping root cause as "/" above): this used to
-// join the global `applications` table with no user filter at all, so
-// "applied"/"interview"/"offer" mixed in every user's engine activity.
-// - "scraped" stays a genuinely global count on purpose: `jobs` is the
-//   shared, deduplicated discovery catalog (see jobDiscovery service),
-//   not owned by any one user — "how many jobs has the engine found in
-//   total" is a real system-wide fact, not a per-user one.
+// The funnel is per-user and starts at "matched". (An earlier "scraped" stage was a
+// global, all-users catalog count, which is not a step in any one person's search and
+// made the funnel read as if it were - it was removed from the API and every client.)
 // - "matched" is scoped to jobs matched against THIS user's own profile
-//   (match_scores.profile_id -> user_profile.user_id), the same bridge
-//   already established and audited for match data elsewhere.
-// - "applied" is every row in this user's own tracked_jobs — that's the
-//   unambiguous, non-inferred definition of "the user applied" (creating
-//   a TrackedJob row IS what "applying" means in this app), regardless of
-//   its current status, unlike the old `status = 'applied'`-only filter
-//   which undercounted anything that had since moved on to Interview/
-//   Offer/Rejected.
-// - "interview"/"offer" use the same current-status-only definition as
-//   the Conversion section above, for the same documented reason (no
-//   guaranteed sequential progression to infer from).
+//   (match_scores.profile_id -> user_profile.user_id) with a score >= 70.
+// - "applied" is every row in this user's own tracked_jobs - creating a TrackedJob
+//   IS what "applying" means in this app, regardless of its current status.
+// - "interview"/"offer" use the same current-status-only definition as the
+//   Conversion section above (no guaranteed sequential progression to infer from).
 router.get("/funnel", async (req, res) => {
   try {
     const { rows } = await query(
-      `WITH catalog AS (
-          SELECT count(*) FILTER (WHERE j.status != 'duplicate') AS scraped
-          FROM jobs j
-       ),
-       matched AS (
+      `WITH matched AS (
           SELECT count(DISTINCT ms.job_id) AS matched
           FROM match_scores ms
           JOIN user_profile up ON up.id = ms.profile_id
@@ -122,8 +108,8 @@ router.get("/funnel", async (req, res) => {
           FROM tracked_jobs
           WHERE user_id = $1
        )
-       SELECT catalog.scraped, matched.matched, tracked.applied, tracked.interview, tracked.offer
-       FROM catalog, matched, tracked`,
+       SELECT matched.matched, tracked.applied, tracked.interview, tracked.offer
+       FROM matched, tracked`,
       [req.user.id],
     );
     res.json({ data: rows[0] });

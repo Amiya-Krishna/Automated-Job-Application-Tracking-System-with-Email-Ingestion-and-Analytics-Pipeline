@@ -55,7 +55,7 @@ function deviceInfo(req) {
   const b = (req.body && req.body.device) || {};
   return { deviceName: b.deviceName, platform: b.platform, appVersion: req.header("x-app-version") || b.appVersion };
 }
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role === "admin" ? "admin" : "user" });
 
 function passwordFingerprint(hash) {
   return crypto.createHash("sha256").update(String(hash || "")).digest("hex").slice(0, 16);
@@ -93,25 +93,8 @@ router.post("/register", registerLimiter, async (req, res) => {
       },
     });
 
-    // ✅ Pre-fill the candidate profile (used by the extension's Profile tab
-    // and the client's Profile page) with the name/email from registration,
-    // so it doesn't show up blank the first time it's opened. This never
-    // overwrites an existing profile someone has already filled in — it
-    // only seeds a fresh one.
-    try {
-      const existingProfile = await prisma.user_profile.findFirst({
-        orderBy: { id: "asc" },
-      });
-
-      if (!existingProfile) {
-        await prisma.user_profile.create({
-          data: { full_name: name, email },
-        });
-      }
-    } catch (profileErr) {
-      // Never fail registration because of the profile pre-fill step.
-      console.error("Profile pre-fill failed:", profileErr.message);
-    }
+    // The profile form is pre-filled with the account name/email by GET /api/profile
+    // (not persisted here: an empty stored profile would only be scored for nothing).
 
     res.status(201).json({
       message: "User Registered Successfully",

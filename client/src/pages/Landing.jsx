@@ -28,7 +28,7 @@ function Landing() {
         <div className="absolute bottom-0 left-1/3 h-72 w-72 rounded-full bg-emerald-200/40 blur-3xl" />
       </div>
 
-      <div className="relative mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+      <div className="relative mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white">
@@ -42,73 +42,73 @@ function Landing() {
           <div className="flex items-center gap-2">
             <Link
               to="/login"
-              className="rounded-full px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:bg-white/60 dark:hover:bg-slate-800/60"
+              className="rounded-full px-3 py-2 text-sm font-semibold text-slate-700 sm:px-4 dark:text-slate-200 transition hover:bg-white/60 dark:hover:bg-slate-800/60"
             >
               Log in
             </Link>
             <Link
               to="/register"
-              className="rounded-full bg-slate-950 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-800"
+              className="rounded-full bg-slate-950 px-3 py-2 text-sm sm:px-4 font-semibold text-white transition hover:bg-slate-800"
             >
               Get started
             </Link>
           </div>
         </header>
 
-        <main className="mt-16 grid gap-12 lg:grid-cols-2 lg:items-center">
+        <main className="mt-10 grid gap-8 sm:mt-16 sm:gap-12 lg:grid-cols-2 lg:items-center">
           <div>
             <span className="inline-flex rounded-full bg-cyan-100 px-4 py-1 text-xs font-semibold uppercase tracking-[0.28em] text-cyan-800">
               Career Command Center
             </span>
 
-            <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-900 dark:text-slate-100 sm:text-5xl">
+            <h1 className="mt-5 text-[2rem] leading-[1.1] font-black tracking-tight text-slate-900 dark:text-slate-100 sm:mt-6 sm:text-5xl">
               Every application, interview, and offer — in one focused dashboard.
             </h1>
 
-            <p className="mt-4 max-w-xl text-base leading-7 text-slate-600 dark:text-slate-300">
+            <p className="mt-3 max-w-xl text-[15px] leading-7 sm:mt-4 sm:text-base text-slate-600 dark:text-slate-300">
               TrackTrail replaces scattered spreadsheets and sticky notes with a
               single pipeline view of your job search, so you always know
               what to follow up on next.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
               <Link
                 to="/register"
-                className="rounded-2xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                className="rounded-2xl bg-slate-950 px-6 py-3.5 text-center text-sm font-semibold text-white transition hover:bg-slate-800"
               >
                 Create your free account
               </Link>
               <Link
                 to="/login"
-                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-3.5 text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
+                className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-6 py-3.5 text-center text-sm font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
               >
                 I already have an account
               </Link>
             </div>
 
-            <div className="mt-10 grid grid-cols-3 gap-4 max-w-md">
-              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+            <div className="mt-8 grid max-w-md grid-cols-3 gap-2 sm:mt-10 sm:gap-4">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-3 backdrop-blur sm:p-4">
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">4</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] sm:text-xs sm:tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Status Views
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-3 backdrop-blur sm:p-4">
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">24/7</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] sm:text-xs sm:tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Access
                 </p>
               </div>
-              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-4 backdrop-blur">
+              <div className="rounded-2xl border border-white/70 dark:border-slate-700/70 bg-white/70 dark:bg-slate-900/70 p-3 backdrop-blur sm:p-4">
                 <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">1 Tap</p>
-                <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] sm:text-xs sm:tracking-[0.2em] text-slate-500 dark:text-slate-400">
                   Status Updates
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[32px] border border-white/70 bg-slate-950 p-8 text-white shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+          <div className="relative overflow-hidden rounded-[24px] border border-white/70 bg-slate-950 p-5 sm:rounded-[32px] sm:p-8 text-white shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
             <div className="absolute inset-0 bg-[linear-gradient(145deg,_rgba(34,197,94,0.18),_rgba(14,165,233,0.2),_rgba(15,23,42,0.95))]" />
             <div className="relative">
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-200">
@@ -133,7 +133,7 @@ function Landing() {
           </div>
         </main>
 
-        <footer className="mt-20 border-t border-slate-200/70 dark:border-slate-700/70 pt-6 text-center text-xs text-slate-500 dark:text-slate-400">
+        <footer className="mt-12 border-t sm:mt-20 border-slate-200/70 dark:border-slate-700/70 pt-6 text-center text-xs text-slate-500 dark:text-slate-400">
           Built with the MERN stack — MongoDB, Express, React, and Node.
         </footer>
       </div>

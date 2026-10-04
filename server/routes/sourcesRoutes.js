@@ -8,7 +8,7 @@ const prisma = require("../lib/prisma");
 // linkedin/indeed are here: it's a discovery-run source ingested into the
 // shared `jobs` table, not a per-user tracked source (see
 // adapters/remotiveJobsAdapter.js).
-const GLOBAL_ENGINE_SOURCES = new Set(["linkedin", "indeed", "remotive"]);
+const GLOBAL_ENGINE_SOURCES = new Set(["linkedin", "indeed", "remotive", "naukri", "internshala", "wellfound", "unstop"]);
 
 // GET /api/sources -> browses the `job_sources` table (LinkedIn, Indeed,
 // Manual, Gmail, Extension — see seedSources.js for the full set), with a

@@ -16,6 +16,10 @@ model User {
   email              String    @unique @db.VarChar(255)
   password           String    @db.VarChar(255)
   gmailRefreshToken  String?   @map("gmail_refresh_token")
+  // Authorization role: "user" (default) or "admin". The authoritative value is
+  // always read from this column on each admin-gated request (see
+  // middleware/requireAdmin.js); it is never taken from a token or from client input.
+  role               String    @default("user") @db.VarChar(20)
   createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
   trackedJobs        TrackedJob[]
@@ -55,6 +59,10 @@ model TrackedJob {
   externalJobId    String?   @map("external_job_id") @db.VarChar(255)
   description      String?   @map("description")
   location         String?   @map("location") @db.VarChar(255)
+  // Optional structured details captured by the extension / discovery
+  // (salary or stipend text exactly as shown on the posting, and skills).
+  salaryText       String?   @map("salary_text") @db.VarChar(255)
+  skills           String[]  @default([]) @map("skills")
   // Points at the row this manual job was bridged into in the engine
   // `jobs` table (see server/services/engineBridge.js), once enough data
   // exists to enqueue it for matching. Null until that happens.
@@ -162,6 +170,10 @@ model jobs {
   description      String
   location         String?        @db.VarChar(255)
   remote_type      String?        @db.VarChar(20)
+  // Salary / stipend as displayed on the posting (free text, e.g. "₹6-10 LPA")
+  // and the skills the posting lists. Both optional: not every platform shows them.
+  salary_text      String?        @db.VarChar(255)
+  skills           String[]       @default([])
   source_id        Int?
   source_url       String         @db.VarChar(1000)
   external_job_id  String?        @db.VarChar(255)

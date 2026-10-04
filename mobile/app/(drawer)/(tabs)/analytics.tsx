@@ -34,7 +34,6 @@ const RANGE_OPTIONS = [7, 30, 90] as const;
 // below therefore only re-queries useAnalyticsSummary, not useFunnel —
 // wiring it to both would silently do nothing for the funnel half.
 const FUNNEL_STAGES: { key: keyof FunnelData; label: string }[] = [
-  { key: 'scraped', label: 'Jobs discovered' },
   { key: 'matched', label: 'Matched to you (70%+)' },
   { key: 'applied', label: 'Applied' },
   { key: 'interview', label: 'Interviews' },
@@ -98,7 +97,7 @@ export default function AnalyticsScreen() {
   // inferred or fabricated statistic.
   const rejected = counts ? counts.responses - counts.interviews - counts.offers : null;
 
-  const funnelMax = funnel.data?.scraped ?? 0;
+  const funnelMax = funnel.data?.matched ?? 0;
 
   const interviewColor = (isDark ? STATUS_COLORS.Interview.dark : STATUS_COLORS.Interview.light)[1];
   const offerColor = (isDark ? STATUS_COLORS.Offer.dark : STATUS_COLORS.Offer.light)[1];

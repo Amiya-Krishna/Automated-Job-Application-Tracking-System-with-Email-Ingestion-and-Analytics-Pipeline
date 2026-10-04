@@ -234,7 +234,7 @@ GET  /api/applications?status=pending_review
 POST /api/applications/:id/submit   -> user confirms manual submit, sets status='applied'
 POST /api/applications/:id/outcome  -> body: { status: 'interview' | 'rejected' | 'offer' }
 GET  /api/analytics/summary?range=30d
-GET  /api/analytics/funnel          -> scraped -> matched -> applied -> interview -> offer
+GET  /api/analytics/funnel          -> matched -> applied -> interview -> offer
 ```
 
 *(These are the actual mounted routes — `engineJobsRoutes.js`, `applyRoutes.js`,

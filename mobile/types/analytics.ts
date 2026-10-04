@@ -50,7 +50,6 @@ export interface AnalyticsResponse {
  * patch — so unlike the percentages above, these are real JSON numbers.
  */
 export interface FunnelData {
-  scraped: number;
   matched: number;
   applied: number;
   interview: number;

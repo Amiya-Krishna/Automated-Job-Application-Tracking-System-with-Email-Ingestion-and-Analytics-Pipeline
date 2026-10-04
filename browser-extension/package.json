@@ -1,7 +1,7 @@
 {
   "name": "tracktrail-extension",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "Dev-only package file: lets `npm test` run the extension's unit tests. Chrome ignores it; load this folder unpacked as before.",
   "scripts": {

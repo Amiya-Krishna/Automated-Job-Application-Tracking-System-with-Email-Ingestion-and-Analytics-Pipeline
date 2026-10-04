@@ -2,6 +2,7 @@ const { query } = require("../lib/prisma");
 const { normalize, contentHash } = require("./textUtils");
 const { findDuplicate } = require("./dedupService");
 const { matchQueue } = require("../queue");
+const { normalizeJobUrl } = require("./jobUrl");
 
 /**
  * Single entrypoint for both ingestion paths: the Playwright scheduled
@@ -20,6 +21,13 @@ async function ingestJob(payload) {
     throw new Error(`Unknown job source: ${payload.sourceName}`);
   }
   const sourceId = sourceRes.rows[0].id;
+
+  // Optional structured details; normalised so a bad value can never fail the insert.
+  const salaryText = typeof payload.salaryText === "string" && payload.salaryText.trim() ? payload.salaryText.trim().slice(0, 255) : null;
+  const skills = Array.isArray(payload.skills)
+    ? [...new Set(payload.skills.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 60)))].slice(0, 30)
+    : [];
+  payload = { ...payload, sourceUrl: normalizeJobUrl(payload.sourceUrl) || payload.sourceUrl };
 
   const normalizedCompany = normalize(payload.company);
   // Was SELECT-then-INSERT: two concurrent ingestions of a job from a
@@ -68,8 +76,8 @@ async function ingestJob(payload) {
     const inserted = await query(
       `INSERT INTO jobs (company_id, title, normalized_title, description, location,
                           remote_type, source_id, source_url, external_job_id,
-                          canonical_job_id, status, posted_at, content_hash)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'duplicate',$11,$12)
+                          canonical_job_id, status, posted_at, content_hash, salary_text, skills)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'duplicate',$11,$12,$13,$14::text[])
        ON CONFLICT (source_id, external_job_id) DO NOTHING
        RETURNING id`,
       [
@@ -85,6 +93,8 @@ async function ingestJob(payload) {
         duplicate.id,
         payload.postedAt || null,
         hash,
+        salaryText,
+        skills,
       ],
     );
 
@@ -117,9 +127,11 @@ async function ingestJob(payload) {
   const inserted = await query(
     `INSERT INTO jobs (company_id, title, normalized_title, description, location,
                         remote_type, source_id, source_url, external_job_id,
-                        status, posted_at, content_hash)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'new',$10,$11)
-     ON CONFLICT (source_id, external_job_id) DO UPDATE SET scraped_at = now()
+                        status, posted_at, content_hash, salary_text, skills)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'new',$10,$11,$12,$13::text[])
+     ON CONFLICT (source_id, external_job_id) DO UPDATE SET scraped_at = now(),
+       salary_text = COALESCE(EXCLUDED.salary_text, jobs.salary_text),
+       skills = CASE WHEN cardinality(EXCLUDED.skills) > 0 THEN EXCLUDED.skills ELSE jobs.skills END
      RETURNING id`,
     [
       companyId,
@@ -133,6 +145,8 @@ async function ingestJob(payload) {
       payload.externalJobId,
       payload.postedAt || null,
       hash,
+      salaryText,
+      skills,
     ],
   );
   const jobId = inserted.rows[0].id;

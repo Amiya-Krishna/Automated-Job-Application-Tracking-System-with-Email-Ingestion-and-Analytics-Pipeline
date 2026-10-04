@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import { safeWebUrl } from "../utils/links";
 
 // GET /api/jobs/applied — see server/services/appliedJobsService.js for
 // exactly how this is assembled (tracked_jobs is already the unified
@@ -15,6 +16,10 @@ const SOURCE_LABELS = {
   gmail: "Gmail",
   linkedin: "LinkedIn",
   indeed: "Indeed",
+  naukri: "Naukri",
+  internshala: "Internshala",
+  wellfound: "Wellfound",
+  unstop: "Unstop",
   engine: "Engine",
 };
 
@@ -36,6 +41,10 @@ const SOURCE_STYLES = {
   // matches the same palette StateViews.jsx's SourceBadge already uses.
   linkedin: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
   indeed: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
+  naukri: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  internshala: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
+  wellfound: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  unstop: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300",
   engine: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
 };
 
@@ -82,7 +91,7 @@ function AppliedJobs() {
   useEffect(() => {
     // Same pattern already used throughout this codebase (MatchedJobs.jsx,
     // EngineApplications.jsx, etc.) for the initial data load.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+     
     load();
   }, []);
 
@@ -244,9 +253,9 @@ function AppliedJobs() {
                   <div key={job.id} className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
-                        {job.sourceUrl ? (
+                        {safeWebUrl(job.sourceUrl) ? (
                           <a
-                            href={job.sourceUrl}
+                            href={safeWebUrl(job.sourceUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="font-semibold text-slate-900 dark:text-slate-100 hover:text-cyan-700 dark:hover:text-cyan-400 hover:underline"
@@ -287,20 +296,20 @@ function AppliedJobs() {
                           <option key={s} value={s}>{s}</option>
                         ))}
                       </select>
-                      <Link
-                        to={`/tailor?job=tracked-${job.trackedJobId}`}
-                        className="min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2 text-xs font-semibold text-cyan-700 dark:text-cyan-400"
-                      >
-                        Tailor
-                      </Link>
                     </div>
-                    <button
-                      onClick={() => removeJob(job)}
-                      disabled={deletingId === job.trackedJobId}
-                      className="mt-2 min-h-[40px] w-full rounded-xl border border-rose-200 dark:border-rose-900/50 text-sm font-semibold text-rose-600 dark:text-rose-400 disabled:opacity-60"
-                    >
-                      {deletingId === job.trackedJobId ? "Removing..." : "Remove"}
-                    </button>
+                    <div className="tt-actions tt-actions--stretch mt-2">
+                      <Link to={`/tailor?job=tracked-${job.trackedJobId}`} className="tt-btn tt-btn--primary">
+                        Tailor Resume
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => removeJob(job)}
+                        disabled={deletingId === job.trackedJobId}
+                        className="tt-btn tt-btn--danger"
+                      >
+                        {deletingId === job.trackedJobId ? "Removing..." : "Remove"}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -324,9 +333,9 @@ function AppliedJobs() {
                   {visibleJobs.map((job) => (
                     <tr key={job.id} className="align-top">
                       <td className="px-5 py-3.5 font-semibold text-slate-900 dark:text-slate-100">
-                        {job.sourceUrl ? (
+                        {safeWebUrl(job.sourceUrl) ? (
                           <a
-                            href={job.sourceUrl}
+                            href={safeWebUrl(job.sourceUrl)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hover:text-cyan-700 dark:hover:text-cyan-400 hover:underline"
@@ -367,20 +376,25 @@ function AppliedJobs() {
                           ))}
                         </select>
                       </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <Link
-                          to={`/tailor?job=tracked-${job.trackedJobId}`}
-                          className="mr-4 text-xs font-semibold text-cyan-700 dark:text-cyan-400 transition hover:underline"
-                        >
-                          Tailor Resume
-                        </Link>
-                        <button
-                          onClick={() => removeJob(job)}
-                          disabled={deletingId === job.trackedJobId}
-                          className="text-xs font-semibold text-rose-600 dark:text-rose-400 transition hover:underline disabled:opacity-60"
-                        >
-                          {deletingId === job.trackedJobId ? "Removing..." : "Remove"}
-                        </button>
+                      <td className="px-5 py-3.5">
+                        <div className="tt-actions">
+                          {safeWebUrl(job.sourceUrl) && (
+                            <a href={safeWebUrl(job.sourceUrl)} target="_blank" rel="noopener noreferrer" className="tt-btn tt-btn--primary" title="Open the original posting">
+                              View ↗
+                            </a>
+                          )}
+                          <Link to={`/tailor?job=tracked-${job.trackedJobId}`} className="tt-btn tt-btn--primary">
+                            Tailor Resume
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => removeJob(job)}
+                            disabled={deletingId === job.trackedJobId}
+                            className="tt-btn tt-btn--danger"
+                          >
+                            {deletingId === job.trackedJobId ? "Removing..." : "Remove"}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

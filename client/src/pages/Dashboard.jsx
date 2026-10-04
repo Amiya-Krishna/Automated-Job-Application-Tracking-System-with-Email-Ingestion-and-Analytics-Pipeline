@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
 import toast from "react-hot-toast";
+import { safeWebUrl } from "../utils/links";
 import {
   PieChart,
   Pie,
@@ -283,37 +284,40 @@ function Dashboard() {
                             <option value="Offer">Offer</option>
                             <option value="Rejected">Rejected</option>
                           </select>
-                          <button
-                            onClick={() => navigate(`/edit-job/${job.id}`, { state: { job } })}
-                            className="min-h-[40px] rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-sm font-semibold text-slate-700 dark:text-slate-200"
-                          >
-                            Edit
-                          </button>
                         </div>
 
-                        {confirmDeleteId === job.id ? (
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              onClick={() => deleteJob(job.id)}
-                              className="min-h-[40px] flex-1 rounded-xl bg-rose-600 text-sm font-semibold text-white"
-                            >
-                              Confirm delete
-                            </button>
-                            <button
-                              onClick={() => setConfirmDeleteId(null)}
-                              className="min-h-[40px] flex-1 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDeleteId(job.id)}
-                            className="mt-2 min-h-[40px] w-full rounded-xl border border-rose-200 dark:border-rose-900/50 text-sm font-semibold text-rose-600 dark:text-rose-400"
+                        {safeWebUrl(job.sourceUrl) && (
+                          <a
+                            href={safeWebUrl(job.sourceUrl)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-2 inline-block text-xs font-semibold text-cyan-700 dark:text-cyan-400 hover:underline"
                           >
-                            Delete
-                          </button>
+                            View posting ↗
+                          </a>
                         )}
+
+                        <div className="tt-actions tt-actions--stretch mt-2">
+                          {confirmDeleteId === job.id ? (
+                            <>
+                              <button type="button" onClick={() => deleteJob(job.id)} className="tt-btn tt-btn--danger" style={{ background: "#e11d48", color: "#fff", borderColor: "#e11d48" }}>
+                                Confirm delete
+                              </button>
+                              <button type="button" onClick={() => setConfirmDeleteId(null)} className="tt-btn tt-btn--primary">
+                                Cancel
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => navigate(`/edit-job/${job.id}`, { state: { job } })} className="tt-btn tt-btn--primary">
+                                Edit
+                              </button>
+                              <button type="button" onClick={() => setConfirmDeleteId(job.id)} className="tt-btn tt-btn--danger">
+                                Delete
+                              </button>
+                            </>
+                          )}
+                        </div>
                       </div>
                     );
                   })}
@@ -352,38 +356,30 @@ function Dashboard() {
                               </select>
                             </td>
                             <td className="px-5 py-3.5">
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={() =>
-                                    navigate(`/edit-job/${job.id}`, { state: { job } })
-                                  }
-                                  className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 transition hover:border-slate-300"
-                                >
-                                  Edit
-                                </button>
-
+                              <div className="tt-actions">
+                                {safeWebUrl(job.sourceUrl) && (
+                                  <a href={safeWebUrl(job.sourceUrl)} target="_blank" rel="noopener noreferrer" className="tt-btn tt-btn--primary" title="Open the original posting">
+                                    View ↗
+                                  </a>
+                                )}
                                 {confirmDeleteId === job.id ? (
-                                  <div className="flex gap-1">
-                                    <button
-                                      onClick={() => deleteJob(job.id)}
-                                      className="rounded-xl bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white"
-                                    >
+                                  <>
+                                    <button type="button" onClick={() => deleteJob(job.id)} className="tt-btn tt-btn--danger" style={{ background: "#e11d48", color: "#fff", borderColor: "#e11d48" }}>
                                       Confirm
                                     </button>
-                                    <button
-                                      onClick={() => setConfirmDeleteId(null)}
-                                      className="rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300"
-                                    >
+                                    <button type="button" onClick={() => setConfirmDeleteId(null)} className="tt-btn tt-btn--primary">
                                       Cancel
                                     </button>
-                                  </div>
+                                  </>
                                 ) : (
-                                  <button
-                                    onClick={() => setConfirmDeleteId(job.id)}
-                                    className="rounded-xl border border-rose-200 dark:border-rose-900/50 px-3 py-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 transition hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                                  >
-                                    Delete
-                                  </button>
+                                  <>
+                                    <button type="button" onClick={() => navigate(`/edit-job/${job.id}`, { state: { job } })} className="tt-btn tt-btn--primary">
+                                      Edit
+                                    </button>
+                                    <button type="button" onClick={() => setConfirmDeleteId(job.id)} className="tt-btn tt-btn--danger">
+                                      Delete
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>

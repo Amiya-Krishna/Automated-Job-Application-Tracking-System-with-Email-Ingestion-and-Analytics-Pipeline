@@ -42,12 +42,11 @@ function Analytics() {
 
   useEffect(() => {
     load(range);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [range]);
 
   const funnelData = funnel
     ? [
-        { name: "Scraped", value: Number(funnel.scraped) || 0 },
         { name: "Matched", value: Number(funnel.matched) || 0 },
         { name: "Applied", value: Number(funnel.applied) || 0 },
         { name: "Interview", value: Number(funnel.interview) || 0 },
@@ -72,7 +71,7 @@ function Analytics() {
               Analytics
             </h1>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              How your scraped jobs move through matching, applying, and
+              How your jobs move through matching, applying, and
               outcomes — computed live from the engine tables.
             </p>
           </div>
@@ -159,7 +158,7 @@ function Analytics() {
           <div className="rounded-[28px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6 shadow-sm">
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Funnel</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Scraped → matched → applied → interview → offer.
+              Matched → applied → interview → offer.
             </p>
 
             <div className="mt-4 h-72 text-slate-500 dark:text-slate-400">

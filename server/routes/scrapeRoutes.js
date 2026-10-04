@@ -5,9 +5,15 @@ const { scrapeQueue } = require("../queue");
 const { allowAction } = require("../services/rateLimiter");
 const { ADAPTERS } = require("../services/jobDiscovery");
 
-const VALID_SOURCES = Object.keys(ADAPTERS); // ["linkedin", "indeed", "remotive"]
+const VALID_SOURCES = Object.keys(ADAPTERS); // linkedin, indeed, remotive, naukri, internshala, wellfound, unstop
+// (Mounted behind auth + requireAdmin in server.js: every route in this file is admin-only.)
 const MAX_RUNS_PER_HOUR = 6;
 const MAX_LIMIT_PER_SOURCE = 50;
+
+// GET /api/scrape/platforms — the sources a discovery run can use (drives the admin UI).
+router.get("/platforms", (req, res) => {
+  res.json({ data: VALID_SOURCES });
+});
 
 // POST /api/scrape/run — trigger a discovery run for the given query.
 router.post("/run", auth, async (req, res) => {

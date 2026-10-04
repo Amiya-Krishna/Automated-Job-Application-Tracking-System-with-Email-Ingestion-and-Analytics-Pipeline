@@ -3,6 +3,21 @@ const auth = require("../middleware/authMiddleware");
 const prisma = require("../lib/prisma");
 const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
 const { getAppliedJobsForUser } = require("../services/appliedJobsService");
+const { normalizeJobUrl } = require("../services/jobUrl");
+
+// Optional structured details (salary/stipend text, skills) - clamped so a bad value
+// can never fail a save.
+function cleanSalary(v) {
+  return typeof v === "string" && v.trim() ? v.trim().slice(0, 255) : null;
+}
+function cleanSkills(v) {
+  if (!Array.isArray(v)) return [];
+  return [...new Set(v.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 60)))].slice(0, 30);
+}
+
+// Fields a client may change through PUT /api/jobs/:id. Anything else (userId,
+// engineJobId, createdAt, ...) is ignored rather than written.
+const UPDATABLE = ["company", "role", "status", "interviewDate", "notes", "applicationDate", "sourceName", "sourceUrl", "externalJobId", "description", "location", "salaryText", "skills"];
 
 // tracked_jobs.interview_date is a String? column (VarChar(50)), not a
 // Date. Previously the client sent an ISO string and this route did
@@ -68,6 +83,9 @@ router.post("/", auth, async (req, res) => {
     if (!req.body.company || !req.body.role) {
       return res.status(400).json({ message: "company and role are required" });
     }
+    // Validate/clean the posting link once, up front: an invalid, non-http(s) or
+    // over-long value is stored as null instead of failing the whole save.
+    req.body.sourceUrl = normalizeJobUrl(req.body.sourceUrl);
 
     const existing = await findExistingTrackedJob(req.user.id, req.body);
     if (existing) {
@@ -81,6 +99,8 @@ router.post("/", auth, async (req, res) => {
           location: existing.location || req.body.location || null,
           sourceUrl: existing.sourceUrl || req.body.sourceUrl || null,
           externalJobId: existing.externalJobId || req.body.externalJobId || null,
+          salaryText: existing.salaryText || cleanSalary(req.body.salaryText),
+          skills: existing.skills && existing.skills.length ? existing.skills : cleanSkills(req.body.skills),
         },
       });
       try {
@@ -113,6 +133,8 @@ router.post("/", auth, async (req, res) => {
         externalJobId: req.body.externalJobId || null,
         description: req.body.description || null,
         location: req.body.location || null,
+        salaryText: cleanSalary(req.body.salaryText),
+        skills: cleanSkills(req.body.skills),
       },
     });
 
@@ -163,9 +185,13 @@ router.get("/applied", auth, async (req, res) => {
 // UPDATE JOB
 router.put("/:id", auth, async (req, res) => {
   try {
-    const { duplicateStrategy, ...body } = req.body; // strip legacy/unknown field defensively
-
-    const data = { ...body };
+    const data = {};
+    for (const key of UPDATABLE) if (key in (req.body || {})) data[key] = req.body[key];
+    if ("sourceUrl" in data) data.sourceUrl = normalizeJobUrl(data.sourceUrl);
+    if ("salaryText" in data) data.salaryText = cleanSalary(data.salaryText);
+    if ("skills" in data) data.skills = cleanSkills(data.skills);
+    if (typeof data.company === "string" && !data.company.trim()) delete data.company;
+    if (typeof data.role === "string" && !data.role.trim()) delete data.role;
     if ("interviewDate" in data) {
       data.interviewDate = normalizeInterviewDate(data.interviewDate);
     }

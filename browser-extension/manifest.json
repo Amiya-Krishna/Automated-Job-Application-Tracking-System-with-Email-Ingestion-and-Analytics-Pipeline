@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "TrackTrail \u2014 Job Application Tracker",
-  "version": "1.1.0",
-  "description": "Save jobs from LinkedIn and Indeed to your TrackTrail dashboard, see how well your resume matches, and tailor it truthfully.",
+  "name": "TrackTrail — Job Application Tracker",
+  "version": "1.2.0",
+  "description": "Save jobs from LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop to your TrackTrail dashboard, see how well your resume matches, and tailor it truthfully.",
   "permissions": [
     "storage",
     "activeTab"
@@ -18,9 +18,17 @@
     {
       "matches": [
         "https://*.linkedin.com/jobs/*",
-        "https://*.indeed.com/*"
+        "https://*.indeed.com/*",
+        "https://*.naukri.com/*",
+        "https://internshala.com/*",
+        "https://*.internshala.com/*",
+        "https://wellfound.com/*",
+        "https://*.wellfound.com/*",
+        "https://unstop.com/*",
+        "https://*.unstop.com/*"
       ],
       "js": [
+        "platform-extractors.js",
         "jd-extract.js",
         "ui-errors.js",
         "tailor-panel.js",

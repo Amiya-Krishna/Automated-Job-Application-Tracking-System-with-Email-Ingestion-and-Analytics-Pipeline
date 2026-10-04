@@ -543,3 +543,16 @@ infrastructure (Redis, a real device, real email/OAuth) than is available here.
 No claim of "fully tested" is made for native mobile deep linking, Redis-backed queue
 behavior, or real Gmail OAuth — those remain genuinely open, for the environment reasons
 stated in §7 and §11, not because they were assumed to work.
+
+---
+
+## Addendum — roles, platforms, URLs, Gmail filtering
+
+Verified by automated tests: admin gating on `/api/scrape` and `/api/admin`
+(401/403/200), delete-API refusals (409 in-flight / has-jobs), URL
+normalization, extractor sync (server copy == extension file), Gmail relevance
+classification and dedup, per-platform extraction fixtures (6 platforms),
+web `AdminRoute`/Navbar/`AdminDeleteButton` gating. See
+`docs/11_Roles_Permissions_Platforms_and_Release_Notes.md` §9 for what could
+not be verified (live-site selectors, `prisma generate` in the sandbox, the
+mobile app on a device).

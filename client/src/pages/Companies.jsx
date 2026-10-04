@@ -1,13 +1,20 @@
 import { useEffect, useState } from "react";
 import api from "../api";
 import Navbar from "../components/Navbar";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
+import AdminDeleteButton from "../components/AdminDeleteButton";
 
 function Companies() {
   const [companies, setCompanies] = useState([]);
   const [search, setSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [meta, setMeta] = useState({ total: 0 });
+  const { isAdmin } = useAuth(false);
+  const removeCompany = (id) => {
+    setCompanies((prev) => prev.filter((c) => c.id !== id));
+    setMeta((m) => ({ ...m, total: Math.max(0, (m.total || 1) - 1) }));
+  };
 
   useEffect(() => {
     const timeout = setTimeout(async () => {
@@ -77,9 +84,12 @@ function Companies() {
                       <p className="truncate font-semibold text-slate-900 dark:text-slate-100">{c.name}</p>
                       <p className="truncate text-sm text-slate-500 dark:text-slate-400">{c.domain || "—"}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
-                      {c.jobCount}
-                    </span>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-3 py-1 text-xs font-bold text-slate-700 dark:text-slate-200">
+                        {c.jobCount}
+                      </span>
+                      <AdminDeleteButton kind="companies" id={c.id} label={c.name} hasJobs={(c.jobCount || 0) > 0} onDeleted={removeCompany} />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -92,6 +102,7 @@ function Companies() {
                       <th className="px-5 py-3">Company</th>
                       <th className="px-5 py-3">Domain</th>
                       <th className="px-5 py-3 text-right">Jobs scraped</th>
+                      {isAdmin && <th className="px-5 py-3 text-right">Admin</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -107,6 +118,11 @@ function Companies() {
                             {c.jobCount}
                           </span>
                         </td>
+                        {isAdmin && (
+                          <td className="px-5 py-3.5 text-right">
+                            <AdminDeleteButton kind="companies" id={c.id} label={c.name} hasJobs={(c.jobCount || 0) > 0} onDeleted={removeCompany} />
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

@@ -2,8 +2,34 @@
 
 Manage your whole job search from the extension popup — no need to open the
 dashboard site. Adds a floating **"+ Save to TrackTrail"** button on
-LinkedIn and Indeed job postings, and the popup itself is now a mini
-dashboard: browse, search, filter, add, change status, and delete jobs.
+LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop job postings,
+and the popup itself is now a mini dashboard: browse, search, filter, add,
+change status, and delete jobs. Saved jobs keep their original posting
+link ("View posting ↗" in the popup and on the web app).
+
+## Supported job platforms (v1.2.0)
+
+| Platform | Detail pages recognised | Notes |
+|---|---|---|
+| LinkedIn | `/jobs/view/<id>` and `/jobs/view/<slug>-<id>`, `?currentJobId=` | |
+| Indeed | `viewjob?jk=`, `?vjk=` (search pane), any country host | Saved URL is canonicalised to `https://<host>/viewjob?jk=<id>` |
+| Naukri | `/job-listings-…-<id>` | |
+| Internshala | `/internship/detail/…`, `/job/detail/…` | stipend saved as salary |
+| Wellfound | `/jobs/<id>-<slug>`, `/company/<c>/jobs/<id>-<slug>`, `?job_listing_slug=` | |
+| Unstop | `/internships/…`, `/jobs/…`, `/o/<id>` | |
+
+Extracted fields: title, company, location, description, salary/stipend,
+skills, source and URL (contact email when the page shows one). Extraction
+is layered per field: **platform selectors → schema.org `JobPosting`
+JSON-LD → `<title>`/og meta**, so a changed class name degrades to the next
+layer instead of failing. All selectors live in one file,
+`platform-extractors.js` (the server keeps a verified copy:
+`npm run sync:extractors`). Pages that are not a single posting (search or
+listing pages) are ignored rather than saved with the wrong URL.
+
+> Selectors are written from each site's public markup and fixtures; these
+> sites change markup often and some sit behind login/bot walls — if a field
+> is missing you can still edit it in the Save panel.
 
 ## Gmail OAuth in the browser extension
 
@@ -89,7 +115,7 @@ room for it:
 - **Applications** — `/api/applications`, filterable by status, with
   "Mark as applied" and outcome buttons (Interview / Offer / Rejected).
 - **Analytics** — summary + conversion rates from `/api/analytics`, and
-  a scraped → matched → applied → interview → offer funnel from
+  a matched → applied → interview → offer funnel from
   `/api/analytics/funnel`.
 - **Profile** — view/edit the resume/skills profile used for matching,
   via `/api/profile`.
@@ -127,9 +153,11 @@ website (`routes/gmailRoutes.js`):
   consent screen in a new tab. The server's OAuth callback redirects to
   your website's `/integrations` page (not back to the extension) — after
   finishing consent, come back to this tab and click "Refresh status".
-- **Scan inbox** — calls `GET /api/gmail/scan` (last 30 days,
-  interview/application/offer keywords) and lists matching emails. Each
-  one has a company field + "Save as job" button that calls
+- **Scan inbox** — calls `GET /api/gmail/scan` (last 30 days). The server
+  returns only job/internship-related mail (promos, receipts, social and
+  digests are filtered out; threads and already-imported mail are
+  de-duplicated) with company, role, status and a contact email pre-filled.
+  Each one has an editable company field + "Save as job" button that calls
   `POST /api/gmail/import` to add it to your tracker.
 - **Disconnect** — calls `POST /api/gmail/disconnect`.
 

@@ -14,6 +14,8 @@ const {
 } = require("../utils/oauthReturn");
 
 const prisma = require("../lib/prisma");
+const { buildGmailQuery, filterJobEmails } = require("../services/emailRelevance");
+const { normalizeJobUrl } = require("../services/jobUrl");
 
 // MOBILE OAUTH (Phase 3 addition): unlike the browser extension, there is
 // no single fixed redirect URL for mobile — a standalone/dev-client build
@@ -233,6 +235,9 @@ router.post("/disconnect", auth, async (req, res) => {
 // re-bridge-on-update path jobRoutes.js already uses covers that case).
 // That's intentional — see the audit note in engineBridge.js about not
 // polluting the corpus with empty-description rows.
+//
+// Importing the same email twice is idempotent: the Gmail message id is the
+// externalJobId, and an existing row for it is returned instead of duplicated.
 router.post("/import", auth, async (req, res) => {
   try {
     const body = req.body || {};
@@ -241,20 +246,34 @@ router.post("/import", auth, async (req, res) => {
       return res.status(400).json({ message: "company and role are required" });
     }
 
+    if (body.messageId) {
+      const existing = await prisma.trackedJob.findFirst({
+        where: { userId: req.user.id, sourceName: "gmail", externalJobId: String(body.messageId) },
+      });
+      if (existing) return res.status(200).json({ ...existing, duplicate: true });
+    }
+
+    const interviewDate =
+      typeof body.interviewDate === "string" && body.interviewDate
+        ? body.interviewDate.slice(0, 10)
+        : body.interviewDate
+          ? new Date(body.interviewDate).toISOString().slice(0, 10)
+          : null;
+
     const job = await prisma.trackedJob.create({
       data: {
         userId: req.user.id,
-        company: body.company,
-        role: body.role,
+        company: String(body.company).slice(0, 255),
+        role: String(body.role).slice(0, 255),
         status: body.status,
-        interviewDate: body.interviewDate ? new Date(body.interviewDate) : null,
-        notes: body.notes,
+        interviewDate,
+        notes: body.contactEmail ? `${body.notes || ""}${body.notes ? " · " : ""}Contact: ${body.contactEmail}` : body.notes,
         applicationDate: body.applicationDate
           ? new Date(body.applicationDate)
           : new Date(),
         sourceName: "gmail",
-        sourceUrl: body.sourceUrl || null,
-        externalJobId: body.messageId || null,
+        sourceUrl: normalizeJobUrl(body.sourceUrl),
+        externalJobId: body.messageId ? String(body.messageId) : null,
         description: body.description || null,
         location: body.location || null,
       },
@@ -266,13 +285,30 @@ router.post("/import", auth, async (req, res) => {
       console.warn("[gmailRoutes] engine bridge failed for imported job:", bridgeErr.message);
     }
 
-    res.status(201).json(job);
+    res.status(201).json({ ...job, duplicate: false });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 // SCAN GMAIL
+//
+// "Scan inbox" used to list anything whose subject merely contained a word
+// like "application" or "offer" - newsletters, promotions, OTPs and
+// notifications included. Now:
+//   1. Gmail itself does the first cut (see emailRelevance.buildGmailQuery):
+//      promotions/social/forums/spam are excluded and only job-signal subjects
+//      or known recruiting senders are listed, so most of the mailbox is never
+//      even fetched.
+//   2. Only message METADATA is fetched (no bodies), in small batches.
+//   3. classifyEmail() scores subject / sender / labels / bulk-mail headers and
+//      drops anything that is not about a specific application; threads and
+//      repeats collapse to one entry; emails already imported are skipped.
+// The response keeps its original shape (`messages` with id/subject/from/date/
+// snippet) and adds the extracted company/role/status/contactEmail plus `stats`.
+const SCAN_HEADERS = ["Subject", "From", "Date", "Reply-To", "List-Unsubscribe", "Precedence"];
+const SCAN_BATCH = 10;
+
 router.get("/scan", auth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -283,46 +319,65 @@ router.get("/scan", auth, async (req, res) => {
       return res.status(400).json({ message: "Gmail is not connected" });
     }
 
+    const days = Math.min(Math.max(Number(req.query.days) || 30, 1), 365);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 50);
+
     const oauth2Client = getOAuthClient();
     oauth2Client.setCredentials({ refresh_token: user.gmailRefreshToken });
 
     const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-    const query =
-      'newer_than:30d (subject:interview OR subject:application OR subject:offer OR "moving forward" OR "not selected")';
-
     const list = await gmail.users.messages.list({
       userId: "me",
-      q: query,
-      maxResults: 15,
+      q: buildGmailQuery({ days }),
+      // headroom: some listed mail is dropped by the local relevance pass
+      maxResults: Math.min(limit * 2, 100),
     });
 
-    const messages = list.data.messages || [];
+    const listed = list.data.messages || [];
+    const details = [];
+    for (let i = 0; i < listed.length; i += SCAN_BATCH) {
+      const chunk = await Promise.all(
+        listed.slice(i, i + SCAN_BATCH).map(async (msg) => {
+          try {
+            const full = await gmail.users.messages.get({
+              userId: "me",
+              id: msg.id,
+              format: "metadata",
+              metadataHeaders: SCAN_HEADERS,
+            });
+            const headers = {};
+            for (const h of full.data.payload?.headers || []) headers[String(h.name).toLowerCase()] = h.value;
+            return {
+              id: msg.id,
+              threadId: full.data.threadId || msg.threadId || null,
+              subject: headers.subject || "",
+              from: headers.from || "",
+              date: headers.date || "",
+              snippet: full.data.snippet || "",
+              labelIds: full.data.labelIds || [],
+              headers,
+            };
+          } catch (e) {
+            // one unreadable message must not fail the whole scan
+            return null;
+          }
+        }),
+      );
+      details.push(...chunk.filter(Boolean));
+    }
 
-    const details = await Promise.all(
-      messages.map(async (msg) => {
-        const full = await gmail.users.messages.get({
-          userId: "me",
-          id: msg.id,
-          format: "metadata",
-          metadataHeaders: ["Subject", "From", "Date"],
-        });
+    const importedRows = details.length
+      ? await prisma.trackedJob.findMany({
+          where: { userId: req.user.id, sourceName: "gmail", externalJobId: { in: details.map((d) => d.id) } },
+          select: { externalJobId: true },
+        })
+      : [];
+    const { messages, stats } = filterJobEmails(details, {
+      importedIds: new Set(importedRows.map((r) => r.externalJobId)),
+    });
 
-        const headers = full.data.payload?.headers || [];
-        const getHeader = (name) =>
-          headers.find((h) => h.name === name)?.value || "";
-
-        return {
-          id: msg.id,
-          subject: getHeader("Subject"),
-          from: getHeader("From"),
-          date: getHeader("Date"),
-          snippet: full.data.snippet || "",
-        };
-      })
-    );
-
-    res.json({ messages: details });
+    res.json({ messages: messages.slice(0, limit), stats });
   } catch (err) {
     console.error("[gmail] inbox scan failed");
     res.status(500).json({ message: err.message });

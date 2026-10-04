@@ -22,7 +22,7 @@ function createJobBoardAdapter({ name, label, scrape }) {
 
       const jobs = await scrape(query, context, { location, limit: parsedLimit });
       const normalized = jobs
-        .filter((job) => job.title && job.sourceUrl)
+        .filter((job) => job.title && job.sourceUrl && job.company)
         .map((job) => ({
           ...job,
           sourceName: name,
@@ -38,6 +38,10 @@ function createJobBoardAdapter({ name, label, scrape }) {
         jobs: normalized,
       };
     } catch (err) {
+      // a bot-check wall is expected, not a bug: report it as "blocked"
+      if (err && err.constructor && err.constructor.name === "BlockedError") {
+        return { source: name, status: "blocked", message: err.message, jobs: [] };
+      }
       return {
         source: name,
         status: "error",

@@ -13,8 +13,9 @@ const primaryLinks = [
   { to: "/dashboard", label: "Overview" },
 ];
 
+// Job Discovery is admin-only; it is filtered out for normal users below.
 const engineLinks = [
-  { to: "/job-discovery", label: "Job Discovery", hint: "scrape_runs" },
+  { to: "/job-discovery", label: "Job Discovery", hint: "scrape_runs", adminOnly: true },
   { to: "/matched-jobs", label: "Matched Jobs", hint: "jobs · match_scores" },
   { to: "/applied-jobs", label: "Applied Jobs", hint: "tracked_jobs" },
   { to: "/companies", label: "Companies", hint: "companies" },
@@ -37,7 +38,9 @@ function Navbar() {
   // Isolated page tests render the navigation without the application root.
   // The optional fallback only clears memory there; the real app always uses
   // AuthProvider and performs the server-side session revocation.
-  const { logout: endSession } = useAuth(false);
+  const { logout: endSession, isAdmin } = useAuth(false);
+  const visibleEngineLinks = engineLinks.filter((link) => !link.adminOnly || isAdmin);
+  const visibleTrailingLinks = isAdmin ? [...trailingLinks, { to: "/admin", label: "Admin" }] : trailingLinks;
 
   const logout = async () => {
     await endSession();
@@ -46,7 +49,7 @@ function Navbar() {
   };
 
   const isActive = (to) => location.pathname === to;
-  const isEngineActive = engineLinks.some((link) => isActive(link.to));
+  const isEngineActive = visibleEngineLinks.some((link) => isActive(link.to));
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -108,7 +111,7 @@ function Navbar() {
 
             {engineOpen && (
               <div className="absolute right-0 top-full mt-2 w-56 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-1.5 shadow-xl">
-                {engineLinks.map((link) => (
+                {visibleEngineLinks.map((link) => (
                   <Link
                     key={link.to}
                     to={link.to}
@@ -133,7 +136,7 @@ function Navbar() {
             )}
           </div>
 
-          {trailingLinks.map((link) => (
+          {visibleTrailingLinks.map((link) => (
             <Link
               key={link.to}
               to={link.to}
@@ -189,7 +192,7 @@ function Navbar() {
             >
               + Add Job
             </Link>
-            {[...primaryLinks, ...engineLinks, ...trailingLinks].map((link) => (
+            {[...primaryLinks, ...visibleEngineLinks, ...visibleTrailingLinks].map((link) => (
               <Link
                 key={link.to}
                 to={link.to}

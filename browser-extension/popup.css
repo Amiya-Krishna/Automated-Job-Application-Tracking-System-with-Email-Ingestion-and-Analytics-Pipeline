@@ -444,6 +444,8 @@ button.secondary:hover {
 }
 
 .jobItem-link {
+  display: inline-block;
+  margin-top: 2px;
   color: var(--accent-dark);
   text-decoration: none;
   font-size: 11px;

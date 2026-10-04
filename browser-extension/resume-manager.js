@@ -211,7 +211,7 @@ export function createResumeManager({ doc, api, saveBlob, openWeb, confirmFn, fo
       orig.append(el("div", "resumeMeta", [`Uploaded ${fmt(r.createdAt)}`, `${r.factsCount} facts parsed`, r.isActive ? "Current / active" : "Not active"].join(" · ")));
       panel.append(orig);
       panel.append(el("div", "label-small", "Tailored versions"));
-      if (!r.versions.length) panel.append(el("p", "hint", "None yet. Open a job on LinkedIn or Indeed and choose Tailor Resume."));
+      if (!r.versions.length) panel.append(el("p", "hint", "None yet. Open a job on a supported job site and choose Tailor Resume."));
       else { const ul = el("ul", "resumeVersionList"); r.versions.forEach((v) => ul.append(versionRow(v))); panel.append(ul); }
       c.append(panel);
     }

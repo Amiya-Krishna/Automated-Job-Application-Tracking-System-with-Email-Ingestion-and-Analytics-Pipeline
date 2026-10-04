@@ -37,10 +37,26 @@ and each route file): `/api/auth` and `/api/gmail` are public/self-contained;
 `/api/jobs` requires the token on every route (checked inside `jobRoutes.js`).
 `/api/ingest`, `/api/engine/jobs`, `/api/applications`, `/api/analytics`,
 `/api/profile`, `/api/companies`, and `/api/sources` all require the token,
-applied at the `app.use(...)` mount level in `server.js`. `/api/scrape` also
-requires the token on every route, applied per-handler inside
-`scrapeRoutes.js` rather than at the mount level — functionally identical,
-just organized differently in the code.
+applied at the `app.use(...)` mount level in `server.js`. `/api/scrape` and
+`/api/admin` additionally require `requireAdmin` (role is read from the
+database on every request, so a demoted admin loses access immediately).
+
+## 🛡️ Admin Endpoints (`/api/admin`, admin only)
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/admin/overview` | Headline counts (users, admins, jobs, companies, sources, discovery runs) |
+| GET | `/api/admin/users` | Accounts and roles (never password hashes/tokens) |
+| PATCH | `/api/admin/users/:id/role` | Body `{ "role": "admin" \| "user" }`. You cannot change your own role |
+| DELETE | `/api/admin/jobs/:id` | Delete a matched job (catalog row) |
+| DELETE | `/api/admin/companies/:id?withJobs=true` | Delete a company; `409` if it still has jobs and `withJobs` is not set |
+| DELETE | `/api/admin/sources/:id?withJobs=true` | Delete a source; same rule |
+
+Deletes run in a transaction and are refused with `409` while any application
+for the affected job is in flight (`queued`/`running`/`awaiting_confirmation`).
+Users' `tracked_jobs` are **never** deleted; their `engine_job_id` link is
+nulled. Duplicate rows pointing at a deleted canonical job are removed with it.
+Errors: `401` no/invalid token, `403 admin_required`, `404`, `409`.
 
 ---
 
@@ -286,8 +302,18 @@ browser redirect).
 
 **GET** `/api/gmail/scan`
 
-Scans the last 30 days for interview/application/offer/rejection-looking
-subject lines.
+Fetches **only job/internship-related** mail from the last `days` days
+(default 30, max 90; `limit` default 50, max 100). Filtering happens in
+three stages so unrelated mail is never downloaded or returned:
+
+1. **Gmail query** (`buildGmailQuery`) excludes Promotions/Social/Forums/Spam
+   and requires job subject phrases or known ATS / job-board senders.
+2. **Metadata-only fetch** (subject, From, Reply-To, List-Unsubscribe,
+   Precedence, snippet) in batches of 10 — no bodies.
+3. **Local scoring** (`services/emailRelevance.js`) rejects newsletters,
+   promos, receipts, social notifications and job-alert digests, then
+   de-duplicates by thread, by company+role+status signature, and against
+   emails already imported (`externalJobId`).
 
 **Response (200):**
 
@@ -297,13 +323,27 @@ subject lines.
     {
       "id": "18cfa1...",
       "subject": "Moving forward with your application",
-      "from": "recruiting@techcorp.com",
+      "from": "Acme Recruiting <recruiting@acme.com>",
       "date": "Sat, 18 Jul 2026 10:00:00 -0700",
-      "snippet": "We'd like to schedule..."
+      "snippet": "We'd like to schedule...",
+      "company": "Acme",
+      "role": "Backend Engineer",
+      "status": "Interview",
+      "contactEmail": "recruiting@acme.com",
+      "classification": { "kind": "job", "score": 7, "reasons": ["..."] }
     }
-  ]
+  ],
+  "stats": { "scanned": 42, "relevant": 5,
+             "skipped": { "notJobRelated": 20, "promotional": 9, "transactional": 4,
+                          "social": 2, "alreadyImported": 1, "duplicate": 1 } }
 }
 ```
+
+`company`, `role`, `status` and `contactEmail` are best-effort and may be
+`null`; clients fall back to their local parser and every field stays editable.
+
+`POST /api/gmail/import` is idempotent on `messageId` and accepts an
+optional `contactEmail` (stored in the notes) and `sourceUrl` (normalized).
 
 **Error (400):**
 
@@ -320,7 +360,11 @@ the README's "Job Discovery" section for the full architecture. All endpoints
 below require the `token` header and are ownership-scoped to the
 authenticated user (a user can only see/act on their own runs).
 
-**Discovery providers:** `remotive`, `linkedin`, and `indeed` are all active `sources` values. Remotive uses its public API. LinkedIn and Indeed use Playwright through their discovery adapters and the shared `server/services/scraper.js` implementation. Their results enter the same ingestion/deduplication pipeline. Browser/runtime failures and provider blocking are returned as per-source `error`/`blocked` results rather than fabricated empty success.
+> **Admin only.** The whole `/api/scrape` router is mounted behind
+> `auth` **and** `requireAdmin`; normal users get `403 {"code":"admin_required"}`.
+> `GET /api/scrape/platforms` lists the available provider keys.
+
+**Discovery providers:** `remotive`, `linkedin`, `indeed`, `naukri`, `internshala`, `wellfound` and `unstop` are all valid `sources` values (the last four use the same Playwright adapter factory as LinkedIn/Indeed). Remotive uses its public API. LinkedIn and Indeed use Playwright through their discovery adapters and the shared `server/services/scraper.js` implementation. Their results enter the same ingestion/deduplication pipeline. Browser/runtime failures and provider blocking are returned as per-source `error`/`blocked` results rather than fabricated empty success.
 
 ### 12. Start a Discovery Run
 
@@ -620,7 +664,6 @@ renders as `null` here (shown as `—` in the UI), never `0`.
 ```json
 {
   "data": {
-    "scraped": 120,
     "matched": 8,
     "applied": 10,
     "interview": 2,
@@ -629,8 +672,8 @@ renders as `null` here (shown as `—` in the UI), never `0`.
 }
 ```
 
-`scraped` is a genuinely global count (the whole shared `jobs` catalog —
-every user sees the same underlying discovery data). `matched` is scoped to
+The funnel starts at **matched**; the former global `scraped` stage was
+removed (it measured the shared catalog, not the user's progress). `matched` is scoped to
 jobs matched against the authenticated user's own profile
 (`match_scores.profile_id -> user_profile.user_id`). `applied`/`interview`/
 `offer` come from the user's own `tracked_jobs`.

@@ -11,12 +11,16 @@ const { ingestJob } = require("../ingestionService");
 const linkedin = require("../../adapters/linkedinJobsAdapter");
 const indeed = require("../../adapters/indeedJobsAdapter");
 const remotive = require("../../adapters/remotiveJobsAdapter");
+const naukri = require("../../adapters/naukriJobsAdapter");
+const internshala = require("../../adapters/internshalaJobsAdapter");
+const wellfound = require("../../adapters/wellfoundJobsAdapter");
+const unstop = require("../../adapters/unstopJobsAdapter");
 
 // remotive is a genuinely functional, no-auth provider (public API — see
 // adapters/remotiveJobsAdapter.js). linkedin/indeed remain registered so
 // the UI can still show their honest "unavailable" status until real
 // partner credentials exist — see those adapters for why.
-const ADAPTERS = { linkedin, indeed, remotive };
+const ADAPTERS = { linkedin, indeed, remotive, naukri, internshala, wellfound, unstop };
 
 // A user can delete their own run history mid-flight
 // (`DELETE /api/scrape/runs/:id` — scrapeRoutes.js does a hard delete

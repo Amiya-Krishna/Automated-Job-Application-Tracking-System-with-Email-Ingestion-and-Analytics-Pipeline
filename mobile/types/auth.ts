@@ -12,6 +12,8 @@ export interface AuthUser {
   id: number;
   name: string;
   email: string;
+  /** 'admin' unlocks Job Discovery; absent/'user' for normal accounts. Enforced server-side too. */
+  role?: 'user' | 'admin';
 }
 
 export interface LoginRequest {

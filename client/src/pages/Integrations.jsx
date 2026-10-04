@@ -15,6 +15,7 @@ function Integrations() {
   const [isChecking, setIsChecking] = useState(true);
   const [isScanning, setIsScanning] = useState(false);
   const [results, setResults] = useState(null);
+  const [scanStats, setScanStats] = useState(null);
   const [savingId, setSavingId] = useState(null);
 
   useEffect(() => {
@@ -85,6 +86,7 @@ function Integrations() {
       await api.post("/gmail/disconnect");
       setConnected(false);
       setResults(null);
+      setScanStats(null);
       toast.success("Gmail disconnected");
     } catch {
       toast.error("Failed to disconnect");
@@ -96,15 +98,28 @@ function Integrations() {
       setIsScanning(true);
       const res = await api.get("/gmail/scan");
 
-      const parsed = res.data.messages.map((msg) => ({
-        ...msg,
-        parsed: parseJobEmail(`${msg.subject}\n${msg.snippet}`),
-      }));
+      // The server already filtered to job/internship mail and extracted
+      // company / role / status / contactEmail. Fall back to the local parser
+      // only for fields the server could not determine.
+      const parsed = (res.data.messages || []).map((msg) => {
+        const local = parseJobEmail(`${msg.subject}\n${msg.snippet}`);
+        return {
+          ...msg,
+          parsed: {
+            ...local,
+            company: msg.company || local.company,
+            role: msg.role || local.role,
+            status: msg.status || local.status,
+            contactEmail: msg.contactEmail || null,
+          },
+        };
+      });
 
       setResults(parsed);
+      setScanStats(res.data.stats || null);
 
       if (parsed.length === 0) {
-        toast("No matching emails found in the last 30 days", { icon: "📭" });
+        toast("No job-related emails found in the last 30 days", { icon: "📭" });
       }
     } catch (err) {
       toast.error(err.response?.data?.message || "Scan failed");
@@ -130,7 +145,7 @@ function Integrations() {
         role: item.parsed.role || "Unknown role",
         status: item.parsed.status,
         interviewDate: item.parsed.interviewDate,
-        notes: `From email: "${item.subject}"`,
+        notes: `From email: "${item.subject}"${item.parsed.contactEmail ? ` · Contact: ${item.parsed.contactEmail}` : ""}`,
         sourceName: "gmail",
         externalJobId: item.id || null,
       });
@@ -213,8 +228,15 @@ function Integrations() {
         {results && results.length > 0 && (
           <div className="mt-6 space-y-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Found {results.length} matching email{results.length === 1 ? "" : "s"}
+              Found {results.length} job-related email{results.length === 1 ? "" : "s"}
             </h2>
+
+            {scanStats && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Checked {scanStats.scanned} message{scanStats.scanned === 1 ? "" : "s"}; kept {scanStats.relevant}.
+                Skipped promotions, receipts, social and duplicate/already-imported mail.
+              </p>
+            )}
 
             {results.map((item) => (
               <div
@@ -237,6 +259,7 @@ function Integrations() {
                       · {item.parsed.role || "—"} ·{" "}
                       <span className="font-semibold">{item.parsed.status}</span>
                       {item.parsed.interviewDate && ` · ${item.parsed.interviewDate}`}
+                      {item.parsed.contactEmail && ` · ${item.parsed.contactEmail}`}
                     </p>
                   </div>
 

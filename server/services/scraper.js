@@ -93,6 +93,29 @@ async function scrapeLinkedIn(searchQuery, context, options = {}) {
     // pass fast; fetch descriptions lazily, only for cards worth ingesting.
     results.push({ ...card, description: "", sourceName: "linkedin" });
   }
+
+  // Fill descriptions (and salary when shown) from LinkedIn's public guest posting
+  // fragment, for a bounded number of cards. Failures keep the list-level data.
+  const detailMax = Math.min(Math.max(0, Number(process.env.SCRAPE_DETAIL_LIMIT ?? 15)), results.length);
+  for (let i = 0; i < detailMax; i += 1) {
+    const id = results[i].externalJobId;
+    if (!id) continue;
+    try {
+      await page.goto(`https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${id}`, { waitUntil: "domcontentloaded", timeout: 20000 });
+      const detail = await page.evaluate(() => {
+        const t = (sel) => document.querySelector(sel)?.innerText?.trim() || "";
+        return {
+          description: t(".show-more-less-html__markup") || t(".description__text"),
+          salary: t(".salary.compensation__salary") || t(".compensation__salary"),
+        };
+      });
+      if (detail.description) results[i].description = detail.description.slice(0, 30000);
+      if (detail.salary) results[i].salaryText = detail.salary.slice(0, 255);
+    } catch (err) {
+      console.warn(`[scraper] LinkedIn detail ${id} failed: ${err.message}`);
+      break; // likely rate-limited: stop rather than hammer
+    }
+  }
   await page.close();
   return results;
 }

@@ -7,7 +7,7 @@ A backend-heavy system that treats job search as a data pipeline, not a CRUD app
 - Ingestion → deduplication → scoring → application → analytics pipeline
 - Multi-user: every account gets its own tracked jobs, resume profile, match scores, and analytics — enforced by ownership checks on every query, not just a login screen
 - Async architecture using BullMQ (API latency independent of scraping/automation)
-- Multi-source job discovery via Remotive's public API plus Playwright-based LinkedIn and Indeed discovery, all running asynchronously through the BullMQ scrape worker (see [Job Discovery](#job-discovery) below)
+- Multi-source job discovery via Remotive's public API plus Playwright-based LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop discovery (admin-only), all running asynchronously through the BullMQ scrape worker (see [Job Discovery](#job-discovery) below)
 - Duplicate suppression (~65%) using hash + bounded fuzzy matching
 - Explainable job ranking (TF-IDF + adaptive skill weights) — deterministic scoring, not a trained ML model
 - Human-in-the-loop Playwright automation (no blind submissions)
@@ -155,7 +155,20 @@ flowchart LR
 
 ![Dashboard](outputs/tracker-dashboard.jpg)
 
-### Analytics
+### Roles & permissions
+
+| Capability | User | Admin |
+|---|---|---|
+| Track applications, Applied Jobs, Matched Jobs (view), Companies/Sources (view), Analytics, Gmail, resume tailoring | ✅ | ✅ |
+| Job Discovery (UI **and** `/api/scrape/*`) | ❌ (no nav item, route redirects, API `403`) | ✅ |
+| Delete Sources, Companies, Matched Jobs (`/api/admin/*`) | ❌ | ✅ |
+| Admin panel (`/admin`): users, roles, overview | ❌ | ✅ |
+
+`users.role` is `"user"` (default) or `"admin"`. The server re-reads the role from the database on every admin request (fail-closed), so the UI gating is a convenience, not the security boundary. Bootstrap the first admin with `ADMIN_EMAILS=a@x.com,b@y.com` in `server/.env` (applied at boot to existing accounts, never demotes) or `npm run make-admin -- a@x.com`; further roles are managed in the Admin panel.
+
+---
+
+## Analytics
 
 ![Analytics](outputs/tracker-analytics.jpg)
 
@@ -344,6 +357,8 @@ This is what turns the matcher from a static keyword filter into a system that s
 
 ## Database Design
 
+> Schema additions (migration `20261003000000_roles_platforms_job_details`): `users.role`, `jobs.salary_text`, `jobs.skills[]`, `tracked_jobs.salary_text`, `tracked_jobs.skills[]`. Details in [docs/11](docs/11_Roles_Permissions_Platforms_and_Release_Notes.md).
+
 PostgreSQL is the source of truth. The core `jobs` table carries canonical identity and dedup state:
 
 ```sql
@@ -417,6 +432,10 @@ Client: polls GET /api/scrape/runs/:id until the run reaches a final status
 
 **LinkedIn and Indeed** (`linkedinJobsAdapter.js` / `indeedJobsAdapter.js`, both thin wrappers over the shared `createJobBoardAdapter.js` factory) are active Job Discovery adapters. They launch Playwright, create an isolated browser context, call the shared `services/scraper.js` functions, normalize the results, and pass them into the same `ingestJob()` path used by Remotive. Each source accepts the dashboard query, location, and limit (1–50). The integration does not bypass CAPTCHAs, login walls, or anti-bot controls; those conditions are surfaced as provider errors/blocked states. Playwright Chromium must be installed on the worker host for these sources to run.
 
+**Naukri, Internshala, Wellfound and Unstop** (`naukriJobsAdapter.js`, `internshalaJobsAdapter.js`, `wellfoundJobsAdapter.js`, `unstopJobsAdapter.js`) use the same factory. They share `services/jobBoards/platformExtractors.js` (a synced copy of the browser extension's extractor) to read list cards and, for up to `SCRAPE_DETAIL_LIMIT` (default 15) results per run, the detail page for description / salary-stipend / skills. A bot wall or login page is detected (`BlockedError`) and reported as `blocked` for that source; the other sources in the run continue.
+
+**Job Discovery is admin-only.** `/api/scrape/*` is mounted behind `auth` + `requireAdmin`, and the web/mobile UIs hide it for normal users. See [docs/11](docs/11_Roles_Permissions_Platforms_and_Release_Notes.md).
+
 **Polling is intentionally non-cacheable.** `GET /api/scrape/runs/:id` sends `Cache-Control: no-store` and skips Express's default ETag generation for that one route, so a browser can never receive a `304 Not Modified` for it. Left to Express's defaults, a byte-identical poll response would 304, and since the frontend's axios client only treats 2xx as success, a raw 304 reaching it would throw and permanently stop the polling loop — freezing the UI on a stale status. This fix is scoped to this one dynamic endpoint; no other route's caching behavior changed.
 
 **Polling gives up after 45s of still being "queued."** A `ScrapeRun` starts at `queued` and only moves to `running` once the separate worker process (`npm run worker` — see Quick Start below) actually picks the BullMQ job up. If that process isn't running, or can't reach Redis, the job sits queued forever — server-side, nothing is actually wrong or lost, but the dashboard used to poll silently forever too, showing "Waiting for a worker..." with no way to tell a slow run from one that will never start. It now stops polling after 45 seconds still stuck at `queued` and shows an explicit message pointing at the worker requirement, with the "Run discovery" button re-enabled so the user isn't stuck. This is a client-only fix — the run itself resumes normally the moment a worker does pick it up, since nothing about the queued job or its status was touched.
@@ -469,6 +488,8 @@ Zero-denominator behavior is intentional: a metric with no denominator (e.g. `In
 | `PLAYWRIGHT_PROFILE_DIR` / `PLAYWRIGHT_HEADLESS` | Optional | Apply-engine browser session config |
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Optional | Forgot-password emails; skipped (logged, not sent) if unset |
 | `SERVER_URL` / `EXTENSION_REDIRECT_URL` | Optional | Used to build Gmail OAuth success/callback redirects for the extension flow |
+| `ADMIN_EMAILS` | Optional | Comma-separated emails promoted to admin at boot |
+| `SCRAPE_DETAIL_LIMIT` | Optional (15) | Detail-page visits per discovery run for the new job-board adapters |
 | `LINKEDIN_TALENT_API_TOKEN` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current LinkedIn discovery path uses Playwright and does not require this token |
 | `INDEED_PARTNER_FEED_URL` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current Indeed discovery path uses Playwright and does not require this feed URL |
 
