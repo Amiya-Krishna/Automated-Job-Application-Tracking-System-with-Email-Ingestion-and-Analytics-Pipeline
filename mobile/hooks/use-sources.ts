@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { getSourceDetail, getSources } from '@/services/sources';
 
 /**
- * The job_sources table (LinkedIn, Indeed, Manual, Gmail, Extension —
+ * The job_sources table (LinkedIn, Indeed, Naukri, Internshala, Wellfound, Unstop, Manual, Gmail, Extension —
  * see server/services/seedSources.js) changes essentially never, so this
  * is cached far longer than the jobs/applications queries rather than
  * refetched on every screen focus.

@@ -546,13 +546,21 @@ stated in §7 and §11, not because they were assumed to work.
 
 ---
 
-## Addendum — roles, platforms, URLs, Gmail filtering
+## Addendum — roles, platforms, URLs, Gmail filtering (verification run)
 
-Verified by automated tests: admin gating on `/api/scrape` and `/api/admin`
-(401/403/200), delete-API refusals (409 in-flight / has-jobs), URL
-normalization, extractor sync (server copy == extension file), Gmail relevance
-classification and dedup, per-platform extraction fixtures (6 platforms),
-web `AdminRoute`/Navbar/`AdminDeleteButton` gating. See
-`docs/11_Roles_Permissions_Platforms_and_Release_Notes.md` §9 for what could
-not be verified (live-site selectors, `prisma generate` in the sandbox, the
-mobile app on a device).
+| Area | Result |
+|---|---|
+| Server tests (`npm test`) | PASS — 272/272 (real HTTP against the real routers with an in-memory Prisma stub) |
+| Prisma schema validation | PASS — validated with Prisma 5.22's own schema validator (`@prisma/prisma-schema-wasm`) |
+| `prisma generate` / `prisma migrate` | **NOT RUN** — the sandbox cannot download Prisma's engines (403); run them in CI/your machine |
+| Migration `20261003000000_roles_platforms_job_details` | PASS on a real PostgreSQL 16: applied twice (idempotent), existing rows kept, `users.role` defaults to `user`, new columns `NOT NULL DEFAULT '{}'`/nullable as in earlier migrations. Not compared with a Prisma-generated diff |
+| Authorization | 401/403/200 for `/api/scrape/*` and `/api/admin/*`, all three deletes, role changes (promotion and demotion apply on the next request), no self-promotion, registration cannot set a role, `server.js` mount order asserted |
+| Admin bootstrap | `ADMIN_EMAILS` (existing accounts only, never demotes), `make-admin` (promote/revoke/unknown/usage), fail-closed when no admin exists |
+| Browser-extension tests | PASS — 85/85, including a field-by-field matrix for all six platforms |
+| Web discovery (4 new boards) | PASS — 21 tests through the real adapters and a real headless Chromium with all traffic fixture-routed: success, bot wall → `blocked`, changed DOM, failed/blocked detail page, `javascript:` link dropped, JSON-LD-only page |
+| Gmail scan | PASS — job, internship, interview, assessment, rejection kept; newsletter, promo, OTP, social, personal dropped; thread/signature/already-imported de-duplication; `format=metadata` only; raw headers/labels not returned |
+| Resume PDF | PASS — 1-page and multi-page layouts rendered and inspected; `₹` etc. transliterated instead of `?` |
+| Web client | PASS — lint 0 errors, 24 tests, production build; checked in headless Chromium against a mocked API: user vs admin navigation, direct-URL redirects, hidden delete controls, `403` on manual delete, admin delete calls, aligned Actions buttons, new-tab posting links, no horizontal overflow at 375 px on every page |
+| Mobile | PASS — `tsc --noEmit`, `expo lint` (0 errors, 2 pre-existing warnings), 66 tests, Android + iOS Metro bundles. **Not run on a device/emulator** |
+
+**Not verified:** live Naukri / Internshala / Wellfound / Unstop markup (fixtures only; the sites block most automation), real Gmail, real Google OAuth, the mobile app on a device, `prisma generate`.

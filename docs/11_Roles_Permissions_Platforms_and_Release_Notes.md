@@ -59,7 +59,15 @@ See `docs/04_API_Reference.md` §11. Pipeline: Gmail query narrowing → metadat
 
 `services/resumeTailoring/resumeRenderer.js#toPdf`: single-column ATS layout (A4, Helvetica, 22 pt name, ruled section headings kept with their first entry, bold entry headers with right-aligned dates, hanging-indent bullets, consistent margins and page breaks). Text is real, selectable text in reading order (no tables/images).
 
-## 8. Upgrade steps
+## 8. Optional environment variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ADMIN_EMAILS` | empty | Comma-separated emails promoted to admin at boot |
+| `SCRAPE_DETAIL_LIMIT` | 15 | Detail-page visits per run for Naukri/Internshala/Wellfound/Unstop |
+| `SCRAPE_SELECTOR_WAIT_MS` | 15000 | Wait for posting links on a search page |
+
+## 9. Upgrade steps
 
 ```bash
 cd server
@@ -72,8 +80,9 @@ npx playwright install chromium   # worker host, for the browser-based platforms
 
 The migration is idempotent (`ADD COLUMN IF NOT EXISTS`) and backward compatible: old clients keep working; new columns are nullable/defaulted.
 
-## 9. Known limitations
+## 10. Known limitations
 
+- `prisma generate` / `prisma migrate deploy` could not be run in the build sandbox (Prisma engine download blocked). The schema validates and the SQL was applied to PostgreSQL 16, but run `npx prisma generate` and a `prisma migrate status` on your side.
 - Selectors for Naukri, Internshala, Wellfound and Unstop were written from public markup and unit-tested against fixtures; they were **not** verified against the live sites. These sites change markup and several (Naukri, Wellfound, Unstop, Indeed) aggressively block automated browsers, so discovery runs may report `blocked`.
 - Discovery needs the separate worker process, Redis and Playwright Chromium.
 - Gmail scanning needs your own Google OAuth credentials and a verified consent screen for production use.

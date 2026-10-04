@@ -154,9 +154,17 @@ function toPdf(p) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
 
-    // Built-in fonts are WinAnsi (Windows-1252): anything outside it is replaced with "?"
-    // so the file stays valid.
-    const safe = (s) => String(s).replace(/[^\u0009 -~ -ÿ–—‘’‚“”„†‡•…‰‹›€™]/g, "?");
+    // Built-in fonts are WinAnsi (Windows-1252). Characters outside it are transliterated
+    // (₹ -> "Rs.", arrows, minus signs, zero-width marks, accented Latin letters) and only
+    // truly unrepresentable ones become "?", so the file stays valid and readable.
+    const WINANSI = /[\u0009 -~\u00a0-\u00ff–—‘’‚“”„†‡•…‰‹›€™]/;
+    const MAP = { "\u20b9": "Rs. ", "\u2192": "->", "\u2190": "<-", "\u2194": "<->", "\u2212": "-", "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2265": ">=", "\u2264": "<=", "\u2248": "~", "\u25cf": "\u2022", "\u25aa": "\u2022", "\u25e6": "\u2022", "\u25a0": "\u2022", "\u25b6": ">", "\u2605": "*", "\u2713": "v", "\u2714": "v", "\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": "", " ": " ", " ": " ", "\u0142": "l", "\u0141": "L", "\u0111": "d", "\u0110": "D", "\u0131": "i" };
+    const safe = (s) => Array.from(String(s)).map((ch) => {
+      if (WINANSI.test(ch)) return ch;
+      if (MAP[ch] !== undefined) return MAP[ch];
+      const base = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      return base && WINANSI.test(base) ? base : "?";
+    }).join("");
     const W = doc.page.width - M.left - M.right;
     const bottom = () => doc.page.height - M.bottom;
     const ensure = (h) => { if (doc.y + h > bottom()) doc.addPage(); };

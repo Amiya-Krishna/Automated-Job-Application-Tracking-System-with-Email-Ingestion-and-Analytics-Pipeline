@@ -377,7 +377,9 @@ router.get("/scan", auth, async (req, res) => {
       importedIds: new Set(importedRows.map((r) => r.externalJobId)),
     });
 
-    res.json({ messages: messages.slice(0, limit), stats });
+    // Return only what the client needs: raw header maps / label ids stay server-side.
+    const out = messages.slice(0, limit).map(({ headers, labelIds, threadId, ...rest }) => rest);
+    res.json({ messages: out, stats });
   } catch (err) {
     console.error("[gmail] inbox scan failed");
     res.status(500).json({ message: err.message });

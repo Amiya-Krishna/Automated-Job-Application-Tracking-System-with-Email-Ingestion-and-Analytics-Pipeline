@@ -10,6 +10,7 @@ const path = require("path");
 const { PLATFORMS, searchUrls } = require("./platforms");
 
 const EXTRACTOR_SOURCE = fs.readFileSync(path.join(__dirname, "platformExtractors.js"), "utf8");
+const SELECTOR_WAIT_MS = () => Math.max(100, Number(process.env.SCRAPE_SELECTOR_WAIT_MS) || 15000);
 const DETAIL_LIMIT = () => Math.max(0, Number(process.env.SCRAPE_DETAIL_LIMIT ?? 15));
 const BLOCK_RE = /access denied|captcha|verify you are (?:a )?human|unusual traffic|are you a robot|just a moment|attention required|pardon our interruption|security check|datadome|akamai/i;
 
@@ -54,7 +55,7 @@ function makeScraper(name) {
         try {
           await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
           await assertNotBlocked(page, label);
-          await page.waitForSelector(wait, { timeout: 15000 }).catch(() => {});
+          await page.waitForSelector(wait, { timeout: SELECTOR_WAIT_MS() }).catch(() => {});
           await loadExtractors(page);
           const cards = await page.evaluate(
             ([key, opts]) => TrackTrailPlatforms.extractList(key, document, location, opts),

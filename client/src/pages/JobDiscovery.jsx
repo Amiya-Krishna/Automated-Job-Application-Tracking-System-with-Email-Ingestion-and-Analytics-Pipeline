@@ -316,11 +316,12 @@ function JobDiscovery() {
           Job discovery
         </h1>
         <p className="mt-1 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-          Currently searches real remote listings from Remotive's public API —
-          no setup required. LinkedIn and Indeed are listed too, but neither
-          offers a public self-serve search API and neither is implemented
-          yet, so those stay off by default; results are only ever real
-          listings a provider actually returned, never fabricated. See{" "}
+          Searches Remotive's public API (no setup) and, through the Playwright
+          worker, LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop.
+          Those sites can show bot checks or change their layout, in which case
+          the run reports "blocked"/"failed" for that source; results are only
+          ever real listings a provider actually returned, never fabricated.
+          See{" "}
           <Link to="/matched-jobs" className="font-semibold text-cyan-700 dark:text-cyan-400 hover:underline">
             Matched Jobs
           </Link>{" "}

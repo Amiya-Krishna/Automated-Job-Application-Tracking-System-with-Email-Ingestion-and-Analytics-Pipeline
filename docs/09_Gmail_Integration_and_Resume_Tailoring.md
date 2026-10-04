@@ -333,8 +333,7 @@ cd ../mobile && npm install && npm run test:integration && npx tsc --noEmit
 - **Sessions run in-process** (not on the BullMQ worker). A server restart
   mid-run leaves the session to time out (5 min) and the user can retry.
 - **Rate limiter is in-memory per instance.**
-- **Browser extension** supports LinkedIn and Indeed job pages only (matching the
-  existing manifest); other career sites can use the web app's "paste job
+- **Browser extension** supports LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop job pages (see `browser-extension/README.md`); other career sites can use the web app's "paste job
   description". URL-based server-side JD import is intentionally not implemented
   (SSRF risk).
 - **Mobile** has no resume file upload (use the web app, or paste text in

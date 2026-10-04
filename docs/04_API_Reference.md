@@ -303,7 +303,7 @@ browser redirect).
 **GET** `/api/gmail/scan`
 
 Fetches **only job/internship-related** mail from the last `days` days
-(default 30, max 90; `limit` default 50, max 100). Filtering happens in
+(default 30, max 365; `limit` default 25, max 50). Filtering happens in
 three stages so unrelated mail is never downloaded or returned:
 
 1. **Gmail query** (`buildGmailQuery`) excludes Promotions/Social/Forums/Spam

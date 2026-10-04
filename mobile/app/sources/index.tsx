@@ -21,9 +21,7 @@ import type { ScrapeRun } from '@/types/scrape';
 
 // Admin-only (rendered only when user.role === 'admin'; the API enforces it too).
 // Same adapters the web client offers (client/src/pages/JobDiscovery.jsx) —
-// LinkedIn/Indeed have no public self-serve search API and are unimplemented
-// placeholders server-side even with a source selected, so this says so rather
-// than implying they'll start working.
+// Browser-based providers can be blocked by the site; the run result says so.
 const DISCOVERY_SOURCES = [
   { value: 'remotive', label: 'Remotive', note: 'Real remote listings' },
   { value: 'linkedin', label: 'LinkedIn', note: 'Browser discovery (worker)' },

@@ -134,7 +134,7 @@ function Landing() {
         </main>
 
         <footer className="mt-12 border-t sm:mt-20 border-slate-200/70 dark:border-slate-700/70 pt-6 text-center text-xs text-slate-500 dark:text-slate-400">
-          Built with the MERN stack — MongoDB, Express, React, and Node.
+          Built with React, Express, and PostgreSQL.
         </footer>
       </div>
     </div>

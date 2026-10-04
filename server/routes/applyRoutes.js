@@ -10,7 +10,6 @@ const { updateWeightsFromOutcome } = require("../services/learningService");
 // executing this file — which is the definitive way to confirm/rule out
 // an environment or stale-deployment mismatch, as opposed to a code bug
 // in this repository. Safe to delete once the mismatch is confirmed.
-console.log("[applyRoutes] loaded from", __filename);
 
 // This router is mounted at app.use("/api/applications", auth, ...) in
 // server.js, so req.user is always populated below.

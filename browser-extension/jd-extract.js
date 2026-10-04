@@ -130,13 +130,31 @@
 
   // Optional salary / skills for the two original platforms. Strictly additive:
   // any failure yields {} so title/company/URL detection is never affected.
-  function extras(doc, sel, desc) {
+  // Is a JSON-LD posting's URL the page we are on? Guards against stale JSON-LD left
+  // behind by single-page-app navigation (LinkedIn / Indeed keep the old script tag).
+  function sameJob(ldUrl, loc) {
+    if (!ldUrl) return true;
+    try {
+      const a = new URL(ldUrl, loc && loc.href);
+      const b = new URL(loc.href);
+      if (a.pathname.replace(/\/$/, "") === b.pathname.replace(/\/$/, "")) return true;
+      const key = (u) => (u.searchParams.get("jk") || u.searchParams.get("vjk") || (u.pathname.match(/(\d{6,})/) || [])[1] || (u.searchParams.get("currentJobId") || ""));
+      const ka = key(a);
+      return !!ka && ka === key(b);
+    } catch (e) { return false; }
+  }
+
+  function extras(doc, sel, desc, loc) {
     try {
       const X = P();
       if (!X) return {};
       const h = X.helpers;
-      const salaryText = h.salaryFromElementText(h.firstText(doc, sel.salary || [])) || h.findSalary((desc.description || "").slice(0, 1500));
-      const skills = h.allTexts(doc, sel.skills || []);
+      let ld = null;
+      try { ld = h.fromJsonLd(doc); } catch (e) { ld = null; }
+      if (ld && !sameJob(ld.url, loc)) ld = null;
+      const salaryText = h.salaryFromElementText(h.firstText(doc, sel.salary || [])) || (ld && ld.salaryText) || h.findSalary((desc.description || "").slice(0, 1500));
+      const domSkills = h.allTexts(doc, sel.skills || []);
+      const skills = domSkills.length ? domSkills : (ld && ld.skills) || [];
       const contactEmail = h.findContactEmail(desc.descriptionStructured || desc.description);
       const out = {};
       if (salaryText) out.salaryText = salaryText;
@@ -183,7 +201,7 @@
     }
     let externalJobId = extractLinkedInJobId(loc.href);
     if (!externalJobId) externalJobId = extractLinkedInJobId(firstHref(doc, LI.jobLink, loc.href)) || extractLinkedInJobId(canonicalLink(doc));
-    return { role, company, location, ...desc, ...extras(doc, LI, desc), externalJobId, sourceUrl: canonicalLinkedInUrl(externalJobId, loc.href), sourceName: "linkedin" };
+    return { role, company, location, ...desc, ...extras(doc, LI, desc, loc), externalJobId, sourceUrl: canonicalLinkedInUrl(externalJobId, loc.href), sourceName: "linkedin" };
   }
 
   function detectIndeed(doc, loc) {
@@ -201,7 +219,7 @@
     }
     let externalJobId = extractIndeedJobId(loc.href) || extractIndeedJobId(canonicalLink(doc));
     if (!externalJobId) externalJobId = extractIndeedJobId(firstHref(doc, ['a[href*="viewjob?jk="]', 'a[href*="jk="]'], loc.href));
-    return { role, company, location, ...desc, ...extras(doc, IN, desc), externalJobId, sourceUrl: canonicalIndeedUrl(externalJobId, loc.href, loc.hostname), sourceName: "indeed" };
+    return { role, company, location, ...desc, ...extras(doc, IN, desc, loc), externalJobId, sourceUrl: canonicalIndeedUrl(externalJobId, loc.href, loc.hostname), sourceName: "indeed" };
   }
 
   function detectJob(doc, loc) {

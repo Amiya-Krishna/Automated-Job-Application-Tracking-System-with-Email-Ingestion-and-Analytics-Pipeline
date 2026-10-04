@@ -3,7 +3,7 @@ const { chromium } = require("playwright");
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50;
 
-// Shared Playwright-based discovery adapter for job boards (LinkedIn, Indeed).
+// Shared Playwright-based discovery adapter for job boards (LinkedIn, Indeed, Naukri, Internshala, Wellfound, Unstop).
 // `scrape(query, context, { location, limit })` does the board-specific work.
 function createJobBoardAdapter({ name, label, scrape }) {
   async function discover({ query, location, limit }) {

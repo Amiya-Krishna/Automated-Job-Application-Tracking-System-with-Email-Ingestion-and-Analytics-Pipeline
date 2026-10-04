@@ -115,3 +115,20 @@ test("role management: valid values only, cannot change own role", async () => {
   const list = await (await call("GET", "/api/admin/users", tok(1))).json();
   assert.ok(list.data.every((u) => !("password" in u)));
 });
+
+test("promotion takes effect immediately: the same user token gains access after being made admin", async () => {
+  db.users.push({ id: 4, name: "Soon", email: "s@x.co", role: "user" });
+  const t = tok(4);
+  assert.equal((await call("GET", "/api/admin/overview", t)).status, 403);
+  assert.equal((await call("PATCH", "/api/admin/users/4/role", tok(1), { role: "admin" })).status, 200);
+  assert.equal((await call("GET", "/api/admin/overview", t)).status, 200);
+  assert.equal((await call("PATCH", "/api/admin/users/4/role", tok(1), { role: "user" })).status, 200);
+  assert.equal((await call("GET", "/api/admin/overview", t)).status, 403);
+});
+
+test("a normal user can never promote themselves (own id, someone else's id, bad body)", async () => {
+  const u = tok(2); // user 2 is promoted by an earlier test; demote first so this runs as a normal user
+  db.users.find((x) => x.id === 2).role = "user";
+  for (const id of [2, 1, 4]) assert.equal((await call("PATCH", `/api/admin/users/${id}/role`, u, { role: "admin" })).status, 403);
+  assert.equal(db.users.find((x) => x.id === 2).role, "user");
+});

@@ -111,7 +111,7 @@ flowchart LR
 ```
 
 > Key constraint: external job platforms differ in availability, markup stability, and
-> anti-bot behavior. Remotive provides a free public API; LinkedIn and Indeed are
+> anti-bot behavior. Remotive provides a free public API; LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop are
 > accessed by the discovery worker through Playwright. The implementation does not
 > attempt to bypass CAPTCHAs, authentication walls, or other anti-bot controls. A
 > provider can therefore legitimately return an error or blocked result when the
@@ -130,7 +130,7 @@ flowchart LR
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | API layer              | Auth, request validation, thin Prisma-backed reads, queue enqueueing. No scraping, scoring, or browser work inline.                                          | `routes/`, `middleware/authMiddleware.js`, `lib/prisma.js`                                                                             |
 | Ingestion              | Single entrypoint (`ingestJob`) shared by Job Discovery, the extension's manual capture, and the manual tracker's engine bridge — one place for normalization/dedup. | `services/ingestionService.js`, `services/engineBridge.js`, `adapters/`                                                                |
-| Job Discovery          | Client-triggered async discovery runs across Remotive, LinkedIn, and Indeed. Remotive uses its public API; LinkedIn/Indeed use the existing Playwright scraper with per-source normalization and honest error/blocked reporting. | `services/jobDiscovery/`, `adapters/remotiveJobsAdapter.js`, `adapters/linkedinJobsAdapter.js`, `adapters/indeedJobsAdapter.js`, `services/scraper.js`, `routes/scrapeRoutes.js`, `workers/scrapeWorker.js` |
+| Job Discovery          | Admin-triggered async discovery runs across Remotive, LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop. Remotive uses its public API; the others use Playwright scrapers with per-source normalization and honest error/blocked reporting. | `services/jobDiscovery/`, `adapters/remotiveJobsAdapter.js`, `adapters/linkedinJobsAdapter.js`, `adapters/indeedJobsAdapter.js`, `services/scraper.js`, `routes/scrapeRoutes.js`, `workers/scrapeWorker.js` |
 | Deduplication          | Exact hash match first, then a bounded fuzzy pass scoped to the same company within a 14-day window.                                                         | `services/dedupService.js`                                                                                                             |
 | Matching / scoring     | Deterministic TF-IDF cosine similarity plus curated skill-vocabulary overlap against the candidate's resume — not a trained/AI model. Runs per job in a worker. | `services/matchingService.js`, `workers/matchWorker.js`, `services/skills.js`                                                          |
 | Apply engine           | Playwright, per-ATS field detection, stops before final submit — never auto-submits. Domain-scoped rate limiting via Redis.                                  | `services/applyEngine.js`, `adapters/greenhouseAdapter.js`, `adapters/genericAdapter.js`, `services/rateLimiter.js`, `workers/applyWorker.js` |
@@ -202,7 +202,7 @@ flowchart LR
 
 ## Where This System Breaks (Real Constraints)
 
-- LinkedIn/Indeed discovery is browser-driven and therefore sensitive to Playwright browser availability, site markup changes, authentication walls, CAPTCHAs, rate limits, and provider-side blocking. The worker reports these conditions instead of bypassing them
+- LinkedIn/Indeed/Naukri/Internshala/Wellfound/Unstop discovery is browser-driven and therefore sensitive to Playwright browser availability, site markup changes, authentication walls, CAPTCHAs, rate limits, and provider-side blocking. The worker reports these conditions instead of bypassing them
 - Remotive is remote-only, so it can't cover on-site/hybrid roles
 - Fuzzy deduplication introduces false negatives at scale → threshold tuning becomes critical
 - Playwright automation fails on dynamic multi-step forms → requires adapter expansion

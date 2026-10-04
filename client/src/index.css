@@ -37,3 +37,5 @@ body {
 .dark .tt-btn--danger { color: #fb7185; border-color: #881337; background: rgb(76 5 25 / .35); }
 .dark .tt-btn--danger:hover { background: rgb(76 5 25 / .6); }
 @media (max-width: 640px) { .tt-btn { min-height: 2.5rem; } }
+/* Inside table cells the actions stay on ONE line (the table scrolls instead of wrapping a button under the others). */
+td > .tt-actions { flex-wrap: nowrap; }

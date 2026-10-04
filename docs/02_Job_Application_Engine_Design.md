@@ -13,10 +13,9 @@
 > all exist in the current codebase — see the README for what's actually
 > running today versus what below is still aspirational design.
 >
-> **Current implementation correction:** Job Discovery now has three active
+> **Current implementation correction:** Job Discovery now has seven active
 > providers. Remotive uses its public API; LinkedIn and Indeed use the shared
-> Playwright scraper in `server/services/scraper.js`, invoked through their
-> adapters by the BullMQ scrape worker. All three sources feed the same
+> Playwright scraper in `server/services/scraper.js`, and Naukri, Internshala, Wellfound and Unstop use `services/jobBoards/scrapePlatform.js`, all invoked through adapters by the BullMQ scrape worker (admin-only). All sources feed the same
 > `ingestJob()` normalization/deduplication path. The browser extension still
 > provides manual capture through `/api/ingest`. Playwright discovery is not an
 > anti-bot bypass mechanism: CAPTCHA, authentication walls, rate limits, and
@@ -207,7 +206,7 @@ On duplicate: insert the new row anyway (for audit/history — you still want to
 
 ## 6. Analytics Dashboard (Backend)
 
-**Metrics:** total scraped, matched, applied, response rate, interview conversion.
+**Metrics:** matched, applied, response rate, interview conversion (the live funnel starts at *matched*; there is no "scraped" stage).
 
 Store this as a materialized view (`analytics_daily`) refreshed by the worker rather than computing it live on every dashboard load — at low volume it doesn't matter, but it's the right answer when asked "how would this scale."
 
