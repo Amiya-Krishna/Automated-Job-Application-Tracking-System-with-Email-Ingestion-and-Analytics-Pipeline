@@ -2,6 +2,7 @@ import { router } from 'expo-router';
 import { Pressable, RefreshControl, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/button';
 import { ErrorState } from '@/components/error-state';
 import { LoadingState } from '@/components/loading-state';
 import { ScreenHeader } from '@/components/screen-header';
@@ -25,7 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
  */
 export default function ProfileScreen() {
   const theme = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const profile = useProfile();
   const gmail = useGmailStatus();
 
@@ -69,7 +70,7 @@ export default function ProfileScreen() {
                 </ThemedText>
               </ThemedView>
               <ThemedView style={styles.identityText}>
-                <ThemedText type="smallBold">{displayName}</ThemedText>
+                <ThemedText type="smallBold">{displayName}{isAdmin ? '  ·  Admin' : ''}</ThemedText>
                 {displayEmail ? (
                   <ThemedText type="small" themeColor="textSecondary">
                     {displayEmail}
@@ -79,20 +80,8 @@ export default function ProfileScreen() {
             </ThemedView>
 
             <ThemedView style={styles.buttonRow}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/account/edit')}
-                style={[styles.primaryButton, { backgroundColor: theme.tint }]}>
-                <ThemedText type="smallBold" style={styles.primaryButtonText}>
-                  Edit profile
-                </ThemedText>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/account/settings')}
-                style={[styles.secondaryButton, { borderColor: theme.border }]}>
-                <ThemedText type="smallBold">Settings</ThemedText>
-              </Pressable>
+              <Button label="Edit profile" grow onPress={() => router.push('/account/edit')} />
+              <Button label="Settings" variant="secondary" grow onPress={() => router.push('/account/settings')} />
             </ThemedView>
 
             <ThemedView style={styles.section}>
@@ -119,14 +108,7 @@ export default function ProfileScreen() {
               </ThemedView>
             </ThemedView>
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => logout()}
-              style={[styles.logoutButton, { borderColor: theme.border }]}>
-              <ThemedText type="smallBold" themeColor="danger">
-                Log out
-              </ThemedText>
-            </Pressable>
+            <Button label="Log out" variant="danger" fullWidth onPress={() => logout()} />
           </ScrollView>
         )}
       </SafeAreaView>
@@ -213,26 +195,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     backgroundColor: 'transparent',
   },
-  primaryButton: {
-    flex: 1,
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  primaryButtonText: {
-    color: '#ffffff',
-  },
-  secondaryButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
   navRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -246,13 +208,5 @@ const styles = StyleSheet.create({
   navRowText: {
     gap: 2,
     backgroundColor: 'transparent',
-  },
-  logoutButton: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
   },
 });

@@ -16,7 +16,11 @@ test("PDF and DOCX round-trip losslessly through export -> upload -> parse", asy
     assert.equal(format, fmt);
     const again = parseResume(text);
     assert.equal(again.quality.reliable, true);
-    assert.deepEqual(again.facts.map((f) => f.text).sort(), src.facts.map((f) => f.text).sort(), `${fmt} facts differ`);
+    // The PDF prints a header's date right-aligned in its own column instead of after a " | "
+    // glyph, so a text extractor reads "Title  Jun 2025 - Aug 2025": same words, same date,
+    // only the (non-content) separator before a trailing date differs.
+    const canon = (t) => t.replace(/\s*\|\s*(?=(?:[A-Za-z]{3,9}\.?\s+)?\d{4}\s*(?:-|\u2013|to)\s*(?:Present|Current|[A-Za-z]{3,9}\.?\s+\d{4}|\d{4})\s*$)/i, " ");
+    assert.deepEqual(again.facts.map((f) => canon(f.text)).sort(), src.facts.map((f) => canon(f.text)).sort(), `${fmt} facts differ`);
   }
 });
 

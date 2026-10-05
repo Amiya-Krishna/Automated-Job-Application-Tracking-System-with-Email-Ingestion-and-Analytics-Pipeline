@@ -155,11 +155,23 @@ flowchart LR
 
 ![Dashboard](outputs/tracker-dashboard.jpg)
 
+### Data ownership & isolation
+
+- **Global jobs** come only from admin-run fetches (the seven sources above): `job_sources.scope = 'global'`, `jobs.owner_user_id IS NULL`. Every user can see them.
+- **Private jobs** come from Manual entry, Gmail ingestion and the browser extension: `scope = 'private'`, `owner_user_id = <creator>`. Only the owner sees them; admins do not.
+- Enforced in the backend (`server/services/visibility.js`, scoped SQL/Prisma filters, a DB trigger `enforce_job_scope`, and partial unique indexes), not by hiding UI. Foreign ids return `404`. `/api/ingest` can never create a global job and client-supplied `source` values are re-classified server-side.
+- **Notifications** are stored per user (`notifications.user_id`) and served from `/api/notifications/inbox`; web and mobile clients hold no cross-user cache and clear it on logout.
+- Setup after pulling: `cd server && npx prisma generate && npx prisma migrate deploy` (applies `20261004000000_ownership_scopes_and_notifications`).
+- Real-database isolation tests: `TEST_DATABASE_URL=postgres://user:pass@host:5432/db npm test` (skipped when unset).
+- Mobile: expo-router groups `(drawer)/(tabs)` (Home, Jobs, Tracker, Alerts, Profile) plus role chooser/login; push registration is skipped on web and Expo Go.
+
 ### Roles & permissions
 
 | Capability | User | Admin |
 |---|---|---|
-| Track applications, Applied Jobs, Matched Jobs (view), Companies/Sources (view), Analytics, Gmail, resume tailoring | ✅ | ✅ |
+| Track applications, Applied Jobs, Matched Jobs (view), Analytics, Gmail, resume tailoring | ✅ | ✅ |
+| Sources page | ✅ only Manual / Gmail / Extension, with **your own** data | ✅ only the seven fetched sources (LinkedIn, Naukri, Remotive, Unstop, Indeed, Wellfound, Internshala); never users' private jobs |
+| Companies | ✅ global companies + companies from your own jobs | ✅ same rule (global + own) |
 | Job Discovery (UI **and** `/api/scrape/*`) | ❌ (no nav item, route redirects, API `403`) | ✅ |
 | Delete Sources, Companies, Matched Jobs (`/api/admin/*`) | ❌ | ✅ |
 | Admin panel (`/admin`): users, roles, overview | ❌ | ✅ |

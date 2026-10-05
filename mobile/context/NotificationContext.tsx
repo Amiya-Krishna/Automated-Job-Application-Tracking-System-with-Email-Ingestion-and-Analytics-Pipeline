@@ -1,50 +1,51 @@
 /**
- * In-app notification center: list + unread badge, persisted per device.
+ * In-app notification center: list + unread badge, BACKED BY THE SERVER and scoped to the
+ * signed-in account.
+ *
+ * Every notification belongs to exactly one user (notifications.user_id); the API only returns,
+ * counts, updates or deletes the caller's own rows. Nothing is persisted on the device any more:
+ * the old AsyncStorage list was shared by every account that signed in on the same phone. The
+ * legacy key is wiped on load and the in-memory list is dropped as soon as the account changes
+ * or signs out.
  *
  * Sources:
- *   - local events from real actions (services/notifications.ts emitters)
- *   - remote pushes (reminders sent by the backend) received while the app is
- *     open, or opened from the system tray (see components/notification-link-handler.tsx)
- *
- * The list contains company/role names, so it belongs to the signed-in user:
- * it is cleared on sign-out. There is no seeded/demo content.
+ *   - local events from real actions (services/notifications.ts emitters) -> recorded on the server
+ *   - reminders created by the backend (a push is sent too): a received/opened push just triggers
+ *     a refresh, the server copy is the source of truth
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { AppState } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
 import { useAuth } from '@/hooks/use-auth';
 import { onNotificationEvent, type NotificationEvent } from '@/services/notifications';
+import {
+  clearInbox,
+  createInboxNotification,
+  deleteInbox,
+  fetchInbox,
+  markAllInboxRead,
+  markInboxRead,
+  type InboxNotification,
+} from '@/services/notificationsInbox';
 import { isPushSupported } from '@/services/push';
 import type { AppNotification, NotificationKind } from '@/types/notifications';
 import { resolveNotificationTarget } from '@/utils/deep-links';
 
-const STORAGE_KEY = '@tracktrail/notifications';
+const LEGACY_STORAGE_KEY = '@tracktrail/notifications';
+const POLL_MS = 60_000;
 
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-const MAX_ITEMS = 100;
-
-/** Turns a received push into a list item; the target is validated against the deep-link allow-list. */
-export function notificationFromPush(n: Notifications.Notification): AppNotification | null {
-  const { title, body, data } = n.request.content;
-  if (!title && !body) return null;
-  const type = (data as { type?: string } | null)?.type;
-  const kind: NotificationKind = type === 'interview' ? 'interview' : type === 'application' || type === 'job' ? 'application' : 'system';
-  const href = resolveNotificationTarget(data);
-  const rawTarget = (data as { target?: { pathname?: string; params?: Record<string, string> } } | null)?.target;
-  return {
-    id: `push-${n.request.identifier}`,
-    kind,
-    title: String(title ?? 'TrackTrail').slice(0, 200),
-    body: String(body ?? '').slice(0, 500),
-    createdAt: new Date(n.date).toISOString(),
-    read: false,
-    target: href && rawTarget?.pathname ? { pathname: rawTarget.pathname, params: rawTarget.params } : undefined,
-  };
-}
+const fromServer = (n: InboxNotification): AppNotification => ({
+  id: String(n.id),
+  kind: n.kind,
+  title: n.title,
+  body: n.body,
+  createdAt: n.createdAt,
+  read: n.read,
+  // only paths this app can actually open
+  target: n.target && typeof n.target.pathname === 'string' && resolveNotificationTarget({ target: n.target }) ? n.target : undefined,
+});
 
 function fromEvent(event: NotificationEvent): Omit<AppNotification, 'id' | 'createdAt' | 'read'> | null {
   switch (event.type) {
@@ -95,7 +96,7 @@ interface NotificationContextValue {
   notifications: AppNotification[];
   unreadCount: number;
   isReady: boolean;
-  /** Adds a notification the user opened from the system tray (deduped by id). */
+  /** A notification was opened from the system tray: re-sync (the server already holds it). */
   addFromPush: (n: Notifications.Notification) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
@@ -106,82 +107,91 @@ interface NotificationContextValue {
 const NotificationContext = createContext<NotificationContextValue | null>(null);
 
 export function NotificationProvider({ children }: { children: ReactNode }) {
-  const { status } = useAuth();
+  const { status, user } = useAuth();
+  const userId = status === 'authenticated' ? (user?.id ?? null) : null;
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [isReady, setIsReady] = useState(false);
-  const hydratedRef = useRef(false);
+  const activeUser = useRef<number | null>(null);
 
-  // Hydrate once. Not gated on auth status — the list is small, local,
-  // device-scoped data; there's no per-user server data to leak across
-  // accounts the way AuthProvider.tsx's queryClient.clear() worries about.
+  // The shared on-device list from earlier versions mixed accounts: wipe it.
   useEffect(() => {
-    if (hydratedRef.current) return;
-    hydratedRef.current = true;
-    AsyncStorage.getItem(STORAGE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          setNotifications(JSON.parse(raw));
-        } catch {
-          setNotifications([]);
-        }
-      }
-      setIsReady(true);
-    });
+    void AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
   }, []);
 
-  // Persist on every change, once hydration has actually happened (so we
-  // never overwrite disk with an empty array before the initial read).
-  useEffect(() => {
-    if (!isReady) return;
-    void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
-  }, [notifications, isReady]);
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const res = await fetchInbox();
+      // ignore a response that arrives after the account changed
+      if (activeUser.current === userId) setNotifications(res.data.map(fromServer));
+    } catch {
+      // offline / transient: keep what we have, the next refresh retries
+    } finally {
+      if (activeUser.current === userId) setIsReady(true);
+    }
+  }, [userId]);
 
+  // Account change / sign-out: forget the previous account's notifications immediately.
   useEffect(() => {
+    activeUser.current = userId;
+    setNotifications([]);
+    setIsReady(false);
+    if (!userId) return undefined;
+    void refresh();
+    const timer = setInterval(() => void refresh(), POLL_MS);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refresh();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [userId, refresh]);
+
+  // Local events from real actions -> recorded for the current user on the server.
+  useEffect(() => {
+    if (!userId) return undefined;
     return onNotificationEvent((event) => {
       const built = fromEvent(event);
       if (!built) return;
-      setNotifications((prev) => [{ id: makeId(), createdAt: new Date().toISOString(), read: false, ...built }, ...prev].slice(0, MAX_ITEMS));
+      void createInboxNotification(built)
+        .then((row) => {
+          if (row && activeUser.current === userId) setNotifications((prev) => [fromServer(row), ...prev.filter((x) => x.id !== String(row.id))]);
+        })
+        .catch(() => {
+          // a missed in-app notification never blocks the action that caused it
+        });
     });
-  }, []);
+  }, [userId]);
 
-  // Pushes that arrive while the app is open.
+  // Pushes that arrive while the app is open: the server already stored it.
   useEffect(() => {
-    if (!isPushSupported) return;
-    const sub = Notifications.addNotificationReceivedListener((n) => {
-      const item = notificationFromPush(n);
-      if (!item) return;
-      setNotifications((prev) => (prev.some((x) => x.id === item.id) ? prev : [item, ...prev].slice(0, MAX_ITEMS)));
-    });
+    if (!isPushSupported || !userId) return undefined;
+    const sub = Notifications.addNotificationReceivedListener(() => void refresh());
     return () => sub.remove();
-  }, []);
+  }, [userId, refresh]);
 
-  // The list holds the signed-in user's application details: clear it when they sign out
-  // (or their session ends) so the next person on this device never sees it.
-  const wasAuthenticated = useRef(false);
-  useEffect(() => {
-    if (status === 'authenticated') wasAuthenticated.current = true;
-    else if (status === 'unauthenticated' && wasAuthenticated.current) {
-      wasAuthenticated.current = false;
-      setNotifications([]);
-    }
-  }, [status]);
+  // Optimistic update, then tell the server; re-sync if that fails.
+  const act = useCallback(
+    (optimistic: (prev: AppNotification[]) => AppNotification[], request: () => Promise<unknown>) => {
+      setNotifications(optimistic);
+      void request().catch(() => void refresh());
+    },
+    [refresh],
+  );
 
   const value = useMemo<NotificationContextValue>(
     () => ({
       notifications,
       unreadCount: notifications.filter((n) => !n.read).length,
       isReady,
-      addFromPush: (n) => {
-        const item = notificationFromPush(n);
-        if (item) setNotifications((prev) => (prev.some((x) => x.id === item.id) ? prev : [{ ...item, read: true }, ...prev].slice(0, MAX_ITEMS)));
-      },
-      markAsRead: (id) =>
-        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n))),
-      markAllAsRead: () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true }))),
-      remove: (id) => setNotifications((prev) => prev.filter((n) => n.id !== id)),
-      clearAll: () => setNotifications([]),
+      addFromPush: () => void refresh(),
+      markAsRead: (id) => act((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)), () => markInboxRead(Number(id))),
+      markAllAsRead: () => act((prev) => prev.map((n) => ({ ...n, read: true })), () => markAllInboxRead()),
+      remove: (id) => act((prev) => prev.filter((n) => n.id !== id), () => deleteInbox(Number(id))),
+      clearAll: () => act(() => [], () => clearInbox()),
     }),
-    [notifications, isReady],
+    [notifications, isReady, act, refresh],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

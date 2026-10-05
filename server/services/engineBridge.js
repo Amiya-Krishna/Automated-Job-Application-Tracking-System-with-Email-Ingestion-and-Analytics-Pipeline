@@ -16,6 +16,7 @@
 
 const { ingestQueue } = require("../queue");
 const { contentHash } = require("./textUtils");
+const { normalizeOrigin } = require("./visibility");
 
 function hasEnoughDataToBridge(trackedJob) {
   return Boolean(
@@ -36,6 +37,14 @@ function hasEnoughDataToBridge(trackedJob) {
  */
 async function bridgeTrackedJobToEngine(trackedJob) {
   if (!hasEnoughDataToBridge(trackedJob)) return null;
+  // Applied from the GLOBAL catalog: already linked to the shared job. Never copy it into
+  // a second (private) engine row.
+  if (trackedJob.engineJobId) return null;
+  if (!trackedJob.userId) return null;
+
+  // A tracked job is ALWAYS private to its owner: origin is manual / gmail / extension, never a
+  // global source (the website the extension captured it from is kept as `platform` only).
+  const { origin } = normalizeOrigin(trackedJob.sourceName, trackedJob.platform);
 
   const payload = {
     title: trackedJob.role,
@@ -45,7 +54,7 @@ async function bridgeTrackedJobToEngine(trackedJob) {
     remoteType: null,
     salaryText: trackedJob.salaryText || null,
     skills: trackedJob.skills || [],
-    sourceName: trackedJob.sourceName || "manual",
+    sourceName: origin,
     sourceUrl:
       trackedJob.sourceUrl ||
       // The engine's `jobs.source_url` column is NOT NULL. Hand-typed
@@ -68,7 +77,7 @@ async function bridgeTrackedJobToEngine(trackedJob) {
     ownerUserId: trackedJob.userId,
   };
 
-  const jobId = `ingest:manual:tracked-job:${trackedJob.id}:${contentHash(payload)}`;
+  const jobId = `ingest:${origin}:tracked-job:${trackedJob.id}:${contentHash(payload)}`;
 
   return ingestQueue.add("ingest", payload, {
     jobId,

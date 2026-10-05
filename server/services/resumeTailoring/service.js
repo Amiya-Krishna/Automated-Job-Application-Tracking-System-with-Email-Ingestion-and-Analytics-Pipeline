@@ -451,7 +451,7 @@ function createResumeTailoringService({
       jobKey = `tracked-${t.id}`;
       trackedJobId = t.id;
     } else if (j.engineJobId) {
-      const e = await repo.getEngineJob(j.engineJobId);
+      const e = await repo.getEngineJob(j.engineJobId, userId);
       if (!e) throw new HttpError(404, "job_not_found", "Job not found.");
       base = {
         title: j.title || e.title,

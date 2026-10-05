@@ -616,44 +616,6 @@ textarea:focus {
   font-weight: 700;
 }
 
-/* ---------- sources ---------- */
-.sourceList {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 20px;
-}
-
-.sourceRow + .sourceRow {
-  padding-top: 4px;
-}
-
-.sourceHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 6px;
-}
-
-.sourceName {
-  font-weight: 700;
-  font-size: 13.5px;
-  text-transform: capitalize;
-}
-
-.sourceLink {
-  font-size: 11.5px;
-  color: var(--accent-dark);
-  text-decoration: none;
-}
-
-.sourceLink:hover {
-  text-decoration: underline;
-}
-
 /* ---------- profile ---------- */
 .profileForm {
   max-width: 540px;

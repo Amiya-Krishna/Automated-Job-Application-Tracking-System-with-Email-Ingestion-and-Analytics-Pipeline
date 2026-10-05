@@ -102,7 +102,7 @@ const [slideAnim] = useState(() => new Animated.Value(24));
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Log in"
-                onPress={() => router.push('/(auth)/login')}
+                onPress={() => router.push('/(auth)/role')}
                 style={({ pressed }) => [
                   styles.headerLogin,
                   { borderColor: theme.border },

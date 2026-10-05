@@ -1,147 +1,124 @@
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
+const { GLOBAL_SOURCES, PRIVATE_SOURCES } = require("../services/visibility");
 
-// Sources that represent the shared/global scraped catalog. These are
-// genuinely discovered by the scraper on behalf of every user, so their
-// count is the global engine `jobs` count for that source — the same
-// meaning as before this fix. Remotive joins this set for the same reason
-// linkedin/indeed are here: it's a discovery-run source ingested into the
-// shared `jobs` table, not a per-user tracked source (see
-// adapters/remotiveJobsAdapter.js).
-const GLOBAL_ENGINE_SOURCES = new Set(["linkedin", "indeed", "remotive", "naukri", "internshala", "wellfound", "unstop"]);
+// SOURCES - one page, two audiences, decided by the server (never by the client):
+//
+//   normal user -> ONLY the private sources: Manual, Gmail, Extension - with ONLY that user's
+//                  own jobs/counts (tracked_jobs.user_id = caller).
+//   admin       -> ONLY the admin-fetched global sources: LinkedIn, Naukri, Remotive, Unstop,
+//                  Indeed, Wellfound, Internshala - with the global (ownerless) jobs. An admin
+//                  never sees any user's private Manual/Gmail/Extension data here.
+//
+// The audience comes from the user's role in the DATABASE on every request. The source list is
+// restricted by job_sources.scope in the query itself, and a detail request for a source of the
+// other audience is a 404 - so changing an id in the URL exposes nothing.
+async function audience(req, res, next) {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { role: true } });
+    if (!user) return res.status(401).json({ message: "Account no longer exists", code: "token_invalid" });
+    req.audience = user.role === "admin" ? "admin" : "user";
+    next();
+  } catch (err) {
+    console.error("[sourcesRoutes] audience lookup failed:", err.code || err.name);
+    res.status(500).json({ message: "Could not verify permissions" });
+  }
+}
+router.use(audience);
 
-// GET /api/sources -> browses the `job_sources` table (LinkedIn, Indeed, Naukri,
-// Internshala, Wellfound, Unstop, Manual, Gmail, Extension — see seedSources.js for the full set), with a
-// job count per source so the UI can show how productive each one is.
-//
-// BUG FIX (Sources page showing "Manual = 0"): this used to report
-// `_count.jobs` for every source — i.e. the global engine `jobs` table
-// count. That's the right dataset for linkedin/indeed (genuinely shared,
-// scraper-discovered jobs), but wrong for manual/gmail/extension, which
-// are USER-OWNED and live in `tracked_jobs`, not `jobs` — and only ever
-// get bridged into `jobs` once they have enough data to match against
-// (see engineBridge.js's hasEnoughDataToBridge). A hand-typed manual job
-// with no description/URL never reaches `jobs` at all, so it was
-// invisible to the old query regardless of whose data was being counted
-// — and even where it WOULD have counted something, it would have been
-// every user's manual jobs combined, not just the requesting user's.
-//
-// Now: for manual/gmail/extension, count THIS user's own tracked_jobs
-// rows by sourceName. For linkedin/indeed, keep the global engine count
-// (see GLOBAL_ENGINE_SOURCES above). Both raw numbers are still returned
-// (engineJobCount, trackedJobCount) alongside the single `jobCount` the
-// UI actually renders, so the meaning of each is explicit rather than
-// silently conflated.
+const scopeFor = (aud) => (aud === "admin" ? "global" : "private");
+
+// Tracked-job filter for one private source of THIS user. Rows saved before origins were
+// normalised can carry a website name (e.g. "linkedin") from the extension; those that were not
+// applied from the catalog (no engine_job_id) still belong to Extension.
+function trackedWhere(userId, sourceName) {
+  const key = String(sourceName).toLowerCase();
+  if (key === "manual") return { userId, OR: [{ sourceName: "manual" }, { sourceName: null }] };
+  if (key === "gmail") return { userId, sourceName: "gmail" };
+  return {
+    userId,
+    OR: [
+      { sourceName: "extension" },
+      { sourceName: { in: [...GLOBAL_SOURCES] }, engineJobId: null },
+    ],
+  };
+}
+
 router.get("/", async (req, res) => {
   try {
-    const [sources, trackedCounts] = await Promise.all([
-      prisma.job_sources.findMany({
-        include: {
-          _count: { select: { jobs: true } },
-        },
-        orderBy: { name: "asc" },
-      }),
-      // One grouped query for all of this user's tracked_jobs, instead
-      // of one query per source — cheap and avoids N+1.
-      prisma.trackedJob.groupBy({
-        by: ["sourceName"],
-        where: { userId: req.user.id },
-        _count: { _all: true },
-      }),
-    ]);
+    const sources = await prisma.job_sources.findMany({
+      where: { scope: scopeFor(req.audience) },
+      orderBy: { name: "asc" },
+    });
 
-    const trackedCountByName = new Map(
-      trackedCounts.map((t) => [(t.sourceName || "manual").toLowerCase(), t._count._all]),
-    );
+    let countFor;
+    if (req.audience === "admin") {
+      const grouped = await prisma.jobs.groupBy({
+        by: ["source_id"],
+        where: { owner_user_id: null, status: { not: "duplicate" } },
+        _count: { _all: true },
+      });
+      const bySource = new Map(grouped.map((g) => [g.source_id, g._count._all]));
+      countFor = (s) => bySource.get(s.id) || 0;
+    } else {
+      const counts = new Map();
+      await Promise.all(
+        sources.map(async (s) => {
+          counts.set(s.id, await prisma.trackedJob.count({ where: trackedWhere(req.user.id, s.name) }));
+        }),
+      );
+      countFor = (s) => counts.get(s.id) || 0;
+    }
 
     res.json({
-      data: sources.map((s) => {
-        const key = s.name.toLowerCase();
-        const engineJobCount = s._count.jobs;
-        const trackedJobCount = trackedCountByName.get(key) || 0;
-        const jobCount = GLOBAL_ENGINE_SOURCES.has(key) ? engineJobCount : trackedJobCount;
-
-        return {
-          id: s.id,
-          name: s.name,
-          baseUrl: s.base_url,
-          createdAt: s.created_at,
-          // engineJobCount: global, scraper-ingested `jobs` rows for this
-          //   source (shared catalog data — same for every user).
-          // trackedJobCount: THIS user's own tracked_jobs rows tagged
-          //   with this sourceName (manual adds, extension saves, Gmail
-          //   imports).
-          // jobCount: the number the UI renders — engineJobCount for the
-          //   global sources (linkedin/indeed), trackedJobCount for the
-          //   per-user ones (manual/gmail/extension), so "Manual" always
-          //   reflects what the requesting user actually added, and
-          //   never another user's or the whole table's count.
-          engineJobCount,
-          trackedJobCount,
-          jobCount,
-        };
-      }),
+      data: sources.map((s) => ({
+        id: s.id,
+        name: s.name,
+        // the website of a fetched source is only meaningful to the admin
+        baseUrl: req.audience === "admin" ? s.base_url : null,
+        scope: s.scope,
+        createdAt: s.created_at,
+        jobCount: countFor(s),
+      })),
+      meta: { audience: req.audience },
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
-// GET /api/sources/:id -> a single source's detail view.
-//
-// For the global sources (linkedin/indeed) this still shows the shared
-// engine `jobs` sample, same as before. For the per-user sources
-// (manual/gmail/extension) it now shows THIS user's own tracked_jobs
-// instead of the (almost always empty, and if not empty then wrongly
-// global) engine `jobs` list, matching the same ownership fix as above.
 router.get("/:id", async (req, res) => {
   try {
-    const source = await prisma.job_sources.findUnique({
-      where: { id: Number(req.params.id) },
-    });
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(404).json({ message: "Source not found" });
+    // scope in the WHERE: a source of the other audience simply does not exist for this caller
+    const source = await prisma.job_sources.findFirst({ where: { id, scope: scopeFor(req.audience) } });
+    if (!source) return res.status(404).json({ message: "Source not found" });
 
-    if (!source) {
-      return res.status(404).json({ message: "Source not found" });
-    }
-
-    const key = source.name.toLowerCase();
-
-    if (GLOBAL_ENGINE_SOURCES.has(key)) {
+    if (req.audience === "admin") {
       const jobs = await prisma.jobs.findMany({
-        where: { source_id: source.id },
+        where: { source_id: source.id, owner_user_id: null, status: { not: "duplicate" } },
         select: {
-          id: true,
-          title: true,
-          status: true,
-          location: true,
-          posted_at: true,
-          source_url: true,
+          id: true, title: true, status: true, location: true, posted_at: true, source_url: true,
           companies: { select: { name: true } },
         },
         orderBy: { scraped_at: "desc" },
         take: 25,
       });
-      return res.json({ data: { ...source, jobs } });
+      return res.json({ data: { id: source.id, name: source.name, baseUrl: source.base_url, scope: source.scope, createdAt: source.created_at, jobs } });
     }
 
     const trackedJobs = await prisma.trackedJob.findMany({
-      where: { userId: req.user.id, sourceName: source.name },
-      select: {
-        id: true,
-        company: true,
-        role: true,
-        status: true,
-        location: true,
-        applicationDate: true,
-        sourceUrl: true,
-      },
+      where: trackedWhere(req.user.id, source.name),
+      select: { id: true, company: true, role: true, status: true, location: true, applicationDate: true, sourceUrl: true, platform: true },
       orderBy: { applicationDate: "desc" },
       take: 25,
     });
-    res.json({ data: { ...source, trackedJobs } });
+    res.json({ data: { id: source.id, name: source.name, baseUrl: null, scope: source.scope, createdAt: source.created_at, trackedJobs } });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
 
 module.exports = router;
+module.exports.PRIVATE_SOURCES = PRIVATE_SOURCES;

@@ -13,7 +13,7 @@ accounts become `user` automatically.
 | API | `middleware/requireAdmin.js` runs after `authMiddleware`; it reads the role from the DB on every request (no stale JWT claims) and fails closed (`401` no user, `403 {code:"admin_required"}`, `500` on lookup failure). Mounted on `/api/scrape` and `/api/admin`. |
 | Web | `AuthContext.isAdmin`; `components/AdminRoute.jsx` redirects non-admins to `/dashboard`; `Navbar` omits Job Discovery / Admin for non-admins (desktop and mobile menu); `AdminDeleteButton` renders nothing for non-admins. |
 | Mobile | `AuthUser.role`; the Discovery panel on the Sources screen is rendered only for admins. |
-| Extension | Does not expose discovery; Matched Jobs / Companies / Sources are read-only. |
+| Extension | Does not expose discovery; Matched Jobs / Companies are read-only; Sources shows the signed-in user's own Manual / Gmail / Extension only. |
 
 **Becoming an admin**
 
@@ -87,3 +87,25 @@ The migration is idempotent (`ADD COLUMN IF NOT EXISTS`) and backward compatible
 - Discovery needs the separate worker process, Redis and Playwright Chromium.
 - Gmail scanning needs your own Google OAuth credentials and a verified consent screen for production use.
 - Role changes take effect on the next API call; web clients must reload to see the new nav items.
+
+## Job ownership, Sources and notification isolation (migration `20261004000000`)
+
+**Two kinds of jobs, one rule: a query may only return GLOBAL jobs OR the caller's own.**
+
+| | Global jobs | Private jobs |
+|---|---|---|
+| Origin | Admin-fetched: LinkedIn, Naukri, Remotive, Unstop, Indeed, Wellfound, Internshala | Manual, Gmail, browser extension |
+| `job_sources.scope` | `global` | `private` |
+| `jobs.owner_user_id` | `NULL` | the owning user |
+| Visible to | everyone | only the owner (admins included: they see their *own* only) |
+
+- Single source of truth: `server/services/visibility.js` (`visibleJobsWhere(userId)`, `normalizeOrigin`). A DB trigger (`enforce_job_scope`) enforces "private source ⇔ owner set" and forbids re-owning, so a future code path cannot create an ownerless private job or an owned global one. Uniqueness of `(source_id, external_job_id)` is per global source / per owner (partial unique indexes); dedup only matches global jobs or the same owner's jobs.
+- The server decides a saved job's origin (`manual`/`gmail`/`extension`); a website name sent by the extension is stored as `tracked_jobs.platform`. `POST /api/ingest` can only create the caller's private jobs.
+- **Sources** (`GET /api/sources`, role from the DB): users get Manual/Gmail/Extension with their own counts and jobs; admins get the seven fetched sources with global jobs only. A source of the other audience is a 404.
+- **Companies**: a company is visible if it has a visible (global or own) job, or matches one of the caller's own tracked companies; counts, search and detail follow. Companies that exist only because someone else saved a private job are 404.
+- **Notifications**: `notifications` table, every row has `user_id`; `/api/notifications/inbox` (list, unread-count, create-for-self, read, read-all, delete, clear) always filters by the caller. Foreign ids are 404. Web and mobile read from the server; the old shared localStorage/AsyncStorage lists are wiped. Mobile saved jobs are stored per account and cleared on logout.
+- Admin deletion (`catalogDeletion`) only touches global jobs/sources; `/api/analytics/summary` (system-wide) is admin-only and the analytics rollup counts global jobs only.
+
+Tests: `server/tests/isolation/routes.test.js` (User A, User B, Admin over HTTP) and `server/tests/isolation/postgres.test.js` (real SQL: migration backfill, trigger, scoped ingest/dedup; set `TEST_DATABASE_URL` to run). `npm test` in `server/` preloads a stand-in for an un-generated Prisma client only when `prisma generate` has not run.
+
+**Upgrade note:** rows saved by older extension versions under a website name and already linked to a *global* job cannot be told apart from catalog applications; they stay attributed to that global source.

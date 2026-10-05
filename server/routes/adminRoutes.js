@@ -11,9 +11,9 @@ router.get("/overview", async (req, res) => {
     const [users, admins, jobs, companies, sources, runs] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { role: ADMIN_ROLE } }),
-      prisma.jobs.count(),
+      prisma.jobs.count({ where: { owner_user_id: null } }),
       prisma.companies.count(),
-      prisma.job_sources.count(),
+      prisma.job_sources.count({ where: { scope: "global" } }),
       prisma.scrapeRun.count(),
     ]);
     res.json({ data: { users, admins, jobs, companies, sources, discoveryRuns: runs } });

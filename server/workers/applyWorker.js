@@ -35,14 +35,6 @@ const applyWorker = new Worker(
     // for matchQueue).
     const { jobId, ownerUserId } = bullJob.data;
 
-    // DIAGNOSTIC (not a behavior change): prints exactly what this
-    // worker received for this job — compare against the
-    // "[applyRoutes] enqueued apply job" line for the same jobId to see
-    // whether the payload changed in transit or was simply never set by
-    // the producer that created it. Safe to delete once the mismatch is
-    // confirmed.
-    console.log("[applyWorker] received job", bullJob.id, "data:", bullJob.data);
-
     const { rows } = await query(
       "SELECT id, source_url FROM jobs WHERE id = $1",
       [jobId],

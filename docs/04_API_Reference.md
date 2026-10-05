@@ -36,7 +36,7 @@ expiry — it's valid until your `JWT_SECRET` changes.
 and each route file): `/api/auth` and `/api/gmail` are public/self-contained;
 `/api/jobs` requires the token on every route (checked inside `jobRoutes.js`).
 `/api/ingest`, `/api/engine/jobs`, `/api/applications`, `/api/analytics`,
-`/api/profile`, `/api/companies`, and `/api/sources` all require the token,
+`/api/profile`, `/api/companies`, `/api/sources` and `/api/notifications/inbox` all require the token (sources and companies are role-/owner-scoped inside the routers),
 applied at the `app.use(...)` mount level in `server.js`. `/api/scrape` and
 `/api/admin` additionally require `requireAdmin` (role is read from the
 database on every request, so a demoted admin loses access immediately).

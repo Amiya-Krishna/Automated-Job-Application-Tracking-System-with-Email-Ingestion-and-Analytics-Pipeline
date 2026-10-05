@@ -1,11 +1,6 @@
 /**
- * The in-app notification model. Entirely client-side: there is no
- * `notifications` table or route on the backend (verified by reading
- * every file under server/routes/), so these are generated locally —
- * either from real app events (see services/notifications.ts's emitters,
- * wired into use-applications.ts / use-profile.ts) or from the small
- * seeded set NotificationContext creates on first launch to demonstrate
- * the three example types the product spec calls for.
+ * The in-app notification model. Notifications are stored on the server per account
+ * (notifications.user_id, /api/notifications/inbox) and are never shared between users.
  */
 export type NotificationKind = 'interview' | 'application' | 'resume' | 'system';
 

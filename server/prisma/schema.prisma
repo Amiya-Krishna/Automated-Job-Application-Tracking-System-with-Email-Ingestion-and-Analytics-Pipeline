@@ -34,6 +34,8 @@ model User {
   pushDevices        PushDevice[]
   notificationPref   NotificationPreference?
   notificationLogs   NotificationLog[]
+  notifications      Notification[]
+  ownedJobs          jobs[]
 
   @@map("users")
 }
@@ -55,6 +57,8 @@ model TrackedJob {
   // optional/string (not an FK to job_sources) so existing rows and the
   // manual-add flow keep working with zero migration risk.
   sourceName       String?   @default("manual") @map("source_name") @db.VarChar(50)
+  // Website a job was captured on (linkedin, indeed, ...) when sourceName is "extension".
+  platform         String?   @map("platform") @db.VarChar(50)
   sourceUrl        String?   @map("source_url") @db.VarChar(1000)
   externalJobId    String?   @map("external_job_id") @db.VarChar(255)
   description      String?   @map("description")
@@ -158,6 +162,9 @@ model job_sources {
   id         Int       @id @default(autoincrement())
   name       String    @unique @db.VarChar(50)
   base_url   String?   @db.VarChar(255)
+  // 'global' = fetched by an admin, visible to everyone; 'private' = created by a user
+  // (manual / gmail / extension), visible only to the owner. See migration 20261004000000.
+  scope      String    @default("global") @db.VarChar(10)
   created_at DateTime? @default(now()) @db.Timestamptz(6)
   jobs       jobs[]
 }
@@ -182,6 +189,10 @@ model jobs {
   posted_at        DateTime?      @db.Timestamptz(6)
   scraped_at       DateTime?      @default(now()) @db.Timestamptz(6)
   content_hash     String         @db.VarChar(64)
+  // NULL = global (admin-fetched) job; set = private job of that user. Kept consistent with
+  // job_sources.scope by a DB trigger.
+  owner_user_id    Int?
+  owner            User?          @relation(fields: [owner_user_id], references: [id], onDelete: Cascade)
   applications     applications?
   jobs             jobs?          @relation("jobsTojobs", fields: [canonical_job_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   other_jobs       jobs[]         @relation("jobsTojobs")
@@ -189,7 +200,9 @@ model jobs {
   job_sources      job_sources?   @relation(fields: [source_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
   match_scores     match_scores[]
 
-  @@unique([source_id, external_job_id])
+  // Uniqueness of (source_id, external_job_id) is enforced by two PARTIAL unique indexes
+  // (global rows / per-owner rows) created in migration 20261004000000, which Prisma cannot model.
+  @@index([owner_user_id], map: "idx_jobs_owner_user")
   @@index([company_id, normalized_title], map: "idx_jobs_company_title")
   @@index([content_hash], map: "idx_jobs_content_hash")
   @@index([posted_at(sort: Desc)], map: "idx_jobs_posted_at")
@@ -514,4 +527,23 @@ model NotificationLog {
   @@unique([userId, dedupeKey], map: "uq_notification_log_user_key")
   @@index([userId, createdAt(sort: Desc)], map: "idx_notification_log_user_created")
   @@map("notification_log")
+}
+
+/// Per-user in-app notification inbox. Every row belongs to exactly one user; every query
+/// filters on user_id (routes/notificationRoutes.js).
+model Notification {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  kind      String    @db.VarChar(30)
+  title     String    @db.VarChar(200)
+  body      String    @default("") @db.VarChar(500)
+  target    Json?
+  dedupeKey String?   @map("dedupe_key") @db.VarChar(200)
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt(sort: Desc)], map: "idx_notifications_user_created")
+  @@map("notifications")
 }

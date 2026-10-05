@@ -17,7 +17,9 @@ const stub = (rel, exports) => { const id = require.resolve(path.join("..", ".."
 const tx = {
   applications: { count: async () => 0 },
   jobs: {
-    findUnique: async ({ where }) => (where.id === 5n ? { id: 5n } : null),
+    // admin deletion only ever sees GLOBAL jobs (owner_user_id: null)
+    findFirst: async ({ where }) => (where.id === 5n && where.owner_user_id === null ? { id: 5n } : null),
+    count: async () => 0,
     findMany: async () => [],
     updateMany: async () => ({ count: 1 }),
     deleteMany: async ({ where }) => { db.deleted.push(...where.id.in.map(String)); return { count: where.id.in.length }; },
@@ -27,7 +29,7 @@ const tx = {
     findUnique: async ({ where }) => (where.id === 1 ? { id: 1 } : null),
     delete: async () => ({}),
   },
-  job_sources: { findUnique: async ({ where }) => (where.id === 1 ? { id: 1, name: "naukri" } : null), delete: async () => ({}) },
+  job_sources: { findFirst: async ({ where }) => (where.id === 1 && where.scope === "global" ? { id: 1, name: "naukri" } : null), delete: async () => ({}) },
 };
 const jobsByCompany = { 1: [{ id: 9n }] };
 tx.jobs.findMany = async ({ where }) => (where.company_id ? jobsByCompany[where.company_id] || [] : where.source_id ? [] : []);

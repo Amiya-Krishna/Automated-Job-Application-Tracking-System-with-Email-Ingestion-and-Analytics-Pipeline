@@ -22,6 +22,7 @@ const ROLLUP_SQL = `
   FROM jobs j
   LEFT JOIN match_scores ms ON ms.job_id = j.id AND ms.method = 'tfidf'
   LEFT JOIN applications a ON a.job_id = j.id
+  WHERE j.owner_user_id IS NULL  -- global catalog only; users' private jobs never enter a shared rollup
   GROUP BY 1
   ON CONFLICT (day) DO UPDATE SET
       jobs_scraped = EXCLUDED.jobs_scraped,

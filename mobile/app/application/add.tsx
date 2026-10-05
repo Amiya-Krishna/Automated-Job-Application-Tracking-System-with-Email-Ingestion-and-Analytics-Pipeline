@@ -2,9 +2,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 
 import { ApplicationFormFields } from '@/components/application-form-fields';
+import { Button } from '@/components/button';
+import { StickyActions } from '@/components/sticky-actions';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -64,16 +66,11 @@ export default function AddApplicationScreen() {
 
         <ApplicationFormFields control={control} errors={errors} showDescription />
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={isSubmitting}
-          onPress={handleSubmit(onSubmit)}
-          style={[styles.submitButton, { backgroundColor: theme.tint, opacity: isSubmitting ? 0.7 : 1 }]}>
-          <ThemedText type="smallBold" style={styles.submitButtonText}>
-            {isSubmitting ? 'Adding…' : 'Add application'}
-          </ThemedText>
-        </Pressable>
       </ScrollView>
+      <StickyActions>
+        <Button label="Cancel" variant="secondary" grow onPress={() => router.back()} disabled={isSubmitting} />
+        <Button label="Add application" grow loading={isSubmitting} onPress={handleSubmit(onSubmit)} />
+      </StickyActions>
     </KeyboardAvoidingView>
   );
 }
@@ -88,15 +85,5 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     padding: Spacing.three,
     backgroundColor: 'transparent',
-  },
-  submitButton: {
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  submitButtonText: {
-    color: '#ffffff',
   },
 });

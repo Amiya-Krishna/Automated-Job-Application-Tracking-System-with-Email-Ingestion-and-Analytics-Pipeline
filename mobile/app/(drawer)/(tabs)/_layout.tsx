@@ -3,11 +3,10 @@ import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-// The five primary tabs, per the redesign spec: Home, Jobs, Analytics,
-// Notifications, Profile. "Applications" (the day-to-day job tracker)
-// moved to a top-level route (app/applications.tsx, "Job Tracker" in the
-// drawer) to make room — it's still one tap away from Home's quick
-// actions/recent activity and from the drawer, just no longer a tab.
+// The five primary tabs: Home, Jobs, Tracker, Alerts, Profile - the daily loop of a job
+// search (discover -> track -> get reminded). The Tracker (your applications) is the core
+// feature, so it lives in the tab bar rather than behind the menu. Analytics is a periodic
+// check-in and lives in the drawer ("Analytics"), one tap from Home's stats.
 //
 // Uses the app's OWN useColorScheme (hooks/use-color-scheme.ts), not
 // react-native's — that's what makes a manual theme override from
@@ -31,13 +30,13 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Icon sf={{ default: 'briefcase', selected: 'briefcase.fill' }} md="work" />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="analytics">
-        <NativeTabs.Trigger.Label>Analytics</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf={{ default: 'chart.bar', selected: 'chart.bar.fill' }} md="bar_chart" />
+      <NativeTabs.Trigger name="applications">
+        <NativeTabs.Trigger.Label>Tracker</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon sf={{ default: 'checklist', selected: 'checklist' }} md="checklist" />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="notifications">
-        <NativeTabs.Trigger.Label>Notifications</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Alerts</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf={{ default: 'bell', selected: 'bell.fill' }} md="notifications" />
       </NativeTabs.Trigger>
 

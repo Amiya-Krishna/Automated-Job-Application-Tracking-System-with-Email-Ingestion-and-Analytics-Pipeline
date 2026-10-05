@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 const Landing = lazy(() => import("./pages/Landing"));
 const Login = lazy(() => import("./pages/Login"));
+const Sources = lazy(() => import("./pages/Sources"));
 const Register = lazy(() => import("./pages/Register"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
@@ -16,7 +17,6 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const MatchedJobs = lazy(() => import("./pages/MatchedJobs"));
 const EngineApplications = lazy(() => import("./pages/EngineApplications"));
 const Companies = lazy(() => import("./pages/Companies"));
-const Sources = lazy(() => import("./pages/Sources"));
 const Admin = lazy(() => import("./pages/Admin"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const ResumeTailoring = lazy(() => import("./pages/ResumeTailoring"));
@@ -30,6 +30,7 @@ function App() {
       <Suspense fallback={<main className="grid min-h-screen place-items-center" aria-live="polite">Loading…</main>}><Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/login/:role" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
@@ -130,6 +131,8 @@ function App() {
             </ProtectedRoute>
           }
         />
+        {/* Sources: every signed-in account. The API decides what each role sees (users: Manual /
+            Gmail / Extension with their own data; admins: the fetched sources). */}
         <Route
           path="/sources"
           element={

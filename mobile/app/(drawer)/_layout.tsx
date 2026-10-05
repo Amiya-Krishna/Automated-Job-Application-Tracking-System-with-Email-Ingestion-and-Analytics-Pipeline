@@ -38,6 +38,7 @@ export default function DrawerLayout() {
         overlayColor: 'rgba(0,0,0,0.4)',
       }}>
       <Drawer.Screen name="(tabs)" options={{ title: 'Dashboard' }} />
+      <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
       <Drawer.Screen name="resume-insights" options={{ title: 'Resume Insights' }} />
       <Drawer.Screen name="saved-jobs" options={{ title: 'Saved Jobs' }} />
       <Drawer.Screen name="help" options={{ title: 'Help' }} />

@@ -66,11 +66,11 @@
           <button
             class="nav-item"
             data-tab="sourcesTab"
-            data-title="Job sources"
-            data-desc="Where the scraper pulls listings from."
+            data-title="Sources"
+            data-desc="Where your own jobs came from: Manual, Gmail and this extension. Only you can see them."
             type="button"
           >
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.1-1.1"/></svg>
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
             <span>Sources</span>
           </button>
 
@@ -214,14 +214,23 @@
           <p id="companiesError" class="error" role="alert"></p>
         </section>
 
-        <!-- ================= SOURCES ================= -->
+        <!-- ================= SOURCES (the signed-in user's own: Manual / Gmail / Extension) ================= -->
         <section id="sourcesTab" class="dashPanel hidden">
           <div class="filterBar">
             <button id="sourcesRefresh" class="ghost-btn" type="button">↻ Refresh</button>
           </div>
-
-          <div id="sourcesList" class="sourceList"></div>
-          <p id="sourcesEmpty" class="emptyState hidden">No sources yet — they'll show up once the scraper runs.</p>
+          <div class="tableWrap">
+            <table class="dataTable" id="sourcesTable">
+              <thead>
+                <tr>
+                  <th>Source</th>
+                  <th class="num">Your jobs</th>
+                </tr>
+              </thead>
+              <tbody id="sourcesBody"></tbody>
+            </table>
+          </div>
+          <p id="sourcesEmpty" class="emptyState hidden">No sources yet.</p>
           <p id="sourcesError" class="error" role="alert"></p>
         </section>
 

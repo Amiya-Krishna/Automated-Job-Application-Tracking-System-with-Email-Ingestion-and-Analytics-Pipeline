@@ -98,7 +98,7 @@ export default function HomeScreen() {
   /*
     Weekly application graph: real application dates bucketed into the
     last 7 calendar days. There's no per-day time-series endpoint on the
-    backend (see app/(drawer)/(tabs)/analytics.tsx's own note on this),
+    backend (see app/(drawer)/analytics.tsx's own note on this),
     so this is computed client-side from the already-fetched
     ['applications'] list rather than inventing a server capability.
    */
@@ -274,37 +274,11 @@ export default function HomeScreen() {
               <SectionHeader title="Quick actions" />
 
               <ThemedView style={styles.quickActionGrid}>
-                <QuickActionCard label="ATS score" hint="Paste a job description" icon="◎" tone="purple" onPress={() => router.push('/tailor')} />
-                <QuickActionCard label="Tailor resume" hint="Create a targeted version" icon="✦" tone="pink" onPress={() => router.push('/tailor')} />
-                <QuickActionCard label="Upload resume" hint="PDF or DOCX" icon="↑" tone="blue" onPress={() => router.push('/resumes')} />
+                <QuickActionCard label="Tailor resume" hint="ATS score + targeted version" icon="✦" tone="pink" onPress={() => router.push('/tailor')} />
                 <QuickActionCard label="Add application" hint="Track a new opportunity" icon="+" tone="green" onPress={() => router.push('/application/add')} />
-                <QuickActionCard label="Analytics" hint="See your progress" icon="◒" tone="orange" onPress={() => router.navigate('/analytics')} />
-                <QuickActionCard label="Saved jobs" icon="★" tone="purple"
-                  onPress={() => router.push('/saved-jobs')}
-                />
+                <QuickActionCard label="Upload resume" hint="PDF or DOCX" icon="↑" tone="blue" onPress={() => router.push('/resumes')} />
+                <QuickActionCard label="Saved jobs" hint="Jobs you bookmarked" icon="★" tone="purple" onPress={() => router.push('/saved-jobs')} />
               </ThemedView>
-            </ThemedView>
-
-            <ThemedView style={styles.section}>
-              <SectionHeader title="Applications this week" />
-
-              <Card variant="elevated">
-                <BarChart
-                  data={weeklyChartData}
-                  title="Applications per day, last 7 days"
-                />
-              </Card>
-            </ThemedView>
-
-            <ThemedView style={styles.section}>
-              <SectionHeader title="Status distribution" />
-
-              <Card variant="elevated" style={styles.donutCard}>
-                <DonutChart
-                  segments={statusDistribution}
-                  title="Applications by status"
-                />
-              </Card>
             </ThemedView>
 
             {upcomingInterviews.length > 0 ? (
@@ -365,6 +339,28 @@ export default function HomeScreen() {
                   subtitle="Applications you add, import from Gmail, or apply to will show up here."
                 />
               )}
+            </ThemedView>
+
+            <ThemedView style={styles.section}>
+              <SectionHeader title="Applications this week" />
+
+              <Card variant="elevated">
+                <BarChart
+                  data={weeklyChartData}
+                  title="Applications per day, last 7 days"
+                />
+              </Card>
+            </ThemedView>
+
+            <ThemedView style={styles.section}>
+              <SectionHeader title="Status distribution" />
+
+              <Card variant="elevated" style={styles.donutCard}>
+                <DonutChart
+                  segments={statusDistribution}
+                  title="Applications by status"
+                />
+              </Card>
             </ThemedView>
 
             <ThemedView style={styles.section}>

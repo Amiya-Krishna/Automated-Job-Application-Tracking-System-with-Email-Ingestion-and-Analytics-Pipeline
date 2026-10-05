@@ -131,5 +131,11 @@ export const Spacing = {
   six: 64,
 } as const;
 
+/** Corner radii used across the app, so cards, inputs and buttons agree. */
+export const Radius = { sm: 10, md: 14, lg: 20, xl: 28, pill: 999 } as const;
+
+/** Page-level layout: one horizontal gutter and one minimum touch target everywhere. */
+export const Layout = { gutter: 20, touch: 48, tabBarClearance: 24 } as const;
+
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
 export const MaxContentWidth = 800;

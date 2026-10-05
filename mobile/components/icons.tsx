@@ -33,3 +33,54 @@ export function PlusIcon({ color, size = 18 }: IconProps) {
     </Svg>
   );
 }
+
+export function SearchIcon({ color, size = 20 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Z" stroke={color} {...stroke} />
+      <Path d="m21 21-4.3-4.3" stroke={color} {...stroke} />
+    </Svg>
+  );
+}
+
+export function CloseIcon({ color, size = 18 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="M18 6 6 18M6 6l12 12" stroke={color} {...stroke} />
+    </Svg>
+  );
+}
+
+export function MenuIcon({ color, size = 22 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="M4 7h16M4 12h16M4 17h10" stroke={color} {...stroke} />
+    </Svg>
+  );
+}
+
+export function ChevronLeftIcon({ color, size = 22 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="m15 6-6 6 6 6" stroke={color} {...stroke} />
+    </Svg>
+  );
+}
+
+export function UserIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="M20 21a8 8 0 1 0-16 0" stroke={color} {...stroke} />
+      <Path d="M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke={color} {...stroke} />
+    </Svg>
+  );
+}
+
+export function ShieldIcon({ color, size = 24 }: IconProps) {
+  return (
+    <Svg {...base(size)} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Path d="M12 3 4 6v5c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6l-8-3Z" stroke={color} {...stroke} />
+      <Path d="m9 12 2 2 4-4" stroke={color} {...stroke} />
+    </Svg>
+  );
+}

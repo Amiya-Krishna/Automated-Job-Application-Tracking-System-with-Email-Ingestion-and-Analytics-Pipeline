@@ -3,13 +3,7 @@ const prisma = require("../lib/prisma"); // recommended centralized client
 
 const { applyQueue, analyticsQueue } = require("../queue");
 const { updateWeightsFromOutcome } = require("../services/learningService");
-
-// DIAGNOSTIC (not a behavior change): prints once, at server startup,
-// when this exact file is loaded. If you don't see this line in the API
-// server's console output when it starts, the running server is NOT
-// executing this file — which is the definitive way to confirm/rule out
-// an environment or stale-deployment mismatch, as opposed to a code bug
-// in this repository. Safe to delete once the mismatch is confirmed.
+const { visibleJobsWhere } = require("../services/visibility");
 
 // This router is mounted at app.use("/api/applications", auth, ...) in
 // server.js, so req.user is always populated below.
@@ -49,8 +43,10 @@ router.post("/:jobId", async (req, res) => {
       return res.status(400).json({ message: "Invalid job id" });
     }
 
-    const job = await prisma.jobs.findUnique({
-      where: { id: jobId },
+    // OWNERSHIP: only global jobs or the caller's own private jobs can be applied to; another
+    // user's private job is indistinguishable from a missing one.
+    const job = await prisma.jobs.findFirst({
+      where: { AND: [{ id: jobId }, visibleJobsWhere(req.user.id)] },
       include: {
         companies: { select: { name: true } },
         job_sources: { select: { name: true } },
@@ -131,16 +127,6 @@ router.post("/:jobId", async (req, res) => {
       { jobId, ownerUserId: req.user.id },
       { attempts: 3, backoff: { type: "exponential", delay: 5000 } },
     );
-
-    // DIAGNOSTIC (not a behavior change): prints the exact payload this
-    // request just enqueued. If this line shows `ownerUserId: <a real
-    // number>` in the API server's console but applyWorker.js still logs
-    // "has no ownerUserId" for the SAME jobId shortly after, that would
-    // mean the producer and the worker are not talking to the same
-    // Redis/queue — otherwise, if this line is never printed at all when
-    // you click Apply, the click isn't reaching this handler. Safe to
-    // delete once the mismatch is confirmed.
-    console.log("[applyRoutes] enqueued apply job", { jobId, ownerUserId: req.user.id });
 
     res.status(202).json({
       status: "queued",

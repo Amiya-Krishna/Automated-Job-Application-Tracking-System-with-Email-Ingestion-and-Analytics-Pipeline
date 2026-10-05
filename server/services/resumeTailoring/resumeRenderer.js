@@ -144,114 +144,159 @@ function splitTrailingDate(text) {
   return { left: String(text) };
 }
 
-function toPdf(p) {
+// Typographic scale for one render pass. `s` shrinks type and spacing together so a
+// resume that only just spills onto a second page can be fitted on one (never below ~0.86).
+function pdfMetrics(s) {
+  return {
+    name: 24 * (0.6 + 0.4 * s), contact: 9.5 * s, heading: 11 * s, entry: 10.8 * s, date: 10 * s, body: 10.4 * s, sub: 10 * s,
+    lead: 2.1 * s, secGap: 13 * s, entryGap: 7 * s, bulletGap: 1.8 * s, indent: 14 * s,
+  };
+}
+
+function renderPdf(p, scale) {
   const PDFDocument = require("pdfkit");
   return new Promise((resolve, reject) => {
-    const M = { top: 44, bottom: 44, left: 50, right: 50 };
-    const doc = new PDFDocument({ size: "A4", margins: M, bufferPages: false, info: { Title: p.personalInfo?.name || "Resume", Author: p.personalInfo?.name || "TrackTrail", Creator: "TrackTrail" } });
+    const M = { top: 50, bottom: 46, left: 54, right: 54 };
+    const doc = new PDFDocument({ size: "A4", margins: M, bufferPages: false, info: { Title: p.personalInfo?.name ? `${p.personalInfo.name} - Resume` : "Resume", Author: p.personalInfo?.name || "TrackTrail", Creator: "TrackTrail" } });
     const chunks = [];
+    let pages = 1;
+    doc.on("pageAdded", () => { pages += 1; });
     doc.on("data", (c) => chunks.push(c));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("end", () => resolve({ buffer: Buffer.concat(chunks), pages }));
     doc.on("error", reject);
 
     // Built-in fonts are WinAnsi (Windows-1252). Characters outside it are transliterated
     // (₹ -> "Rs.", arrows, minus signs, zero-width marks, accented Latin letters) and only
     // truly unrepresentable ones become "?", so the file stays valid and readable.
-    const WINANSI = /[\u0009 -~\u00a0-\u00ff–—‘’‚“”„†‡•…‰‹›€™]/;
-    const MAP = { "\u20b9": "Rs. ", "\u2192": "->", "\u2190": "<-", "\u2194": "<->", "\u2212": "-", "\u2010": "-", "\u2011": "-", "\u2012": "-", "\u2265": ">=", "\u2264": "<=", "\u2248": "~", "\u25cf": "\u2022", "\u25aa": "\u2022", "\u25e6": "\u2022", "\u25a0": "\u2022", "\u25b6": ">", "\u2605": "*", "\u2713": "v", "\u2714": "v", "\u200b": "", "\u200c": "", "\u200d": "", "\ufeff": "", " ": " ", " ": " ", "\u0142": "l", "\u0141": "L", "\u0111": "d", "\u0110": "D", "\u0131": "i" };
+    const WINANSI = /[\u0009 -~ -ÿ–—‘’‚“”„†‡•…‰‹›€™]/;
+    const MAP = { "₹": "Rs. ", "→": "->", "←": "<-", "↔": "<->", "−": "-", "‐": "-", "‑": "-", "‒": "-", "≥": ">=", "≤": "<=", "≈": "~", "●": "•", "▪": "•", "◦": "•", "■": "•", "▶": ">", "★": "*", "✓": "v", "✔": "v", "​": "", "‌": "", "‍": "", "﻿": "", " ": " ", " ": " ", "ł": "l", "Ł": "L", "đ": "d", "Đ": "D", "ı": "i" };
     const safe = (s) => Array.from(String(s)).map((ch) => {
       if (WINANSI.test(ch)) return ch;
       if (MAP[ch] !== undefined) return MAP[ch];
-      const base = ch.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const base = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
       return base && WINANSI.test(base) ? base : "?";
     }).join("");
+
+    const T = pdfMetrics(scale);
     const W = doc.page.width - M.left - M.right;
     const bottom = () => doc.page.height - M.bottom;
     const ensure = (h) => { if (doc.y + h > bottom()) doc.addPage(); };
     const INK = "#111827", MUTED = "#4B5563", ACCENT = "#1F3A5F";
     const font = (f, size, color) => doc.font(f).fontSize(size).fillColor(color);
     const textH = (t, width, opts = {}) => doc.heightOfString(safe(t), { width, ...opts });
+    const gap = (pts) => { doc.y += pts; };
 
     const blocks = toBlocks(p);
-    // style of the "line" blocks that follow an entry header (role/location/tech lines)
-    let afterEntry = false;
+    let afterEntry = false; // "line" blocks directly under an entry header are sub-lines (role, tech, GPA)
 
     blocks.forEach((b, i) => {
       const next = blocks[i + 1];
       switch (b.type) {
         case "name":
-          font("Helvetica-Bold", 22, INK);
+          font("Helvetica-Bold", T.name, INK);
           doc.text(safe(b.text), M.left, doc.y, { width: W, align: "center", lineGap: 0 });
-          doc.moveDown(0.2);
+          gap(2);
           break;
         case "contact":
-          font("Helvetica", 9, MUTED);
+          font("Helvetica", T.contact, MUTED);
           doc.text(safe(b.text), M.left, doc.y, { width: W, align: "center", lineGap: 1.5 });
           break;
         case "heading": {
           afterEntry = false;
-          doc.moveDown(0.9);
-          font("Helvetica-Bold", 10.5, ACCENT);
-          // keep the heading with at least its first entry (header + one bullet)
-          ensure(14 + 6 + 34);
-          doc.text(safe(b.text.toUpperCase()), M.left, doc.y, { width: W, characterSpacing: 0.8, lineGap: 0 });
-          const y = doc.y + 2.5;
-          doc.moveTo(M.left, y).lineTo(M.left + W, y).lineWidth(0.8).strokeColor(ACCENT).stroke();
-          doc.y = y + 5;
+          gap(T.secGap);
+          font("Helvetica-Bold", T.heading, ACCENT);
+          // keep the heading together with its first entry (header + one line)
+          ensure(T.heading + 8 + T.entry + T.body * 2.4);
+          doc.text(safe(b.text.toUpperCase()), M.left, doc.y, { width: W, characterSpacing: 0.9, lineGap: 0 });
+          const y = doc.y + 3;
+          doc.moveTo(M.left, y).lineTo(M.left + W, y).lineWidth(0.9).strokeColor(ACCENT).stroke();
+          doc.y = y + 6;
           break;
         }
         case "entryHeader": {
           afterEntry = true;
-          doc.moveDown(0.35);
-          const { left, tail } = splitTrailingDate(b.text);
-          font("Helvetica-Bold", 10.2, INK);
-          const h = Math.max(textH(b.text, W), 12);
-          ensure(h + 14 + (next ? 12 : 0)); // header never stranded from what follows
-          if (tail) {
-            doc.text(safe(left), M.left, doc.y, { width: W, continued: true, lineGap: 0.5 });
-            font("Helvetica", 9.7, MUTED);
-            doc.text(safe(tail), { width: W, lineGap: 0.5 });
+          gap(T.entryGap);
+          const { left, date, tail } = splitTrailingDate(b.text);
+          const minAfter = T.body * 1.6 + (next ? 2 : 0);
+          if (date) {
+            // role / school left, dates flush right on the same baseline
+            font("Helvetica", T.date, MUTED);
+            const dateW = doc.widthOfString(safe(date)) + 1;
+            const leftW = W - dateW - 14;
+            font("Helvetica-Bold", T.entry, INK);
+            const h = Math.max(textH(left, leftW, { lineGap: 0.5 }), T.entry);
+            ensure(h + minAfter);
+            const y = doc.y;
+            doc.text(safe(left), M.left, y, { width: leftW, lineGap: 0.5 });
+            const endY = doc.y;
+            font("Helvetica", T.date, MUTED);
+            doc.text(safe(date), M.left + W - dateW, y, { width: dateW + 2, lineBreak: false });
+            doc.y = endY;
           } else {
-            doc.text(safe(left), M.left, doc.y, { width: W, lineGap: 0.5 });
+            // "Project | Tech, Stack": name in bold, the rest regular
+            const m = b.text.match(/^(.+?)(\s+\|\s+.+)$/);
+            font("Helvetica-Bold", T.entry, INK);
+            ensure(Math.max(textH(b.text, W), T.entry) + minAfter);
+            if (m && !tail) {
+              doc.text(safe(m[1]), M.left, doc.y, { width: W, continued: true, lineGap: 0.5 });
+              font("Helvetica", T.date, MUTED);
+              doc.text(safe(m[2]), { width: W, lineGap: 0.5 });
+            } else {
+              doc.text(safe(b.text), M.left, doc.y, { width: W, lineGap: 0.5 });
+            }
           }
+          gap(1);
           break;
         }
         case "bullet": {
-          const indent = 14;
-          font("Helvetica", 9.7, INK);
-          const h = textH(b.text, W - indent, { lineGap: 1.6 });
+          const indent = T.indent;
+          font("Helvetica", T.body, INK);
+          const h = textH(b.text, W - indent, { lineGap: T.lead });
           ensure(h + 2);
           const y = doc.y;
-          doc.text("•", M.left + 4, y, { width: indent - 4, lineGap: 1.6 });
-          doc.text(safe(b.text), M.left + indent, y, { width: W - indent, lineGap: 1.6 });
-          doc.y = Math.max(doc.y, y + h) + 1.4;
+          doc.text("•", M.left + 3, y, { width: indent - 3, lineGap: T.lead });
+          doc.text(safe(b.text), M.left + indent, y, { width: W - indent, lineGap: T.lead });
+          doc.y = Math.max(doc.y, y + h) + T.bulletGap;
           break;
         }
         case "gap":
-          doc.moveDown(0.25);
+          gap(T.entryGap * 0.4);
           break;
         default: {
-          // sub-lines under an entry header are italic; "Category: a, b" skills lines get a bold label
+          // "Category: a, b" skills lines get a bold label; sub-lines under an entry are muted italic
           const m = !afterEntry && b.text.match(/^([^:]{2,30}):\s+(.+)$/);
           if (m) {
-            font("Helvetica", 9.7, INK);
-            const h = textH(b.text, W, { lineGap: 1.6 });
+            font("Helvetica", T.body, INK);
+            const h = textH(b.text, W, { lineGap: T.lead });
             ensure(h + 2);
-            doc.font("Helvetica-Bold").text(safe(`${m[1]}: `), M.left, doc.y, { continued: true, width: W, lineGap: 1.6 });
-            doc.font("Helvetica").text(safe(m[2]), { width: W, lineGap: 1.6 });
-            doc.moveDown(0.1);
+            doc.font("Helvetica-Bold").text(safe(`${m[1]}: `), M.left, doc.y, { continued: true, width: W, lineGap: T.lead });
+            doc.font("Helvetica").text(safe(m[2]), { width: W, lineGap: T.lead });
+            gap(T.bulletGap);
           } else {
-            font(afterEntry ? "Helvetica-Oblique" : "Helvetica", 9.5, afterEntry ? MUTED : INK);
-            const h = textH(b.text, W, { lineGap: 1.4 });
-            ensure(h + 2 + (next && next.type === "bullet" ? 12 : 0));
-            doc.text(safe(b.text), M.left, doc.y, { width: W, lineGap: 1.4 });
-            doc.moveDown(0.08);
+            font(afterEntry ? "Helvetica-Oblique" : "Helvetica", afterEntry ? T.sub : T.body, afterEntry ? MUTED : INK);
+            const h = textH(b.text, W, { lineGap: T.lead });
+            ensure(h + 2 + (next && next.type === "bullet" ? T.body * 1.4 : 0));
+            doc.text(safe(b.text), M.left, doc.y, { width: W, lineGap: T.lead });
+            gap(T.bulletGap);
           }
         }
       }
     });
     doc.end();
   });
+}
+
+// Renders at full size first; if that only just spills onto a second page it retries slightly
+// smaller (down to 0.86) so a one-page resume stays one page. Genuinely long resumes keep the
+// readable full size and flow onto more pages.
+async function toPdf(p) {
+  const first = await renderPdf(p, 1);
+  if (first.pages === 1) return first.buffer;
+  for (const s of [0.95, 0.91, 0.87]) {
+    const r = await renderPdf(p, s);
+    if (r.pages === 1) return r.buffer;
+  }
+  return first.buffer;
 }
 
 async function exportProfile(profile, format, opts = {}) {

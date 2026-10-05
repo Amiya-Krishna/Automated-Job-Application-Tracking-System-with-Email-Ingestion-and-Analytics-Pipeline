@@ -29,8 +29,9 @@ const ingestWorker = new Worker(
       result.status === "duplicate" ? result.canonicalJobId : result.jobId;
     if (trackedJobId && resolvedJobId) {
       try {
-        await prisma.trackedJob.update({
-          where: { id: Number(trackedJobId) },
+        // scoped to the owner: a forged trackedJobId can never relink someone else's row
+        await prisma.trackedJob.updateMany({
+          where: { id: Number(trackedJobId), userId: Number(bullJob.data.ownerUserId) },
           data: { engineJobId: BigInt(resolvedJobId) },
         });
       } catch (err) {

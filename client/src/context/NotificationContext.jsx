@@ -1,28 +1,22 @@
-// In-app notification center: list + unread badge count, persisted to
-// localStorage for this browser (there is no backend endpoint for this —
-// same reasoning as mobile/types/notifications.ts: no `notifications`
-// table/route exists on the backend). Subscribes to
-// services/notificationEvents.js so real actions elsewhere in the app
-// (submitting/editing a tracked job, saving a profile resume, finishing
-// a tailoring session) surface here without this file needing to know
-// about jobs, profiles, or tailoring.
+// In-app notification center, BACKED BY THE SERVER and scoped to the signed-in account.
 //
-// This is the SAME concept as mobile/context/NotificationContext.tsx —
-// same event types, same "meaningful events only" rule, same safe-
-// navigation-on-tap behaviour — ported to web's storage (localStorage
-// instead of AsyncStorage) and routing (react-router `to` paths instead
-// of Expo Router pathname/params). Deliberately NOT backed by a new
-// server table/route: nothing here needs to be visible cross-device or
-// survive a cleared browser, so a client-only store is the smallest
-// correct implementation, exactly like the mobile version already is.
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
+// Every notification belongs to exactly one user (notifications.user_id); the API only ever
+// returns, counts, updates or deletes the caller's own rows (server/services/notificationService.js).
+// Nothing is stored in the browser any more: the old localStorage list was shared by every
+// account that signed in on the same browser, so one user's notifications showed up for the next.
+// The legacy key is wiped on load, and the in-memory list is dropped the moment the account
+// changes or signs out.
+//
+// Real actions elsewhere in the app (saving/editing a tracked job, saving a profile resume,
+// finishing a tailoring session) still publish through services/notificationEvents.js; this file
+// turns each event into a notification recorded for the current user.
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import api from "../api";
+import { useAuth } from "./AuthContext";
 import { onNotificationEvent } from "../services/notificationEvents";
 
-const STORAGE_KEY = "tracktrail-notifications";
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
+const LEGACY_STORAGE_KEY = "tracktrail-notifications";
+const POLL_MS = 60_000;
 
 // Converts a real NotificationEvent into the fields a notification needs.
 // Kept as a pure mapping (event in, notification-shape out) so it's easy
@@ -74,49 +68,82 @@ function fromEvent(event) {
   }
 }
 
-function readStored() {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
+const fromServer = (n) => ({
+  id: n.id,
+  kind: n.kind,
+  title: n.title,
+  body: n.body,
+  read: Boolean(n.read),
+  createdAt: n.createdAt,
+  to: n.target && typeof n.target.to === "string" && n.target.to.startsWith("/") ? n.target.to : undefined,
+});
 
 const NotificationContext = createContext(null);
 
 export function NotificationProvider({ children }) {
-  const [notifications, setNotifications] = useState(readStored);
-  const hydratedRef = useRef(true); // localStorage read is synchronous, unlike AsyncStorage
+  const { user } = useAuth(false);
+  const userId = user?.id ?? null;
+  const [notifications, setNotifications] = useState([]);
+  const activeUser = useRef(null);
 
   useEffect(() => {
-    if (!hydratedRef.current) return;
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(notifications));
-  }, [notifications]);
+    try { window.localStorage.removeItem(LEGACY_STORAGE_KEY); } catch { /* ignore */ }
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const res = await api.get("/notifications/inbox");
+      // ignore a response that arrives after the account changed
+      if (activeUser.current === userId) setNotifications((res.data?.data || []).map(fromServer));
+    } catch { /* keep what we have; the next poll retries */ }
+  }, [userId]);
+
+  // Account change / sign-out: forget the previous account's notifications immediately.
+  useEffect(() => {
+    activeUser.current = userId;
+    setNotifications([]);
+    if (!userId) return undefined;
+    refresh();
+    const timer = setInterval(refresh, POLL_MS);
+    const onFocus = () => refresh();
+    window.addEventListener("focus", onFocus);
+    return () => { clearInterval(timer); window.removeEventListener("focus", onFocus); };
+  }, [userId, refresh]);
 
   useEffect(() => {
-    return onNotificationEvent((event) => {
+    if (!userId) return undefined;
+    return onNotificationEvent(async (event) => {
       const built = fromEvent(event);
       if (!built) return;
-      setNotifications((prev) => [
-        { id: makeId(), createdAt: new Date().toISOString(), read: false, ...built },
-        ...prev,
-      ]);
+      try {
+        const res = await api.post("/notifications/inbox", {
+          kind: built.kind,
+          title: built.title,
+          body: built.body,
+          target: built.to ? { to: built.to } : undefined,
+        });
+        if (activeUser.current === userId && res.data?.data) setNotifications((prev) => [fromServer(res.data.data), ...prev]);
+      } catch { /* a missed in-app notification never blocks the action that caused it */ }
     });
-  }, []);
+  }, [userId]);
+
+  // Optimistic updates; on failure re-sync from the server.
+  const act = useCallback((optimistic, request) => {
+    setNotifications(optimistic);
+    Promise.resolve().then(request).catch(() => refresh());
+  }, [refresh]);
 
   const value = useMemo(
     () => ({
       notifications,
       unreadCount: notifications.filter((n) => !n.read).length,
-      markAsRead: (id) =>
-        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n))),
-      markAllAsRead: () => setNotifications((prev) => prev.map((n) => ({ ...n, read: true }))),
-      remove: (id) => setNotifications((prev) => prev.filter((n) => n.id !== id)),
-      clearAll: () => setNotifications([]),
+      markAsRead: (id) => act((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)), () => api.post(`/notifications/inbox/${id}/read`)),
+      markAllAsRead: () => act((prev) => prev.map((n) => ({ ...n, read: true })), () => api.post("/notifications/inbox/read-all")),
+      remove: (id) => act((prev) => prev.filter((n) => n.id !== id), () => api.delete(`/notifications/inbox/${id}`)),
+      clearAll: () => act(() => [], () => api.delete("/notifications/inbox")),
     }),
-    [notifications]
+    [notifications, act]
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

@@ -14,13 +14,27 @@ const { normalizeJobUrl } = require("./jobUrl");
  *            sourceName: 'linkedin'|'indeed', sourceUrl, externalJobId, postedAt }
  */
 async function ingestJob(payload) {
-  const sourceRes = await query("SELECT id FROM job_sources WHERE name = $1", [
+  const sourceRes = await query("SELECT id, scope FROM job_sources WHERE name = $1", [
     payload.sourceName,
   ]);
   if (!sourceRes.rows.length) {
     throw new Error(`Unknown job source: ${payload.sourceName}`);
   }
   const sourceId = sourceRes.rows[0].id;
+
+  // OWNERSHIP (see services/visibility.js): the source decides, never the caller.
+  //  - private source (manual / gmail / extension): the job belongs to payload.ownerUserId,
+  //    which is mandatory - an ownerless private job is refused.
+  //  - global source (linkedin, naukri, ...): the job is never owned, whatever the payload says.
+  const isPrivate = sourceRes.rows[0].scope === "private";
+  const ownerUserId = isPrivate ? Number(payload.ownerUserId) : null;
+  if (isPrivate && (!Number.isInteger(ownerUserId) || ownerUserId < 1)) {
+    throw new Error(`Jobs from the private source "${payload.sourceName}" need an ownerUserId`);
+  }
+  // conflict target matching the partial unique indexes of migration 20261004000000
+  const conflictTarget = isPrivate
+    ? "(owner_user_id, source_id, external_job_id) WHERE owner_user_id IS NOT NULL"
+    : "(source_id, external_job_id) WHERE owner_user_id IS NULL";
 
   // Optional structured details; normalised so a bad value can never fail the insert.
   const salaryText = typeof payload.salaryText === "string" && payload.salaryText.trim() ? payload.salaryText.trim().slice(0, 255) : null;
@@ -65,6 +79,7 @@ async function ingestJob(payload) {
     description: payload.description,
     companyId,
     postedAt: payload.postedAt,
+    ownerUserId,
   });
 
   const hash = contentHash(payload);
@@ -76,9 +91,9 @@ async function ingestJob(payload) {
     const inserted = await query(
       `INSERT INTO jobs (company_id, title, normalized_title, description, location,
                           remote_type, source_id, source_url, external_job_id,
-                          canonical_job_id, status, posted_at, content_hash, salary_text, skills)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'duplicate',$11,$12,$13,$14::text[])
-       ON CONFLICT (source_id, external_job_id) DO NOTHING
+                          canonical_job_id, status, posted_at, content_hash, salary_text, skills, owner_user_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'duplicate',$11,$12,$13,$14::text[],$15::int)
+       ON CONFLICT ${conflictTarget} DO NOTHING
        RETURNING id`,
       [
         companyId,
@@ -95,6 +110,7 @@ async function ingestJob(payload) {
         hash,
         salaryText,
         skills,
+        ownerUserId,
       ],
     );
 
@@ -109,10 +125,10 @@ async function ingestJob(payload) {
     // ownerUserId semantics as the non-duplicate path: undefined for
     // ownerless scrape/discovery submissions, which matchWorker already
     // fans out to every profile for.
-    if (payload.ownerUserId) {
+    if (ownerUserId) {
       await matchQueue.add(
         "score",
-        { jobId: duplicate.id, ownerUserId: payload.ownerUserId },
+        { jobId: duplicate.id, ownerUserId },
         { attempts: 3, backoff: { type: "exponential", delay: 3000 } },
       );
     }
@@ -127,9 +143,9 @@ async function ingestJob(payload) {
   const inserted = await query(
     `INSERT INTO jobs (company_id, title, normalized_title, description, location,
                         remote_type, source_id, source_url, external_job_id,
-                        status, posted_at, content_hash, salary_text, skills)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'new',$10,$11,$12,$13::text[])
-     ON CONFLICT (source_id, external_job_id) DO UPDATE SET scraped_at = now(),
+                        status, posted_at, content_hash, salary_text, skills, owner_user_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'new',$10,$11,$12,$13::text[],$14::int)
+     ON CONFLICT ${conflictTarget} DO UPDATE SET scraped_at = now(),
        salary_text = COALESCE(EXCLUDED.salary_text, jobs.salary_text),
        skills = CASE WHEN cardinality(EXCLUDED.skills) > 0 THEN EXCLUDED.skills ELSE jobs.skills END
      RETURNING id`,
@@ -147,6 +163,7 @@ async function ingestJob(payload) {
       hash,
       salaryText,
       skills,
+      ownerUserId,
     ],
   );
   const jobId = inserted.rows[0].id;
@@ -161,7 +178,7 @@ async function ingestJob(payload) {
     // Left undefined for scrape/discovery jobs, which have no single
     // owner — matchWorker fans out over every user's profile for those,
     // since the job is genuinely shared catalog data.
-    { jobId, ownerUserId: payload.ownerUserId },
+    { jobId, ownerUserId: ownerUserId || undefined },
     { attempts: 3, backoff: { type: "exponential", delay: 3000 } },
   );
 

@@ -16,6 +16,9 @@ const loginLimiter = createRateLimiter({ name: "auth-login", windowMs: 15 * 60 *
 const registerLimiter = createRateLimiter({ name: "auth-register", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_REGISTER_MAX) || 15 });
 const forgotLimiter = createRateLimiter({ name: "auth-forgot", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_FORGOT_MAX) || 8 });
 const resetLimiter = createRateLimiter({ name: "auth-reset", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_RESET_MAX) || 30 });
+// Administrator sign-in gets its own, tighter budget so the admin door cannot be brute-forced
+// at the user-login rate.
+const adminLoginLimiter = createRateLimiter({ name: "auth-login-admin", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_ADMIN_LOGIN_MAX) || 8 });
 const refreshLimiter = createRateLimiter({ name: "auth-refresh", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_REFRESH_MAX) || 120 });
 const deleteLimiter = createRateLimiter({ name: "auth-delete", windowMs: 60 * 60 * 1000, max: 5 });
 
@@ -54,6 +57,14 @@ function clearWebRefreshCookie(req, res) { res.clearCookie("tt_refresh", refresh
 function deviceInfo(req) {
   const b = (req.body && req.body.device) || {};
   return { deviceName: b.deviceName, platform: b.platform, appVersion: req.header("x-app-version") || b.appVersion };
+}
+// Which sign-in door the client used: "user" or "admin" (omitted by older clients). This is only
+// a REQUEST: the account's real role always comes from the database (see /login), and every
+// admin API re-checks it again on each call (middleware/requireAdmin).
+function requestedPortal(req) {
+  const raw = req.body && (req.body.role !== undefined ? req.body.role : req.body.portal);
+  if (raw === undefined || raw === null || raw === "") return null;
+  return raw === "admin" || raw === "user" ? raw : "invalid";
 }
 const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role === "admin" ? "admin" : "user" });
 
@@ -117,14 +128,19 @@ router.post("/register", registerLimiter, async (req, res) => {
 });
 
 // LOGIN
-router.post("/login", loginLimiter, async (req, res) => {
+router.post("/login", loginLimiter, (req, res, next) => (requestedPortal(req) === "admin" ? adminLoginLimiter(req, res, next) : next()), async (req, res) => {
   try {
     const { email, password } = req.body || {};
     const mobile = isMobileClient(req);
+    const portal = requestedPortal(req);
 
+    if (portal === "invalid") {
+      return res.status(400).json({ message: 'role must be "user" or "admin"' });
+    }
     if (typeof email !== "string" || typeof password !== "string" || !email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
     }
+    const adminPortal = portal === "admin";
 
     // ✅ Find user
     const user = await prisma.user.findUnique({
@@ -133,11 +149,12 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     // Mobile gets one generic message (no account enumeration). Web keeps the
     // specific "User not found" text its Login page uses to suggest signing up.
+    // The administrator door never says whether an account exists.
     const generic = "Invalid email or password";
 
     if (!user) {
       return res.status(400).json({
-        message: mobile ? generic : "User not found",
+        message: mobile || adminPortal ? generic : "User not found",
       });
     }
 
@@ -146,7 +163,17 @@ router.post("/login", loginLimiter, async (req, res) => {
 
     if (!validPassword) {
       return res.status(400).json({
-        message: mobile ? generic : "Invalid Password",
+        message: mobile || adminPortal ? generic : "Invalid Password",
+      });
+    }
+
+    // Role gate (server-side, from the database row just loaded - never from the request).
+    // Only reached with a correct password, so it cannot be used to probe for admin emails.
+    // No session / token is issued on refusal.
+    if (adminPortal && user.role !== "admin") {
+      return res.status(403).json({
+        message: "This account does not have administrator access. Use the User sign-in instead.",
+        code: "admin_required",
       });
     }
 

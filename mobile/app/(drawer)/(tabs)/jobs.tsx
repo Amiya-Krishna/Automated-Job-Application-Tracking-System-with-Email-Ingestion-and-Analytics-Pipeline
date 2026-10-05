@@ -1,21 +1,23 @@
-import { Link, useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, TextInput } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/empty-state';
+import { FilterChips } from '@/components/filter-chips';
+import { SearchBar } from '@/components/search-bar';
 import { ErrorState } from '@/components/error-state';
 import { JobCard } from '@/components/job-card';
 import { LoadingState } from '@/components/loading-state';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useApplications } from '@/hooks/use-applications';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useJobsInfinite } from '@/hooks/use-jobs';
 import { useSavedJobs } from '@/hooks/use-saved-jobs';
-import { useSourceNameById } from '@/hooks/use-sources';
+import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import type { EngineJob } from '@/types/jobs';
 
@@ -27,11 +29,11 @@ import type { EngineJob } from '@/types/jobs';
 // "new" in practice (nothing in the ingestion pipeline ever changes it —
 // see types/jobs.ts's EngineJob.status comment), so no status filter UI
 // is built: it would have exactly one option that does anything.
-const MIN_SCORE_OPTIONS: { label: string; value: number | undefined }[] = [
-  { label: 'All matches', value: undefined },
-  { label: '70%+', value: 70 },
-  { label: '85%+', value: 85 },
-];
+const MIN_SCORE_OPTIONS = [
+  { label: 'All matches', value: 'all' },
+  { label: '70%+', value: '70' },
+  { label: '85%+', value: '85' },
+] as const;
 
 export default function JobsScreen() {
   const theme = useTheme();
@@ -41,7 +43,9 @@ export default function JobsScreen() {
   // this just seeds its initial value.
   const { q } = useLocalSearchParams<{ q?: string }>();
   const [searchText, setSearchText] = useState(q ?? '');
-  const [minScore, setMinScore] = useState<number | undefined>(undefined);
+  const [minScoreKey, setMinScoreKey] = useState<'all' | '70' | '85'>('all');
+  const minScore = minScoreKey === 'all' ? undefined : Number(minScoreKey);
+  const { isAdmin } = useAuth();
   const debouncedSearch = useDebouncedValue(searchText);
   const { isSaved, toggleSaved } = useSavedJobs();
 
@@ -57,7 +61,6 @@ export default function JobsScreen() {
     isFetchingNextPage,
   } = useJobsInfinite({ minScore });
 
-  const sourceNameById = useSourceNameById();
   const applications = useApplications();
 
   // AppliedJob.engineJobId is a stringified job id (see
@@ -78,11 +81,10 @@ export default function JobsScreen() {
     if (!query) return jobs;
 
     return jobs.filter((job) => {
-      const sourceName = job.source_id ? sourceNameById.get(job.source_id) : undefined;
-      const haystack = [job.title, job.companies?.name, job.location, sourceName];
+      const haystack = [job.title, job.companies?.name, job.location, job.job_sources?.name];
       return haystack.some((field) => field?.toLowerCase().includes(query));
     });
-  }, [jobs, debouncedSearch, sourceNameById]);
+  }, [jobs, debouncedSearch]);
 
   const isFiltering = debouncedSearch.trim().length > 0 || minScore !== undefined;
   const noResultsFromFilters = isFiltering && jobs.length > 0 && filteredJobs.length === 0;
@@ -90,61 +92,23 @@ export default function JobsScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <ScreenHeader title="Jobs" />
-
-        <ThemedView style={styles.directoryLinks}>
-          <Link href="/companies" asChild>
-            <Pressable accessibilityRole="button" style={styles.directoryLink}>
-              <ThemedText type="small" themeColor="tint">
-                Companies
-              </ThemedText>
-            </Pressable>
-          </Link>
-          <Link href="/sources" asChild>
-            <Pressable accessibilityRole="button" style={styles.directoryLink}>
-              <ThemedText type="small" themeColor="tint">
-                Sources
-              </ThemedText>
-            </Pressable>
-          </Link>
-        </ThemedView>
+        <ScreenHeader title="Jobs" subtitle="Ranked by how well they match your profile" />
 
         <ThemedView style={styles.controls}>
-          <TextInput
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search title, company, location…"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            style={[
-              styles.searchInput,
-              { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.border },
-            ]}
+          <SearchBar value={searchText} onChangeText={setSearchText} placeholder="Search title, company, location…" />
+          <FilterChips
+            label="Minimum match score"
+            options={MIN_SCORE_OPTIONS}
+            value={minScoreKey}
+            onChange={setMinScoreKey}
           />
-
-          <ThemedView style={styles.filterRow}>
-            {MIN_SCORE_OPTIONS.map((option) => {
-              const selected = option.value === minScore;
-              return (
-                <Pressable
-                  key={option.label}
-                  accessibilityRole="button"
-                  onPress={() => setMinScore(option.value)}
-                  style={[
-                    styles.filterChip,
-                    {
-                      borderColor: selected ? theme.tint : theme.border,
-                      backgroundColor: selected ? theme.tint : 'transparent',
-                    },
-                  ]}>
-                  <ThemedText type="small" style={selected ? styles.filterChipTextSelected : undefined}>
-                    {option.label}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
+          <ThemedView style={styles.directoryLinks}>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/companies')} style={styles.directoryLink}>
+              <ThemedText type="smallBold" themeColor="tint">Browse companies ›</ThemedText>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => router.push('/sources')} style={styles.directoryLink}>
+              <ThemedText type="smallBold" themeColor="tint">{isAdmin ? 'Sources & discovery ›' : 'My sources ›'}</ThemedText>
+            </Pressable>
           </ThemedView>
         </ThemedView>
 
@@ -159,7 +123,7 @@ export default function JobsScreen() {
             renderItem={({ item }) => (
               <JobCard
                 item={item}
-                sourceName={item.source_id ? sourceNameById.get(item.source_id) : undefined}
+                sourceName={item.job_sources?.name ?? undefined}
                 appliedStatus={appliedStatusByJobId.get(String(item.id))}
                 isSaved={isSaved(item.id)}
                 onToggleSaved={() => toggleSaved(item)}
@@ -188,7 +152,7 @@ export default function JobsScreen() {
                   actionLabel="Clear search & filters"
                   onActionPress={() => {
                     setSearchText('');
-                    setMinScore(undefined);
+                    setMinScoreKey('all');
                   }}
                 />
               ) : (
@@ -206,62 +170,10 @@ export default function JobsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  safeArea: {
-    flex: 1,
-    gap: Spacing.three,
-  },
-  title: {
-    fontSize: 28,
-    lineHeight: 34,
-    paddingHorizontal: Spacing.four,
-  },
-  directoryLinks: {
-    flexDirection: 'row',
-    gap: Spacing.four,
-    paddingHorizontal: Spacing.four,
-    backgroundColor: 'transparent',
-  },
-  directoryLink: {
-    minHeight: 32,
-    justifyContent: 'center',
-  },
-  controls: {
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
-    backgroundColor: 'transparent',
-  },
-  searchInput: {
-    borderWidth: 1,
-    borderRadius: Spacing.three,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    fontSize: 16,
-    minHeight: 44,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.two,
-    backgroundColor: 'transparent',
-  },
-  filterChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.half,
-    minHeight: 36,
-    justifyContent: 'center',
-  },
-  filterChipTextSelected: {
-    color: '#ffffff',
-  },
-  listContent: {
-    flexGrow: 1,
-    paddingHorizontal: Spacing.four,
-    paddingBottom: Spacing.six,
-    gap: Spacing.two,
-  },
+  container: { flex: 1 },
+  safeArea: { flex: 1, gap: Spacing.two },
+  controls: { gap: 12, paddingHorizontal: Layout.gutter, paddingBottom: 4, backgroundColor: 'transparent' },
+  directoryLinks: { flexDirection: 'row', flexWrap: 'wrap', columnGap: Spacing.four, backgroundColor: 'transparent' },
+  directoryLink: { minHeight: 36, justifyContent: 'center' },
+  listContent: { flexGrow: 1, paddingHorizontal: Layout.gutter, paddingTop: 4, paddingBottom: Spacing.six, gap: Spacing.two },
 });

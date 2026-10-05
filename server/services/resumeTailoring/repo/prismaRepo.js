@@ -248,9 +248,10 @@ function createPrismaRepo(prismaArg) {
     async getTrackedJob(userId, id) {
       return prisma.trackedJob.findFirst({ where: { id, userId } });
     },
-    async getEngineJob(id) {
-      const j = await prisma.jobs.findUnique({
-        where: { id: BigInt(id) },
+    // OWNERSHIP: only a global job or one of THIS user's own private jobs (else null -> 404).
+    async getEngineJob(id, userId) {
+      const j = await prisma.jobs.findFirst({
+        where: { id: BigInt(id), OR: [{ owner_user_id: null }, { owner_user_id: userId }] },
         include: { companies: { select: { name: true } } },
       });
       return (

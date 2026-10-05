@@ -1,6 +1,7 @@
 const router = require("express").Router();
 const { getAnalyticsSummary } = require("../services/analyticsService");
 const { query } = require("../lib/prisma");
+const requireAdmin = require("../middleware/requireAdmin");
 
 function formatAnalyticsResponse(data, rangeDays) {
   return {
@@ -58,7 +59,8 @@ router.get("/metrics", async (req, res) => {
 // references /analytics/summary) and analytics_daily is itself a genuinely
 // system-wide rollup table with no user dimension of its own (see
 // analyticsWorker.js) — left as-is, out of scope for this fix.
-router.get("/summary", async (req, res) => {
+// SYSTEM-WIDE rollup (all users' activity) -> admin only.
+router.get("/summary", requireAdmin, async (req, res) => {
   try {
     const days = parseInt(req.query.range, 10) || 30;
     const { rows } = await query(

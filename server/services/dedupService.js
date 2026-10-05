@@ -35,14 +35,22 @@ function descriptionSimilarity(a, b) {
 /**
  * Finds an existing job matching `newJob` (exact hash, then fuzzy).
  * Returns { id } of the canonical duplicate, or null if genuinely new.
- * newJob: { title, company, description, companyId, postedAt }
+ * newJob: { title, company, description, companyId, postedAt, ownerUserId }
+ *
+ * Scoped by ownership: a job may only be a duplicate of a GLOBAL job or of one of the SAME
+ * owner's private jobs - never of another user's private job (that would link two accounts and
+ * leak one user's data). A global job (ownerUserId null/undefined) only matches global jobs.
  */
 async function findDuplicate(newJob) {
   const hash = contentHash(newJob);
+  const owner = newJob.ownerUserId ? Number(newJob.ownerUserId) : null;
 
   const exact = await query(
-    "SELECT id FROM jobs WHERE content_hash = $1 LIMIT 1",
-    [hash],
+    `SELECT id FROM jobs
+      WHERE content_hash = $1 AND (owner_user_id IS NULL OR owner_user_id = $2::int)
+      ORDER BY (owner_user_id IS NULL) DESC, id ASC
+      LIMIT 1`,
+    [hash, owner],
   );
   if (exact.rows.length) return { id: exact.rows[0].id, matchType: "exact" };
 
@@ -51,9 +59,11 @@ async function findDuplicate(newJob) {
   const candidates = await query(
     `SELECT id, normalized_title, description FROM jobs
      WHERE company_id = $1
+       AND (owner_user_id IS NULL OR owner_user_id = $4::int)
        AND ($2::timestamptz IS NULL OR posted_at BETWEEN $2::timestamptz - make_interval(days => $3::int)
-                                                       AND $2::timestamptz + make_interval(days => $3::int))`,
-    [newJob.companyId, newJob.postedAt || null, DATE_WINDOW_DAYS],
+                                                       AND $2::timestamptz + make_interval(days => $3::int))
+     ORDER BY (owner_user_id IS NULL) DESC, id ASC`,
+    [newJob.companyId, newJob.postedAt || null, DATE_WINDOW_DAYS, owner],
   );
 
   for (const candidate of candidates.rows) {

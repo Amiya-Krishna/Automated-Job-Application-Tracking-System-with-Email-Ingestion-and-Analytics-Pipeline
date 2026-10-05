@@ -21,7 +21,7 @@ const TOKEN_KEY = 'push_token';
 export type PushPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
 
 const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
-export const isPushSupported = !isExpoGo && Device.isDevice;
+export const isPushSupported = Platform.OS !== 'web' && !isExpoGo && Device.isDevice;
 
 let handlerSet = false;
 /** Foreground behaviour: show a banner + add to the list, silently. Call once at startup. */

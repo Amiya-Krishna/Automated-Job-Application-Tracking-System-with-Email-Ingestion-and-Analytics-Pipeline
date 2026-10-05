@@ -8,100 +8,165 @@ import { Avatar } from '@/components/avatar';
 import { ChevronRightIcon } from '@/components/icons';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useProfile } from '@/hooks/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 
-interface MenuItem { label: string; subtitle?: string; icon: string; href?: Href; tone: string; soft: string; }
+interface MenuItem {
+  label: string;
+  hint?: string;
+  icon: string;
+  href: Href;
+  tone: string;
+}
 
-const MENU_ITEMS: MenuItem[] = [
-  { label: 'Dashboard', icon: '⌂', href: '/', tone: '#4F46E5', soft: '#EEF2FF' },
-  { label: 'Job Tracker', icon: '▣', href: '/applications', tone: '#2563EB', soft: '#DBEAFE' },
-  { label: 'Analytics', icon: '◒', href: '/analytics', tone: '#059669', soft: '#D1FAE5' },
-  { label: 'Notifications', icon: '◌', href: '/notifications', tone: '#DB2777', soft: '#FCE7F3' },
-  { label: 'Profile', icon: '◉', href: '/profile', tone: '#EA580C', soft: '#FFEDD5' },
-  { label: 'Saved Jobs', icon: '★', href: '/saved-jobs', tone: '#CA8A04', soft: '#FEF3C7' },
-  { label: 'Resume Insights', icon: '◆', href: '/resume-insights', tone: '#7C3AED', soft: '#EDE9FE' },
+// Primary destinations also live in the bottom tabs (Home, Jobs, Tracker, Alerts, Profile); they are
+// repeated here only because drawer-level screens (Analytics, Saved Jobs ...) have no tab bar.
+const WORKSPACE: MenuItem[] = [
+  { label: 'Dashboard', icon: '⌂', href: '/', tone: '#4F46E5' },
+  { label: 'Jobs', icon: '◈', href: '/jobs', tone: '#2563EB' },
+  { label: 'Job Tracker', icon: '▣', href: '/applications', tone: '#0891B2' },
+  { label: 'Analytics', icon: '◒', href: '/analytics', tone: '#059669' },
+  { label: 'Saved Jobs', icon: '★', href: '/saved-jobs', tone: '#CA8A04' },
+  { label: 'Notifications', icon: '◌', href: '/notifications', tone: '#DB2777' },
+  { label: 'Profile', icon: '◉', href: '/profile', tone: '#EA580C' },
 ];
+
+const RESUME: MenuItem[] = [
+  { label: 'My resumes', hint: 'Upload and manage', icon: '↑', href: '/resumes', tone: '#2563EB' },
+  { label: 'ATS score & tailoring', hint: 'Match a job description', icon: '✦', href: '/tailor', tone: '#7C3AED' },
+  { label: 'Resume insights', hint: 'Skills and gaps', icon: '◆', href: '/resume-insights', tone: '#9333EA' },
+];
+
+// Admin-only: rendered only for a server-verified admin (user.role comes from /auth/login and /auth/me).
+const SOURCES_ITEM: MenuItem = { label: 'Sources', hint: 'Where your jobs come from', icon: '⛁', href: '/sources', tone: '#0EA5E9' };
+const ADMIN_SOURCES_ITEM: MenuItem = { label: 'Sources & discovery', hint: 'Fetched job boards', icon: '⛨', href: '/sources', tone: '#E11D48' };
+const ADMIN: MenuItem[] = [ADMIN_SOURCES_ITEM];
 
 export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const theme = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const profile = useProfile();
   const displayName = profile.data?.full_name || user?.name || 'Your account';
   const displayEmail = profile.data?.email || user?.email || null;
 
-  const go = (href: Href) => { navigation.dispatch(DrawerActions.closeDrawer()); router.push(href); };
+  const go = (href: Href) => {
+    navigation.dispatch(DrawerActions.closeDrawer());
+    router.push(href);
+  };
   const handleLogout = () => {
     navigation.dispatch(DrawerActions.closeDrawer());
-    Alert.alert('Log out?', undefined, [{ text: 'Cancel', style: 'cancel' }, { text: 'Log out', style: 'destructive', onPress: () => logout() }]);
+    Alert.alert('Log out?', undefined, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Log out', style: 'destructive', onPress: () => logout() },
+    ]);
   };
+
+  const renderItem = (item: MenuItem) => (
+    <Pressable
+      key={item.label}
+      accessibilityRole="button"
+      accessibilityLabel={item.label}
+      onPress={() => go(item.href)}
+      style={({ pressed }) => [styles.item, pressed && { backgroundColor: theme.backgroundSelected }]}>
+      <View style={[styles.itemIcon, { backgroundColor: `${item.tone}1F` }]}>
+        <ThemedText style={[styles.itemGlyph, { color: item.tone }]}>{item.icon}</ThemedText>
+      </View>
+      <View style={styles.itemCopy}>
+        <ThemedText type="smallBold">{item.label}</ThemedText>
+        {item.hint ? (
+          <ThemedText type="caption" themeColor="textSecondary">
+            {item.hint}
+          </ThemedText>
+        ) : null}
+      </View>
+      <ChevronRightIcon color={theme.textSecondary} size={16} />
+    </Pressable>
+  );
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-          <View style={[styles.profileHero, { backgroundColor: theme.tint }]}>
-            <View style={styles.heroOrb} />
-            <View style={styles.profileTop}>
-              <Avatar name={displayName} size={56} />
-              <Pressable onPress={() => go('/account/settings')} style={styles.settingsButton}>
-                <ThemedText style={styles.settingsIcon}>⚙</ThemedText>
-              </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open profile"
+            onPress={() => go('/profile')}
+            style={[styles.profile, { backgroundColor: theme.tint }]}>
+            <Avatar name={displayName} size={52} />
+            <View style={styles.profileCopy}>
+              <ThemedText type="headline" numberOfLines={1} style={styles.white}>
+                {displayName}
+              </ThemedText>
+              {displayEmail ? (
+                <ThemedText type="caption" numberOfLines={1} style={styles.mutedWhite}>
+                  {displayEmail}
+                </ThemedText>
+              ) : null}
+              {isAdmin ? (
+                <View style={styles.adminPill}>
+                  <ThemedText type="caption" style={styles.adminPillText}>
+                    ADMIN
+                  </ThemedText>
+                </View>
+              ) : null}
             </View>
-            <ThemedText type="subtitle" style={styles.white}>{displayName}</ThemedText>
-            {displayEmail ? <ThemedText type="caption" style={styles.mutedWhite}>{displayEmail}</ThemedText> : null}
-            <View style={styles.profilePill}><ThemedText type="caption" style={styles.pillText}>TRACKTRAIL • CAREER HUB</ThemedText></View>
-          </View>
+          </Pressable>
 
-          <View style={styles.section}>
-            <ThemedText type="overline" themeColor="textSecondary" style={styles.sectionLabel}>Career Studio</ThemedText>
-            <Pressable onPress={() => go('/resumes')} style={({pressed}) => [styles.feature, pressed && styles.pressed]}>
-              <View style={[styles.featureIcon, {backgroundColor:'#DBEAFE'}]}><ThemedText style={{color:'#2563EB',fontSize:21}}>↑</ThemedText></View>
-              <View style={styles.featureCopy}><ThemedText type="smallBold">Upload resume</ThemedText><ThemedText type="caption" themeColor="textSecondary">Manage your active resume</ThemedText></View>
-              <ChevronRightIcon color={theme.textSecondary} size={17} />
-            </Pressable>
-            <Pressable onPress={() => go('/tailor')} style={({pressed}) => [styles.feature, pressed && styles.pressed]}>
-              <View style={[styles.featureIcon, {backgroundColor:'#F3E8FF'}]}><ThemedText style={{color:'#7C3AED',fontSize:20}}>◎</ThemedText></View>
-              <View style={styles.featureCopy}><ThemedText type="smallBold">Check ATS score</ThemedText><ThemedText type="caption" themeColor="textSecondary">Paste a job description</ThemedText></View>
-              <ChevronRightIcon color={theme.textSecondary} size={17} />
-            </Pressable>
-            <Pressable onPress={() => go('/tailor')} style={({pressed}) => [styles.feature, pressed && styles.pressed]}>
-              <View style={[styles.featureIcon, {backgroundColor:'#FCE7F3'}]}><ThemedText style={{color:'#DB2777',fontSize:20}}>✦</ThemedText></View>
-              <View style={styles.featureCopy}><ThemedText type="smallBold">Tailor my resume</ThemedText><ThemedText type="caption" themeColor="textSecondary">Generate a targeted version</ThemedText></View>
-              <ChevronRightIcon color={theme.textSecondary} size={17} />
-            </Pressable>
-          </View>
+          <Section label="Workspace">{(isAdmin ? WORKSPACE : [...WORKSPACE, SOURCES_ITEM]).map(renderItem)}</Section>
+          <Section label="Resume studio">{RESUME.map(renderItem)}</Section>
+          {isAdmin ? <Section label="Admin">{ADMIN.map(renderItem)}</Section> : null}
 
-          <View style={styles.section}>
-            <ThemedText type="overline" themeColor="textSecondary" style={styles.sectionLabel}>Workspace</ThemedText>
-            {MENU_ITEMS.map((item) => (
-              <Pressable key={item.label} onPress={() => item.href && go(item.href)} style={({pressed}) => [styles.menuItem, pressed && styles.pressed]}>
-                <View style={[styles.menuIcon, {backgroundColor:item.soft}]}><ThemedText style={{color:item.tone,fontSize:18,fontWeight:'800'}}>{item.icon}</ThemedText></View>
-                <ThemedText type="smallBold" style={styles.menuLabel}>{item.label}</ThemedText>
-                <ChevronRightIcon color={theme.textSecondary} size={16} />
-              </Pressable>
-            ))}
-          </View>
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
-          <View style={[styles.footerCard, {backgroundColor: theme.accentSoft}]}>
-            <ThemedText type="smallBold">Keep moving.</ThemedText>
-            <ThemedText type="caption" themeColor="textSecondary">Your next opportunity starts with one strong application.</ThemedText>
-          </View>
-
-          <Pressable onPress={handleLogout} style={styles.logout}><ThemedText type="smallBold" themeColor="danger">Log out</ThemedText></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => go('/account/settings')} style={styles.plainRow}>
+            <ThemedText type="smallBold">Settings</ThemedText>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => go('/help')} style={styles.plainRow}>
+            <ThemedText type="smallBold">Help</ThemedText>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => go('/about')} style={styles.plainRow}>
+            <ThemedText type="smallBold">About</ThemedText>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={handleLogout} style={styles.plainRow}>
+            <ThemedText type="smallBold" themeColor="danger">
+              Log out
+            </ThemedText>
+          </Pressable>
         </ScrollView>
       </SafeAreaView>
     </ThemedView>
   );
 }
 
+function Section({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.section}>
+      <ThemedText type="overline" themeColor="textSecondary" style={styles.sectionLabel}>
+        {label}
+      </ThemedText>
+      {children}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  container:{flex:1}, safeArea:{flex:1}, content:{padding:16,gap:18,paddingBottom:30},
-  profileHero:{borderRadius:28,padding:18,overflow:'hidden',gap:5,minHeight:170}, heroOrb:{position:'absolute',width:150,height:150,borderRadius:80,right:-55,top:-60,backgroundColor:'rgba(255,255,255,0.12)'},
-  profileTop:{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:6}, settingsButton:{width:40,height:40,borderRadius:13,backgroundColor:'rgba(255,255,255,0.16)',alignItems:'center',justifyContent:'center'}, settingsIcon:{color:'#fff',fontSize:20}, white:{color:'#fff'}, mutedWhite:{color:'rgba(255,255,255,0.75)'},
-  profilePill:{alignSelf:'flex-start',marginTop:9,paddingHorizontal:10,paddingVertical:5,borderRadius:999,backgroundColor:'rgba(255,255,255,0.14)'}, pillText:{color:'rgba(255,255,255,0.9)',fontSize:9,letterSpacing:0.8},
-  section:{gap:8}, sectionLabel:{marginLeft:4,marginBottom:2}, feature:{flexDirection:'row',alignItems:'center',gap:12,padding:12,borderRadius:20,backgroundColor:'transparent'}, featureIcon:{width:44,height:44,borderRadius:15,alignItems:'center',justifyContent:'center'}, featureCopy:{flex:1,gap:2},
-  menuItem:{flexDirection:'row',alignItems:'center',gap:12,padding:8,borderRadius:18,minHeight:58}, menuIcon:{width:40,height:40,borderRadius:13,alignItems:'center',justifyContent:'center'}, menuLabel:{flex:1}, pressed:{opacity:0.72,transform:[{scale:0.985}]},
-  footerCard:{borderRadius:20,padding:15,gap:4}, logout:{paddingVertical:10,alignItems:'center'},
+  container: { flex: 1 },
+  safeArea: { flex: 1 },
+  content: { padding: 16, gap: 18, paddingBottom: 28 },
+  profile: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 16, borderRadius: Radius.xl, minHeight: 88 },
+  profileCopy: { flex: 1, gap: 2, minWidth: 0 },
+  white: { color: '#fff' },
+  mutedWhite: { color: 'rgba(255,255,255,0.8)' },
+  adminPill: { alignSelf: 'flex-start', marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: Radius.pill, backgroundColor: 'rgba(255,255,255,0.22)' },
+  adminPillText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.8 },
+  section: { gap: 2 },
+  sectionLabel: { marginLeft: 8, marginBottom: 4 },
+  item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, paddingVertical: 8, borderRadius: Radius.md, minHeight: 52 },
+  itemIcon: { width: 38, height: 38, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  itemGlyph: { fontSize: 17, fontWeight: '800' },
+  itemCopy: { flex: 1, minWidth: 0 },
+  divider: { height: StyleSheet.hairlineWidth * 2, marginVertical: 4 },
+  plainRow: { minHeight: 48, justifyContent: 'center', paddingHorizontal: 12 },
 });

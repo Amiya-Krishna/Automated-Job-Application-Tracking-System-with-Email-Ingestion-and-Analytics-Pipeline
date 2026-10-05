@@ -50,13 +50,18 @@ async function scoreJobForProfile(job, profile, corpus) {
 const matchWorker = new Worker(
   "match",
   async (bullJob) => {
-    const { jobId, ownerUserId } = bullJob.data;
+    const { jobId } = bullJob.data;
 
     const { rows: jobRows } = await query("SELECT * FROM jobs WHERE id = $1", [
       jobId,
     ]);
     const job = jobRows[0];
     if (!job) throw new Error(`Job ${jobId} not found`);
+
+    // OWNERSHIP comes from the job row (jobs.owner_user_id), never from the queue payload:
+    // a private job is only ever scored against its owner's profile; a global job against
+    // every user's profile.
+    const ownerUserId = job.owner_user_id || null;
 
     const profiles = ownerUserId
       ? (
@@ -75,8 +80,8 @@ const matchWorker = new Worker(
 
     // Small recent-corpus sample so TF-IDF's IDF reflects real term rarity.
     const { rows: corpusRows } = await query(
-      "SELECT description FROM jobs WHERE id != $1 ORDER BY scraped_at DESC LIMIT 200",
-      [jobId],
+      "SELECT description FROM jobs WHERE id != $1 AND (owner_user_id IS NULL OR owner_user_id = $2::int) ORDER BY scraped_at DESC LIMIT 200",
+      [jobId, ownerUserId],
     );
     const corpus = corpusRows.map((r) => r.description);
 

@@ -11,7 +11,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { EngineJob } from '@/types/jobs';
 
-const STORAGE_KEY = '@tracktrail/saved-jobs';
+// Saved jobs can include the user's own PRIVATE jobs, so the list is stored per account and the
+// in-memory copy is dropped when the account changes or signs out. The old single shared key is
+// removed.
+const LEGACY_STORAGE_KEY = '@tracktrail/saved-jobs';
+let currentUserId: number | null = null;
+const storageKey = () => (currentUserId == null ? null : `${LEGACY_STORAGE_KEY}/u${currentUserId}`);
 
 type SavedJobsListener = (jobs: EngineJob[]) => void;
 const listeners = new Set<SavedJobsListener>();
@@ -27,10 +32,27 @@ export function subscribeSavedJobs(listener: SavedJobsListener) {
   return () => listeners.delete(listener);
 }
 
+/** Call on sign-in (id) and sign-out (null). Clears the previous account's list at once. */
+export async function setSavedJobsUser(userId: number | null): Promise<void> {
+  if (currentUserId === userId) return;
+  currentUserId = userId;
+  publish([]);
+  cachedJobs = null;
+  void AsyncStorage.removeItem(LEGACY_STORAGE_KEY).catch(() => {});
+  if (userId != null) {
+    const loaded = await getSavedJobs();
+    if (currentUserId === userId) publish(loaded);
+  }
+}
+
 export async function getSavedJobs(): Promise<EngineJob[]> {
   if (cachedJobs !== null) return cachedJobs;
+  const key = storageKey();
+  if (!key) return [];
+  const forUser = currentUserId;
 
-  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  const raw = await AsyncStorage.getItem(key);
+  if (forUser !== currentUserId) return [];
   if (!raw) {
     cachedJobs = [];
     return cachedJobs;
@@ -44,6 +66,12 @@ export async function getSavedJobs(): Promise<EngineJob[]> {
   return cachedJobs;
 }
 
+async function persist(jobs: EngineJob[]) {
+  const key = storageKey();
+  if (!key) throw new Error('Sign in to save jobs');
+  await AsyncStorage.setItem(key, JSON.stringify(jobs));
+}
+
 export async function saveJob(job: EngineJob): Promise<EngineJob[]> {
   const current = await getSavedJobs();
   if (current.some((item) => item.id === job.id)) return current;
@@ -54,7 +82,7 @@ export async function saveJob(job: EngineJob): Promise<EngineJob[]> {
   // Optimistic update: every mounted screen reflects the tap immediately.
   publish(next);
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await persist(next);
     return next;
   } catch (error) {
     // Storage is the durable source of truth; restore the last known value if it fails.
@@ -73,7 +101,7 @@ export async function unsaveJob(jobId: number): Promise<EngineJob[]> {
   // Optimistic update: the star disappears immediately.
   publish(next);
   try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    await persist(next);
     return next;
   } catch (error) {
     publish(previous);

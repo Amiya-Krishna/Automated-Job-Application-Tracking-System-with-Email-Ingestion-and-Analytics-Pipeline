@@ -132,27 +132,12 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
               the drawer redesign; every route path is unchanged since
               group folders don't appear in the URL. */}
           <Stack.Screen name="(drawer)" />
-          {/* "Job Tracker" in the drawer — promoted out of the tab bar
-              (see app/(drawer)/(tabs)/_layout.tsx's comment) into its own
-              pushed screen, with a native header + back button. */}
-          <Stack.Screen
-            name="applications"
-            options={{
-              headerShown: true,
-              title: 'Job Tracker',
-              headerStyle: { backgroundColor: colors.background },
-              headerTintColor: colors.tint,
-              headerTitleStyle: { color: colors.text },
-              headerShadowVisible: false,
-            }}
-          />
           <Stack.Screen name="application" />
           <Stack.Screen name="job" />
           <Stack.Screen name="tailor" />
           <Stack.Screen name="resumes" />
           <Stack.Screen name="account" />
           <Stack.Screen name="companies" />
-          <Stack.Screen name="sources" />
           <Stack.Screen name="legal" />
           <Stack.Screen
             name="engine-applications"
@@ -165,6 +150,12 @@ function RootNavigator({ fontsReady }: { fontsReady: boolean }) {
               headerShadowVisible: false,
             }}
           />
+        </Stack.Protected>
+        {/* Sources: every signed-in account. The API decides what each role sees (users: Manual /
+            Gmail / Extension, own data only; admins: the fetched sources). Discovery tools inside the
+            screen are admin-only. */}
+        <Stack.Protected guard={status === 'authenticated'}>
+          <Stack.Screen name="sources" />
         </Stack.Protected>
         <Stack.Protected guard={status === 'unauthenticated'}>
           <Stack.Screen name="(auth)" />

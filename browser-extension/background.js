@@ -175,11 +175,13 @@ async function deleteJob(id) {
 
 // Is the job on the current page already tracked? Matches by the site's own job
 // id (or the canonical URL the extractor produced) — never by title/company
-// guesses, so a "tracked" badge is never wrong.
+// guesses, so a "tracked" badge is never wrong. A saved row's `sourceName` is its origin
+// ("extension"); the website it was captured on is `platform`, which is what the extractor's
+// sourceName is compared with.
 function findTracked(jobs, sj) {
   if (!Array.isArray(jobs) || !sj) return null;
   const hit = jobs.find((j) =>
-    (sj.externalJobId && j.externalJobId === sj.externalJobId && (!j.sourceName || !sj.sourceName || j.sourceName === sj.sourceName)) ||
+    (sj.externalJobId && j.externalJobId === sj.externalJobId && (!(j.platform || j.sourceName) || !sj.sourceName || (j.platform || j.sourceName) === sj.sourceName)) ||
     (sj.sourceUrl && j.sourceUrl && j.sourceUrl === sj.sourceUrl));
   return hit ? { id: hit.id, status: hit.status || "Applied" } : null;
 }

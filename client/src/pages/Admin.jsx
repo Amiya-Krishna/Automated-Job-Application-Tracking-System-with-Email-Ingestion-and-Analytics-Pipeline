@@ -116,10 +116,11 @@ function Admin() {
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
               <section className={card}>
                 <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Sources</h2>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">The fetched sources shared with every user. Users' private Manual / Gmail / Extension jobs are never shown here.</p>
                 <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
                   {sources.map((s) => (
                     <li key={s.id} className="flex items-center justify-between gap-3 py-2.5">
-                      <span className="truncate text-sm font-semibold capitalize text-slate-800 dark:text-slate-200">{s.name} <span className="font-normal text-slate-400">· {s.jobCount} jobs</span></span>
+                      <span className="min-w-0 text-sm font-semibold capitalize text-slate-800 dark:text-slate-200"><span className="block truncate">{s.name} <span className="font-normal text-slate-400">· {s.jobCount} jobs</span></span>{s.baseUrl && <span className="block truncate text-xs font-normal normal-case text-slate-400">{s.baseUrl}</span>}</span>
                       <AdminDeleteButton kind="sources" id={s.id} label={s.name} hasJobs={(s.jobCount || 0) > 0} onDeleted={() => load()} />
                     </li>
                   ))}

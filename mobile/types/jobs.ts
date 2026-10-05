@@ -47,10 +47,8 @@ export interface EngineJob {
   location: string | null;
   remote_type: string | null;
   /**
-   * A raw job_sources.id FK — engineJobsRoutes.js does not `include` the
-   * job_sources relation, so there is no human-readable name on this
-   * object. Resolve a display name via useSources() (GET /api/sources)
-   * and match on this id — see hooks/use-sources.ts.
+   * Raw job_sources.id FK. The human-readable source name is `job_sources.name` below (the API
+   * includes it so normal users never need the admin-only Sources catalog).
    */
   source_id: number | null;
   source_url: string;
@@ -72,6 +70,8 @@ export interface EngineJob {
   scraped_at: string | null;
   content_hash: string;
   companies: { name: string } | null;
+  /** Display name of where the job came from (e.g. "linkedin"); null for jobs with no source. */
+  job_sources?: { name: string } | null;
   match_scores: EngineJobMatchScore[]; // 0 or 1 entries in practice (unique per job/profile/method), never assume exactly 1
 }
 

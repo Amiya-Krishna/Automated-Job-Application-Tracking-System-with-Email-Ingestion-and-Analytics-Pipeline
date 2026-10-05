@@ -6,7 +6,8 @@ import ThemeToggle from "./ThemeToggle";
 import NotificationBell from "./NotificationBell";
 
 // Nav restructured around the user's workflow (Overview / Job Discovery /
-// Matched Jobs / Applied Jobs / Companies / Sources / Analytics / Profile)
+// Matched Jobs / Applied Jobs / Companies / Analytics / Profile). Sources is for everyone
+// (users see Manual / Gmail / Extension, admins the fetched sources - the API decides).
 // rather than raw table names — see App.jsx for the matching route
 // changes and redirects from the old paths.
 const primaryLinks = [
@@ -88,7 +89,7 @@ function Navbar() {
             </Link>
           ))}
 
-          {/* Engine pages (jobs, match_scores, applications, companies, job_sources) */}
+          {/* Engine pages (jobs, match_scores, applications, companies) */}
           <div className="relative" ref={engineRef}>
             <button
               type="button"

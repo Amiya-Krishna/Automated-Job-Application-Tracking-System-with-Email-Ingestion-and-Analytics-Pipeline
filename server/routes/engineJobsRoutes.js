@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const prisma = require("../lib/prisma");
+const { visibleJobsWhere } = require("../services/visibility");
 
 // SECURITY FIX (multi-user audit): match_scores used to be included here
 // with no profile filter at all (`where: { method: "tfidf" }`), which
@@ -41,7 +42,10 @@ router.get("/", async (req, res) => {
     // best tfidf score in JS, sort by that, then paginate in memory.
     const jobs = await prisma.jobs.findMany({
       where: {
-        ...(status && { status }),
+        // OWNERSHIP: global jobs OR this user's own private jobs - nothing else, ever.
+        AND: [visibleJobsWhere(req.user.id)],
+        // inert per-instance "duplicate" rows are never listed unless explicitly asked for
+        status: status || { not: "duplicate" },
         ...(minScore &&
           profileId && {
             match_scores: {
@@ -56,6 +60,10 @@ router.get("/", async (req, res) => {
       include: {
         companies: {
           select: { name: true },
+        },
+        // Display name only (e.g. "linkedin" / "gmail"): where the job came from.
+        job_sources: {
+          select: { name: true, scope: true },
         },
         match_scores: {
           where: matchScoresWhere,
@@ -99,13 +107,19 @@ router.get("/:id", async (req, res) => {
       ? { method: "tfidf", profile_id: profileId }
       : { method: "tfidf", profile_id: -1 };
 
-    const job = await prisma.jobs.findUnique({
+    const job = await prisma.jobs.findFirst({
+      // OWNERSHIP: someone else's private job answers exactly like a missing one (404), so
+      // ids can't be probed.
       where: {
-        id: Number(req.params.id),
+        AND: [{ id: Number(req.params.id) }, visibleJobsWhere(req.user.id)],
       },
       include: {
         companies: {
           select: { name: true },
+        },
+        // Display name only (e.g. "linkedin" / "gmail"): where the job came from.
+        job_sources: {
+          select: { name: true, scope: true },
         },
         match_scores: {
           where: matchScoresWhere,
@@ -114,7 +128,7 @@ router.get("/:id", async (req, res) => {
       },
     });
 
-    if (!job) {
+    if (!job || Number.isNaN(Number(req.params.id))) {
       return res.status(404).json({ message: "Job not found" });
     }
 

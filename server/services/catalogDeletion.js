@@ -31,7 +31,8 @@ async function deleteJobsByIds(tx, ids) {
 
 async function deleteJob(id) {
   return prisma.$transaction(async (tx) => {
-    const job = await tx.jobs.findUnique({ where: { id: BigInt(id) }, select: { id: true } });
+    // admin catalog = GLOBAL jobs only; a user's private job is not deletable (or even findable) here
+    const job = await tx.jobs.findFirst({ where: { id: BigInt(id), owner_user_id: null }, select: { id: true } });
     if (!job) throw new DeletionError(404, "Job not found");
     return { deletedJobs: await deleteJobsByIds(tx, [job.id]) };
   });
@@ -41,7 +42,11 @@ async function deleteCompany(id, { withJobs = false } = {}) {
   return prisma.$transaction(async (tx) => {
     const company = await tx.companies.findUnique({ where: { id }, select: { id: true } });
     if (!company) throw new DeletionError(404, "Company not found");
-    const jobs = await tx.jobs.findMany({ where: { company_id: id }, select: { id: true } });
+    const jobs = await tx.jobs.findMany({ where: { company_id: id, owner_user_id: null }, select: { id: true } });
+    const privateInUse = await tx.jobs.count({ where: { company_id: id, owner_user_id: { not: null } } });
+    if (privateInUse) {
+      throw new DeletionError(409, "This company is still referenced by users' private jobs and cannot be deleted.", { code: "in_use_by_users" });
+    }
     if (jobs.length && !withJobs) {
       throw new DeletionError(409, `This company still has ${jobs.length} job(s). Delete them with the company, or remove the jobs first.`, { code: "has_jobs", jobCount: jobs.length });
     }
@@ -53,9 +58,10 @@ async function deleteCompany(id, { withJobs = false } = {}) {
 
 async function deleteSource(id, { withJobs = false } = {}) {
   return prisma.$transaction(async (tx) => {
-    const source = await tx.job_sources.findUnique({ where: { id }, select: { id: true, name: true } });
+    // only admin-fetched (global) sources can be deleted; manual / gmail / extension are structural
+    const source = await tx.job_sources.findFirst({ where: { id, scope: "global" }, select: { id: true, name: true } });
     if (!source) throw new DeletionError(404, "Source not found");
-    const jobs = await tx.jobs.findMany({ where: { source_id: id }, select: { id: true } });
+    const jobs = await tx.jobs.findMany({ where: { source_id: id, owner_user_id: null }, select: { id: true } });
     if (jobs.length && !withJobs) {
       throw new DeletionError(409, `This source still has ${jobs.length} job(s). Delete them with the source, or remove the jobs first.`, { code: "has_jobs", jobCount: jobs.length });
     }

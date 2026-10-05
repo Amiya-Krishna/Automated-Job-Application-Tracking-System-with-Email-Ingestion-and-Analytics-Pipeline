@@ -4,6 +4,8 @@ const prisma = require("../lib/prisma");
 const { bridgeTrackedJobToEngine } = require("../services/engineBridge");
 const { getAppliedJobsForUser } = require("../services/appliedJobsService");
 const { normalizeJobUrl } = require("../services/jobUrl");
+const { normalizeOrigin } = require("../services/visibility");
+const { ensureCompany } = require("../services/companyService");
 
 // Optional structured details (salary/stipend text, skills) - clamped so a bad value
 // can never fail a save.
@@ -16,8 +18,9 @@ function cleanSkills(v) {
 }
 
 // Fields a client may change through PUT /api/jobs/:id. Anything else (userId,
-// engineJobId, createdAt, ...) is ignored rather than written.
-const UPDATABLE = ["company", "role", "status", "interviewDate", "notes", "applicationDate", "sourceName", "sourceUrl", "externalJobId", "description", "location", "salaryText", "skills"];
+// engineJobId, createdAt, sourceName/platform = the immutable origin, ...) is ignored rather
+// than written.
+const UPDATABLE = ["company", "role", "status", "interviewDate", "notes", "applicationDate", "sourceUrl", "externalJobId", "description", "location", "salaryText", "skills"];
 
 // tracked_jobs.interview_date is a String? column (VarChar(50)), not a
 // Date. Previously the client sent an ISO string and this route did
@@ -48,7 +51,8 @@ function normalizeInterviewDate(value) {
 // company+role. A match returns the existing row instead of creating a
 // new one, so repeated clicks are idempotent.
 async function findExistingTrackedJob(userId, body) {
-  const { sourceName, externalJobId, sourceUrl, company, role } = body;
+  const { externalJobId, sourceUrl, company, role } = body;
+  const sourceName = normalizeOrigin(body.sourceName, body.platform).origin;
 
   if (sourceName && externalJobId) {
     const byExternalId = await prisma.trackedJob.findFirst({
@@ -86,6 +90,10 @@ router.post("/", auth, async (req, res) => {
     // Validate/clean the posting link once, up front: an invalid, non-http(s) or
     // over-long value is stored as null instead of failing the whole save.
     req.body.sourceUrl = normalizeJobUrl(req.body.sourceUrl);
+    // ORIGIN is decided here, not trusted from the client: a saved job is always the user's
+    // PRIVATE manual / gmail / extension job. A website name (linkedin, indeed, ...) sent by
+    // the extension is only the platform it was captured on.
+    const { origin, platform } = normalizeOrigin(req.body.sourceName, req.body.platform);
 
     const existing = await findExistingTrackedJob(req.user.id, req.body);
     if (existing) {
@@ -128,7 +136,8 @@ router.post("/", auth, async (req, res) => {
         // Removed. Dedup now happens above via findExistingTrackedJob();
         // engine-side dedup for the bridged jobs row happens in
         // dedupService.js.
-        sourceName: req.body.sourceName || "manual",
+        sourceName: origin,
+        platform,
         sourceUrl: req.body.sourceUrl || null,
         externalJobId: req.body.externalJobId || null,
         description: req.body.description || null,
@@ -137,6 +146,8 @@ router.post("/", auth, async (req, res) => {
         skills: cleanSkills(req.body.skills),
       },
     });
+
+    try { await ensureCompany(job.company); } catch (e) { console.warn("[jobRoutes] ensureCompany failed:", e.message); }
 
     // Best-effort bridge into the engine so this job can be matched
     // against the user's profile like any scraped/extension-saved job.

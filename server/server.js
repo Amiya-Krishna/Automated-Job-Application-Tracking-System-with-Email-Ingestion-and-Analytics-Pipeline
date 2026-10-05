@@ -118,6 +118,8 @@ app.use("/api/profile", auth, require("./routes/profileRoutes"));
 // AI resume tailoring: one central service used by web, mobile and the extension.
 app.use("/api/resume", auth, require("./routes/resumeRoutes").createResumeRouter());
 app.use("/api/companies", auth, require("./routes/companiesRoutes"));
+// Sources: every signed-in account, role-aware INSIDE the router (users get Manual/Gmail/
+// Extension with their own data only; admins get the fetched global sources only).
 app.use("/api/sources", auth, require("./routes/sourcesRoutes"));
 
 app.get("/", (req, res) => {

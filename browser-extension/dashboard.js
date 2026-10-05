@@ -538,59 +538,35 @@ companiesSearch.addEventListener("input", () => {
 });
 
 // ============================================================
-// SOURCES  (prisma `job_sources` table)
+// SOURCES  (the user's own Manual / Gmail / Extension - the API never returns anyone else's)
 // ============================================================
-const sourcesList = document.getElementById("sourcesList");
+const sourcesBody = document.getElementById("sourcesBody");
 const sourcesEmpty = document.getElementById("sourcesEmpty");
 const sourcesError = document.getElementById("sourcesError");
 const sourcesRefresh = document.getElementById("sourcesRefresh");
+const SOURCE_NAMES = { manual: "Manual", gmail: "Gmail", extension: "Browser extension" };
 
 async function loadSources() {
   sourcesError.textContent = "";
-  sourcesList.innerHTML = "";
+  sourcesBody.innerHTML = "";
   sourcesEmpty.classList.add("hidden");
-  skeleton(sourcesList, 3);
-
+  skeleton(sourcesBody, 3, "tr");
   try {
     const result = await apiAuth("/sources");
     clearSkeletons();
     const sources = result.data || [];
-
-    if (sources.length === 0) {
-      sourcesEmpty.classList.remove("hidden");
-      return;
-    }
-
-    const maxJobs = Math.max(1, ...sources.map((s) => s.jobCount || 0));
-
+    if (sources.length === 0) { sourcesEmpty.classList.remove("hidden"); return; }
     for (const s of sources) {
-      const pct = Math.round(((s.jobCount || 0) / maxJobs) * 100);
-      const row = document.createElement("div");
-      row.className = "sourceRow";
-      const head = cell("div", "sourceHead", "");
-      const info = cell("div", "", "");
-      info.append(cell("div", "sourceName", s.name || "Unnamed source"));
-      // only http(s) links — a scraped value like javascript:… must never become a clickable href
-      if (/^https?:\/\//i.test(s.baseUrl || "")) {
-        const link = cell("a", "sourceLink", s.baseUrl);
-        link.href = s.baseUrl;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        info.append(link);
-      }
-      head.append(info, cell("span", "pill", `${s.jobCount ?? 0} jobs`));
-      const track = cell("div", "funnelBarTrack", "");
-      const fill = cell("div", "funnelBarFill", "");
-      fill.style.width = `${pct}%`;
-      track.append(fill);
-      row.append(head, track);
-      sourcesList.appendChild(row);
+      const row = document.createElement("tr");
+      const count = cell("td", "num", "");
+      count.append(cell("span", "pill", String(s.jobCount ?? 0)));
+      row.append(cell("td", "cellStrong", SOURCE_NAMES[String(s.name).toLowerCase()] || s.name || "—"), count);
+      sourcesBody.appendChild(row);
     }
   } catch (err) {
     setError(sourcesError, err, loadSources);
   }
 }
-
 sourcesRefresh.addEventListener("click", loadSources);
 
 // ============================================================

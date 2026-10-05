@@ -18,7 +18,7 @@
     "scrape": "node services/scraper.js",
     "sync:extractors": "node scripts/syncExtractors.js",
     "make-admin": "node scripts/makeAdmin.js",
-    "test": "node --test \"tests/**/*.test.js\""
+    "test": "node --require ./tests/helpers/prismaClientFallback.js --test \"tests/**/*.test.js\""
   },
   "keywords": [],
   "author": "",

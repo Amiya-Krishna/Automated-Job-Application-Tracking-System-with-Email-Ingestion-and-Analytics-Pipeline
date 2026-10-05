@@ -36,7 +36,7 @@ function VersionRow({ v }: { v: VersionSummary }) {
       <ThemedText type="small" themeColor="textSecondary">
         {[fmt(v.createdAt), v.matchScore === null ? null : `Match ${v.matchScore}%`, provenance(v), v.status].filter(Boolean).join(' · ')}
       </ThemedText>
-      <Button label="Open" variant="secondary" onPress={() => router.push({ pathname: '/tailor', params: { versionId: String(v.id) } })} />
+      <Button size="sm" label="Open" variant="secondary" onPress={() => router.push({ pathname: '/tailor', params: { versionId: String(v.id) } })} />
     </ThemedView>
   );
 }
@@ -64,10 +64,11 @@ function ResumeCard({ r, busy, onUse, onDelete }: { r: ResumeListItem; busy: boo
       </View>
 
       <View style={styles.row}>
-        <Button label={r.isActive ? 'In use for tailoring' : 'Use for tailoring'} variant={r.isActive ? 'secondary' : 'primary'} disabled={r.isActive || busy} onPress={onUse} />
-        <Button label={`${viewingText ? 'Hide text' : 'View text'}`} variant="ghost" onPress={() => setViewingText((v) => !v)} />
+        <Button size="sm" label={r.isActive ? 'In use for tailoring' : 'Use for tailoring'} variant={r.isActive ? 'secondary' : 'primary'} disabled={r.isActive || busy} onPress={onUse} />
+        <Button size="sm" label={`${viewingText ? 'Hide text' : 'View text'}`} variant="ghost" onPress={() => setViewingText((v) => !v)} />
         {r.hasFile ? (
           <Button
+            size="sm"
             label={download.isPending ? 'Preparing…' : 'Download original'}
             variant="ghost"
             disabled={download.isPending}
@@ -76,15 +77,16 @@ function ResumeCard({ r, busy, onUse, onDelete }: { r: ResumeListItem; busy: boo
         ) : null}
         {r.isActive ? (
           <Button
+            size="sm"
             label={exportOriginal.isPending ? 'Preparing PDF…' : 'Export PDF'}
             variant="ghost"
             disabled={exportOriginal.isPending}
             onPress={() => exportOriginal.mutate({ id: 'original', format: 'pdf' }, { onError: (e) => Alert.alert('Export failed', errMsg(e)) })}
           />
         ) : null}
-        <Button label={`${open ? 'Hide' : 'Versions'}${r.versionCount ? ` (${r.versionCount})` : ''}`} variant="ghost" onPress={() => setOpen((v) => !v)} />
-        {r.sourceType === 'profile_text' ? <Button label="Edit profile text" variant="ghost" onPress={() => router.push('/account/edit')} /> : null}
-        <Button label="Delete" variant="danger" disabled={busy} onPress={onDelete} />
+        <Button size="sm" label={`${open ? 'Hide' : 'Versions'}${r.versionCount ? ` (${r.versionCount})` : ''}`} variant="ghost" onPress={() => setOpen((v) => !v)} />
+        {r.sourceType === 'profile_text' ? <Button size="sm" label="Edit profile text" variant="ghost" onPress={() => router.push('/account/edit')} /> : null}
+        <Button size="sm" label="Delete" variant="danger" disabled={busy} onPress={onDelete} />
       </View>
 
       {viewingText ? (

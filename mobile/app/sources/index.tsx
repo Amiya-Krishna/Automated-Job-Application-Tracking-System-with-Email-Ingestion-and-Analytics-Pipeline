@@ -222,13 +222,13 @@ export default function SourcesScreen() {
               Job sources
             </ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Where the scraper pulls listings from, and how many jobs each one has contributed.
+              {isAdmin ? 'The job boards you fetch from, and how many shared jobs each one has contributed.' : 'Where your own jobs came from. Only you can see these.'}
             </ThemedText>
 
             {!data || data.length === 0 ? (
               <EmptyState
                 title="No sources yet"
-                subtitle="Sources appear here as soon as the scraper ingests its first job."
+                subtitle={isAdmin ? 'Sources appear here as soon as the scraper ingests its first job.' : 'Jobs you add manually, import from Gmail or save with the extension appear here.'}
               />
             ) : (
               <ThemedView style={styles.sourcesList}>

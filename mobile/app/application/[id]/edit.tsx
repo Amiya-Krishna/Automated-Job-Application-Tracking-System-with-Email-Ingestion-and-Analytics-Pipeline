@@ -2,9 +2,11 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 
 import { ApplicationFormFields } from '@/components/application-form-fields';
+import { Button } from '@/components/button';
+import { StickyActions } from '@/components/sticky-actions';
 import { ErrorState } from '@/components/error-state';
 import { LoadingState } from '@/components/loading-state';
 import { ThemedText } from '@/components/themed-text';
@@ -109,16 +111,11 @@ export default function EditApplicationScreen() {
 
         <ApplicationFormFields control={control} errors={errors} />
 
-        <Pressable
-          accessibilityRole="button"
-          disabled={isSubmitting}
-          onPress={handleSubmit(onSubmit)}
-          style={[styles.submitButton, { backgroundColor: theme.tint, opacity: isSubmitting ? 0.7 : 1 }]}>
-          <ThemedText type="smallBold" style={styles.submitButtonText}>
-            {isSubmitting ? 'Saving…' : 'Save changes'}
-          </ThemedText>
-        </Pressable>
       </ScrollView>
+      <StickyActions>
+        <Button label="Cancel" variant="secondary" grow onPress={() => router.back()} disabled={isSubmitting} />
+        <Button label="Save changes" grow loading={isSubmitting} onPress={handleSubmit(onSubmit)} />
+      </StickyActions>
     </KeyboardAvoidingView>
   );
 }
@@ -139,15 +136,5 @@ const styles = StyleSheet.create({
     borderRadius: Spacing.two,
     padding: Spacing.three,
     backgroundColor: 'transparent',
-  },
-  submitButton: {
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  submitButtonText: {
-    color: '#ffffff',
   },
 });

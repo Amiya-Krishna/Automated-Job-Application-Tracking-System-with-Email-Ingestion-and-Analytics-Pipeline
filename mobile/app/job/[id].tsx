@@ -11,7 +11,6 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useApplications, useApplyToEngineJob } from '@/hooks/use-applications';
 import { useJob } from '@/hooks/use-jobs';
-import { useSourceNameById } from '@/hooks/use-sources';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
 import { formatDate, formatPercent } from '@/utils/format';
@@ -50,7 +49,6 @@ export default function JobDetailScreen() {
 
   const { data: job, isLoading, isError, error, refetch } = useJob(jobId);
   const applications = useApplications();
-  const sourceNameById = useSourceNameById();
   const applyMutation = useApplyToEngineJob();
   const [applyError, setApplyError] = useState<string | null>(null);
 
@@ -81,7 +79,7 @@ export default function JobDetailScreen() {
   const explanation = job.match_scores[0]?.explanation;
   const matchedSkills = Array.isArray(explanation?.matched_skills) ? explanation.matched_skills : [];
   const missingSkills = Array.isArray(explanation?.missing_skills) ? explanation.missing_skills : [];
-  const sourceName = job.source_id ? sourceNameById.get(job.source_id) : undefined;
+  const sourceName = job.job_sources?.name ?? undefined;
   const postedDate = job.posted_at ? formatDate(job.posted_at) : null;
 
   const runApply = () => {

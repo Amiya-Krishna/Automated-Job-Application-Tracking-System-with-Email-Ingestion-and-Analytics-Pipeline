@@ -2,22 +2,26 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/button';
 import { FormTextInput } from '@/components/form-text-input';
 import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Spacing } from '@/constants/theme';
+import { Layout, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
 import { ApiError } from '@/types/api';
+import type { LoginRole } from '@/types/auth';
 import { loginSchema, type LoginFormValues } from '@/utils/auth-validation';
 
 export default function LoginScreen() {
   const { login, sessionNotice, clearSessionNotice } = useAuth();
   const theme = useTheme();
-  const { registeredEmail } = useLocalSearchParams<{ registeredEmail?: string }>();
+  const params = useLocalSearchParams<{ registeredEmail?: string; role?: string }>();
+  // Only "admin" selects the admin door; anything else (including a missing param) is the user door.
+  const role: LoginRole = params.role === 'admin' ? 'admin' : 'user';
+  const isAdminLogin = role === 'admin';
   // Pre-filled when the server ended the session (expired/revoked) so the user knows why they are here.
   const [formError, setFormError] = useState<string | null>(sessionNotice);
 
@@ -27,165 +31,145 @@ export default function LoginScreen() {
     formState: { errors, isSubmitting },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: registeredEmail ?? '', password: '' },
+    defaultValues: { email: params.registeredEmail ?? '', password: '' },
   });
 
   const onSubmit = async (values: LoginFormValues) => {
     setFormError(null);
     clearSessionNotice();
     try {
-      await login(values);
-      // No explicit navigation call: the root layout's Stack.Protected
-      // guards (app/_layout.tsx) switch from the (auth) group to (drawer)
-      // automatically once auth status flips to 'authenticated'.
+      // `role` is only the door the person chose; the server verifies it against the account's
+      // real role and refuses admin sign-in for non-admins.
+      await login({ ...values, role });
+      // No explicit navigation call: the root layout's Stack.Protected guards switch from the
+      // (auth) group to (drawer) once auth status flips to 'authenticated'.
     } catch (err) {
-      // Covers invalid credentials ("User not found" / "Invalid
-      // Password", both 400 from the backend), network failures, and
-      // 5xx — ApiError.message is already a user-facing string (see
-      // services/api.ts), never a raw Axios error.
       setFormError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: theme.background }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.header}>
-          <ThemedText type="title" style={styles.title}>
-            Welcome back
-          </ThemedText>
-          <ThemedText type="small" themeColor="textSecondary">
-            Sign in to keep tracking your applications.
-          </ThemedText>
-        </ThemedView>
-
-        {formError ? (
-          <ThemedView style={[styles.errorBanner, { borderColor: theme.danger }]}>
-            <ThemedText type="small" themeColor="danger">
-              {formError}
-            </ThemedText>
-          </ThemedView>
-        ) : null}
-
-        <ThemedView style={styles.form}>
-          <Controller
-            control={control}
-            name="email"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <FormTextInput
-                label="Email address"
-                placeholder="you@example.com"
-                keyboardType="email-address"
-                textContentType="emailAddress"
-                autoComplete="email"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.email?.message}
-              />
-            )}
-          />
-
-          <Controller
-            control={control}
-            name="password"
-            render={({ field: { onChange, onBlur, value } }) => (
-              <FormTextInput
-                label="Password"
-                placeholder="Your password"
-                secureTextEntry
-                textContentType="password"
-                autoComplete="current-password"
-                value={value}
-                onChangeText={onChange}
-                onBlur={onBlur}
-                error={errors.password?.message}
-              />
-            )}
-          />
-
-          <Pressable
-            accessibilityRole="button"
-            disabled={isSubmitting}
-            onPress={handleSubmit(onSubmit)}
-            style={[styles.submitButton, { backgroundColor: theme.tint, opacity: isSubmitting ? 0.7 : 1 }]}>
-            <ThemedText type="smallBold" style={styles.submitButtonText}>
-              {isSubmitting ? 'Signing in…' : 'Sign in'}
-            </ThemedText>
-          </Pressable>
-
-          <Link href="/forgot-password" style={styles.forgotPasswordLink}>
-            <ThemedText type="small" themeColor="tint">
-              Forgot password?
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: theme.background }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <SafeAreaView style={styles.safe}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+          <Link href="/role" style={styles.back} accessibilityRole="link" accessibilityLabel="Change sign-in type">
+            <ThemedText type="smallBold" themeColor="tint">
+              ← Change role
             </ThemedText>
           </Link>
-        </ThemedView>
 
-        <ThemedView style={styles.footer}>
-          <ThemedText type="small" themeColor="textSecondary">
-            Don&apos;t have an account?{' '}
-          </ThemedText>
-          <Link href="/register">
-            <ThemedText type="small" themeColor="tint">
-              Create one
+          <View style={styles.header}>
+            <View style={[styles.rolePill, { backgroundColor: isAdminLogin ? '#FFE4E6' : theme.backgroundSelected }]}>
+              <ThemedText type="caption" style={{ color: isAdminLogin ? '#BE123C' : theme.tint, fontWeight: '700' }}>
+                {isAdminLogin ? 'ADMIN SIGN-IN' : 'USER SIGN-IN'}
+              </ThemedText>
+            </View>
+            <ThemedText type="title" style={styles.title}>
+              {isAdminLogin ? 'Administrator access' : 'Welcome back'}
             </ThemedText>
-          </Link>
-        </ThemedView>
+            <ThemedText type="small" themeColor="textSecondary">
+              {isAdminLogin ? 'Only accounts with the administrator role can sign in here.' : 'Sign in to keep tracking your applications.'}
+            </ThemedText>
+          </View>
+
+          {formError ? (
+            <View accessibilityRole="alert" style={[styles.errorBanner, { borderColor: theme.danger }]}>
+              <ThemedText type="small" themeColor="danger">
+                {formError}
+              </ThemedText>
+              {isAdminLogin && formError.toLowerCase().includes('administrator') ? (
+                <Link href={{ pathname: '/login', params: { role: 'user' } }}>
+                  <ThemedText type="smallBold" themeColor="tint">
+                    Go to User sign-in
+                  </ThemedText>
+                </Link>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={styles.form}>
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <FormTextInput
+                  label="Email address"
+                  placeholder="you@example.com"
+                  keyboardType="email-address"
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  error={errors.email?.message}
+                />
+              )}
+            />
+
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <FormTextInput
+                  label="Password"
+                  placeholder="Your password"
+                  secureTextEntry
+                  textContentType="password"
+                  autoComplete="current-password"
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  error={errors.password?.message}
+                />
+              )}
+            />
+
+            <Link href="/forgot-password" style={styles.forgot}>
+              <ThemedText type="smallBold" themeColor="tint">
+                Forgot password?
+              </ThemedText>
+            </Link>
+
+            <Button
+              fullWidth
+              label={isAdminLogin ? 'Sign in as Admin' : 'Sign in'}
+              loading={isSubmitting}
+              onPress={handleSubmit(onSubmit)}
+            />
+          </View>
+
+          {isAdminLogin ? (
+            <ThemedText type="small" themeColor="textSecondary" style={styles.center}>
+              Admin accounts are granted by an existing administrator and cannot be created here.
+            </ThemedText>
+          ) : (
+            <View style={styles.footer}>
+              <ThemedText type="small" themeColor="textSecondary">
+                Don&apos;t have an account?{' '}
+              </ThemedText>
+              <Link href="/register">
+                <ThemedText type="smallBold" themeColor="tint">
+                  Create one
+                </ThemedText>
+              </Link>
+            </View>
+          )}
+        </ScrollView>
       </SafeAreaView>
-      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    flexGrow: 1,
-  },
-  safeArea: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
-  },
-  header: {
-    gap: Spacing.one,
-    backgroundColor: 'transparent',
-  },
-  title: {
-    fontSize: 32,
-    lineHeight: 38,
-  },
-  form: {
-    gap: Spacing.three,
-    backgroundColor: 'transparent',
-  },
-  errorBanner: {
-    borderWidth: 1,
-    borderRadius: Spacing.two,
-    padding: Spacing.three,
-    backgroundColor: 'transparent',
-  },
-  submitButton: {
-    borderRadius: Spacing.two,
-    paddingVertical: Spacing.three,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  submitButtonText: {
-    color: '#ffffff',
-  },
-  forgotPasswordLink: {
-    alignSelf: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  footer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    backgroundColor: 'transparent',
-  },
+  safe: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', paddingHorizontal: Layout.gutter, paddingVertical: 24, gap: 24 },
+  back: { alignSelf: 'flex-start', minHeight: 44, paddingVertical: 12 },
+  header: { gap: 8 },
+  rolePill: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: Radius.pill },
+  title: { fontSize: 30, lineHeight: 36 },
+  form: { gap: 16 },
+  errorBanner: { borderWidth: 1, borderRadius: Radius.md, padding: 14, gap: 6 },
+  forgot: { alignSelf: 'flex-end', minHeight: 36, paddingVertical: 6 },
+  footer: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' },
+  center: { textAlign: 'center' },
 });

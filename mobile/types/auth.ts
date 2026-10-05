@@ -16,9 +16,14 @@ export interface AuthUser {
   role?: 'user' | 'admin';
 }
 
+/** Which sign-in door the person chose. The server verifies it against the account's real role. */
+export type LoginRole = 'user' | 'admin';
+
 export interface LoginRequest {
   email: string;
   password: string;
+  /** Requested portal. Admin sign-in is refused (403) by the server unless the account is an admin. */
+  role?: LoginRole;
 }
 
 export interface LoginResponse {

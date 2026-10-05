@@ -2,7 +2,6 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ChevronRightIcon } from '@/components/icons';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 interface QuickActionCardProps {

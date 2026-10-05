@@ -1,12 +1,12 @@
 import { router } from 'expo-router';
-import { FlatList, Pressable, StyleSheet } from 'react-native';
+import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { Button } from '@/components/button';
 import { EmptyState } from '@/components/empty-state';
 import { PushPermissionBanner } from '@/components/push-permission-banner';
 import { NotificationItem } from '@/components/notification-item';
 import { ScreenHeader } from '@/components/screen-header';
-import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useNotifications } from '@/hooks/use-notifications';
@@ -38,23 +38,11 @@ export default function NotificationsScreen() {
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea} edges={['top']}>
         <ScreenHeader
-          title="Notifications"
-          right={
-            unreadCount > 0 ? (
-              <Pressable accessibilityRole="button" onPress={markAllAsRead} hitSlop={Spacing.two}>
-                <ThemedText type="small" themeColor="tint">
-                  Mark all read
-                </ThemedText>
-              </Pressable>
-            ) : null
-          }
+          title="Alerts"
+          subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'All caught up'}
+          hideBell
+          right={unreadCount > 0 ? <Button label="Mark all read" variant="ghost" size="sm" onPress={markAllAsRead} /> : null}
         />
-
-        {unreadCount > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
-            {unreadCount} unread notification{unreadCount === 1 ? '' : 's'}
-          </ThemedText>
-        ) : null}
 
         <PushPermissionBanner />
 

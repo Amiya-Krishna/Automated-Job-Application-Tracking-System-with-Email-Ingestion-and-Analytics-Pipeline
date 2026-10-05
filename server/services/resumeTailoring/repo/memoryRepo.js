@@ -215,8 +215,8 @@ function createMemoryRepo() {
         null
       );
     },
-    async getEngineJob(id) {
-      return clone(db.engineJobs.find((j) => j.id === id)) || null;
+    async getEngineJob(id, userId) {
+      return clone(db.engineJobs.find((j) => j.id === id && (j.ownerUserId == null || j.ownerUserId === userId))) || null;
     },
 
     async findJd(userId, jdHash) {

@@ -128,6 +128,10 @@ async function runReminders({ prisma = require("../lib/prisma"), sendToUser = re
             if (e && e.code === "P2002") { stats.skipped += 1; continue; }
             throw e;
           }
+          // in-app inbox copy, owned by this user only (idempotent per dedupeKey)
+          try {
+            await require("./notificationService").createNotification(userId, { kind: r.kind, title: r.title, body: r.body, target: r.data && r.data.target, dedupeKey: r.dedupeKey }, prisma);
+          } catch (e) { console.error(`inbox write failed for a user: ${e.message}`); }
           const res = await sendToUser(userId, { title: r.title, body: r.body, data: r.data });
           if (res.sent > 0) stats.sent += 1;
           else await prisma.notificationLog.delete({ where: { id: logRow.id } }).catch(() => {});

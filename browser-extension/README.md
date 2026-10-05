@@ -122,7 +122,7 @@ room for it:
 
 These engine routes require the same `token` auth header as everything else
 in this extension — `/api/engine/jobs`, `/api/applications`, `/api/analytics`,
-`/api/profile`, `/api/companies`, and `/api/sources` are all mounted with
+`/api/profile` and `/api/companies` are all mounted with
 `auth` at the `app.use(...)` level in `server.js`, and the dashboard's
 `apiAuth()` helper in `dashboard.js` already attaches the stored token to
 every one of these calls.
