@@ -16,7 +16,8 @@ Scope: production-hardening pass over `browser-extension/` (popup, on-page dock,
 - **Every API request sends the header `x-client: extension`** (plus `token: <accessToken>`), which selects the existing extension-compatible branch on the server. There is no second auth system.
 - On a 401, `refreshSession()` calls `POST /auth/refresh` with the rotating refresh token.
   - **Single-flight:** concurrent callers share one refresh (the token rotates, so a second concurrent refresh would reuse a spent token).
-  - **Only a definitive rejection (400/401/403) clears the session.** 429, 5xx and network failures do not sign the user out.
+  - **Only a definitive rejection (400/401/403) clears the session.** A `403 account_blocked` (account blocked by an administrator) signs the user out, shows "Your account has been blocked. Please contact an administrator." and is not retried; login surfaces the same message.
+  - (Rule continues:) 429, 5xx and network failures do not sign the user out.
   - GET/HEAD requests are retried once after a refresh. **Mutations are never replayed**; the caller gets `session_restored` and the user repeats the action.
 - All authorized calls go through `authorizedFetch` → `apiJson`, which throws coded `TTError`s (`session_expired`, `session_restored`, `network`, `rate_limited` + `retryAfterSeconds`, `server_error`, plus the API's own 4xx `code`). 5xx bodies are replaced with a generic message; unknown exceptions are reported as "Something went wrong."
 - Background messages added: `REFRESH_SESSION`, `OPEN_PANEL`, `CHECK_JOB_TRACKED`, `OPEN_DASHBOARD`. Messages to content scripts: `TT_GET_DETECTED_JOB`, `TT_OPEN_PANEL`.

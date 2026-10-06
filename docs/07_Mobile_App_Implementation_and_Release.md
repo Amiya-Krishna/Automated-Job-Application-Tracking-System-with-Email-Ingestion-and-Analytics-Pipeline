@@ -11,7 +11,7 @@ Scope: `mobile/` (Expo SDK 57), plus the minimum additive backend in `server/` t
 
 ### What was implemented
 
-**1. Auth** – `GET /api/auth/me`; mobile login (`X-Client: mobile`) returns a 15‑min access JWT + opaque refresh token. Refresh tokens are stored hashed (`user_sessions`), rotated on every use, and replaying a rotated token (after a 10 s grace) revokes the whole chain. `POST /auth/refresh|logout|logout-all`, `DELETE /auth/account`. Password reset and logout‑all revoke all sessions. Login/register/forgot/reset/refresh are rate limited. Purpose tokens (reset, Gmail `state`) can no longer act as login tokens; invalid/expired tokens now return **401** (was 400 for invalid). Mobile stores tokens only in SecureStore; the API client refreshes proactively and on 401 (single‑flight), replays the request once, and signs out only when the server says the session is over (offline/5xx never logs you out). Legacy 7‑day tokens from older builds keep working until they expire.
+**1. Auth** – `GET /api/auth/me`; mobile login (`X-Client: mobile`) returns a 15‑min access JWT + opaque refresh token. Refresh tokens are stored hashed (`user_sessions`), rotated on every use, and replaying a rotated token (after a 10 s grace) revokes the whole chain. `POST /auth/refresh|logout|logout-all`, `DELETE /auth/account` (self-deletion; see `docs/11` for exactly what is deleted and preserved). Blocked accounts get `403 account_blocked` on login, refresh and `/auth/me`; the app shows the blocked message and ends the session. Password reset and logout‑all revoke all sessions. Login/register/forgot/reset/refresh are rate limited. Purpose tokens (reset, Gmail `state`) can no longer act as login tokens; invalid/expired tokens now return **401** (was 400 for invalid). Mobile stores tokens only in SecureStore; the API client refreshes proactively and on 401 (single‑flight), replays the request once, and signs out only when the server says the session is over (offline/5xx never logs you out). Legacy 7‑day tokens from older builds keep working until they expire.
 
 **2. Push** – `expo-notifications`, contextual permission prompt (Notifications tab / Settings toggle), Android channels, device registration/unregistration, token‑rotation handling. Server: `push_devices`, `notification_preferences`, `notification_log`; Expo push sender (no SDK, free), dead‑token pruning; reminder engine (interview tomorrow/today, 7‑day follow‑up, daily strong‑match digest) in each user's timezone, exactly‑once via a unique dedupe key; in‑process scheduler or external cron (`reminders-cron.yml`). Preferences are server‑side (the fake "Email notifications" toggle was removed — no such backend exists). Taps deep‑link via an allow‑list; cold start, foreground and signed‑out taps are handled (target is held until sign‑in).
 
@@ -42,7 +42,7 @@ Scope: `mobile/` (Expo SDK 57), plus the minimum additive backend in `server/` t
 ### First things to run (once, locally)
 
 ```bash
-cd server && npx prisma migrate deploy && npx prisma generate      # adds 4 additive tables (migration 20260929000000)
+cd server && npx prisma migrate deploy && npx prisma generate      # adds 4 additive tables (migration 20260929000000); later migrations (e.g. 20261006000000 account status) apply in the same run
 cd ../mobile && npm install                                          # refreshes package-lock.json with the new deps
 npx expo install --check                                             # confirms versions match SDK 57
 npm run typecheck && npm run lint && npm run test:critical          # I could not run tsc/lint here
@@ -170,7 +170,7 @@ groups the two chart primitives since they're a genuinely new category.
   "Connected" rows (Gmail Integration with live status, My Resumes), skills.
 - Settings: **Edit profile and Change password removed.** Sections: Account (+Gmail shortcut),
   Preferences (appearance, notification toggles - existing, persisted), Support (About, Privacy,
-  Terms), Log out. No delete-account (backend has no endpoint) and no invented settings.
+  Terms), Log out. No invented settings. (Superseded: Settings now has **Delete account** at `app/account/settings.tsx`, calling `DELETE /api/auth/account` after the user types `DELETE` and their password; the backend endpoint exists. There is still no admin user-management UI on mobile: block/unblock/delete of other users is web-only.)
 - New dedicated **Gmail Integration** screen (`app/account/gmail.tsx`), reusing the existing
   hooks/backend: status, connect, disconnect, scan, add-to-pipeline, loading/error/empty states.
 - Home: added "Paste JD" (`/tailor`) and "Gmail" quick actions; Gmail card opens the new screen.

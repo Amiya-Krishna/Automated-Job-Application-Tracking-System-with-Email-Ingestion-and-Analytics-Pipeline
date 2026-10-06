@@ -15,9 +15,10 @@ function LoginForm({ role }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const navigate = useNavigate();
-  const { status, login, isAdmin } = useAuth();
+  const { status, login, isAdmin, sessionNotice, clearSessionNotice } = useAuth();
 
   const [roleError, setRoleError] = useState("");
+  const [blockedMessage, setBlockedMessage] = useState("");
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -53,6 +54,8 @@ function LoginForm({ role }) {
       setIsSubmitting(true);
 
       setRoleError("");
+      setBlockedMessage("");
+      clearSessionNotice?.();
       // `role` is only the door the person chose. The server checks it against the account's
       // real role (and refuses admin sign-in for non-admins); it is never trusted on its own.
       const res = await api.post("/auth/login", {
@@ -79,6 +82,11 @@ function LoginForm({ role }) {
 
       if (error.response?.data?.code === "admin_required") {
         setRoleError(message);
+        return;
+      }
+
+      if (error.response?.status === 403 && error.response?.data?.code === "account_blocked") {
+        setBlockedMessage(message);
         return;
       }
 
@@ -123,6 +131,12 @@ function LoginForm({ role }) {
         <Link to="/login" className="inline-flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
           <span aria-hidden="true">←</span> Change role
         </Link>
+
+        {(blockedMessage || sessionNotice?.kind === "blocked") && (
+          <div role="alert" className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            {blockedMessage || sessionNotice?.message || "Your account has been blocked. Please contact an administrator."}
+          </div>
+        )}
 
         {roleError && (
           <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-200">
@@ -242,7 +256,7 @@ const ROLE_CARDS = [
 ];
 
 function RoleChooser() {
-  const { status, isAdmin } = useAuth();
+  const { status, isAdmin, sessionNotice } = useAuth();
   if (status === "authenticated") return <Navigate to={isAdmin ? "/admin" : "/dashboard"} replace />;
 
   return (
@@ -264,6 +278,11 @@ function RoleChooser() {
       ]}
       accentClass="bg-cyan-100 text-cyan-800"
     >
+      {sessionNotice?.kind === "blocked" && (
+        <div role="alert" className="mb-4 max-w-xl rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          {sessionNotice.message || "Your account has been blocked. Please contact an administrator."}
+        </div>
+      )}
       <div className="grid max-w-xl gap-4 sm:grid-cols-2" role="group" aria-label="Choose sign-in type">
         {ROLE_CARDS.map((c) => (
           <Link

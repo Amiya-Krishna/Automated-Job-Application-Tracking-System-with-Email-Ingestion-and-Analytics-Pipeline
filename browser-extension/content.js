@@ -215,7 +215,7 @@ const dock = (() => {
     }
     setSave("Save job");
     const info = errorInfo(r, "Couldn't save this job.");
-    if (info.kind === "session") setStatus("Sign in first: click the TrackTrail toolbar icon.", "err", { persist: true });
+    if (info.kind === "session") setStatus(r.code === "account_blocked" ? info.message : "Sign in first: click the TrackTrail toolbar icon.", "err", { persist: true });
     else setStatus(`✕ ${info.message}`, "err", { persist: true, action: info.retryable ? { label: "Retry", run: onSave } : undefined });
   }
 

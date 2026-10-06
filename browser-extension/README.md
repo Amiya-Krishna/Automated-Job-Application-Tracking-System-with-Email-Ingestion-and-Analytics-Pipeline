@@ -201,6 +201,10 @@ background worker, and displays the result (`tailor-panel.js`).
 The web app URL defaults to `DEFAULT_WEB_APP_URL` in `config.js` and can be
 overridden with `chrome.storage.local.webAppUrl`.
 
+### Blocked accounts
+
+If an administrator blocks the account, the next request returns `403 account_blocked`: the extension signs the user out, shows the blocked message and does not retry, and signing in again shows the same message until the account is unblocked. Admin user management and account deletion are not available in the extension (use the web app, Profile -> Danger zone).
+
 ### Tests
 
 ```bash

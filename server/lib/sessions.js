@@ -10,6 +10,7 @@
 const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const prisma = require("./prisma");
+const { isActive, tokenVersionOf } = require("./accountStatus");
 
 const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
 const ACCESS_TTL_SECONDS = () => num(process.env.ACCESS_TOKEN_TTL_SECONDS, 15 * 60);
@@ -25,9 +26,11 @@ function clean(v, max) {
   return typeof v === "string" && v.trim() ? v.trim().slice(0, max) : null;
 }
 
-function signAccessToken(userId, sessionId) {
+// `tv` is the account's token version (users.token_version). The auth middleware rejects a token
+// whose `tv` no longer matches, which is how a block invalidates every earlier access token.
+function signAccessToken(userId, sessionId, tokenVersion = 0) {
   const expiresIn = ACCESS_TTL_SECONDS();
-  const token = jwt.sign({ id: userId, sid: sessionId, typ: "access" }, process.env.JWT_SECRET, { expiresIn });
+  const token = jwt.sign({ id: userId, sid: sessionId, typ: "access", tv: tokenVersion }, process.env.JWT_SECRET, { expiresIn });
   return { token, expiresIn, expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
 }
 
@@ -44,7 +47,7 @@ async function issueSession(user, device = {}, familyId = crypto.randomUUID()) {
       expiresAt: new Date(Date.now() + REFRESH_TTL_DAYS() * 86400 * 1000),
     },
   });
-  const access = signAccessToken(user.id, session.id);
+  const access = signAccessToken(user.id, session.id, tokenVersionOf(user));
   return {
     accessToken: access.token,
     accessTokenExpiresAt: access.expiresAt,
@@ -54,7 +57,8 @@ async function issueSession(user, device = {}, familyId = crypto.randomUUID()) {
   };
 }
 
-// Returns { ok:true, ...tokens, user } or { ok:false, reason }.
+// Returns { ok:true, ...tokens, user } or { ok:false, reason }. reason "blocked" = the account is
+// blocked (its sessions are revoked when it is blocked, but status is re-checked here regardless).
 async function rotateSession(refreshToken, device = {}) {
   if (typeof refreshToken !== "string" || refreshToken.length < 20 || refreshToken.length > 200) {
     return { ok: false, reason: "invalid" };
@@ -63,6 +67,12 @@ async function rotateSession(refreshToken, device = {}) {
   if (!row) return { ok: false, reason: "invalid" };
 
   const now = Date.now();
+  const owner = await prisma.user.findUnique({ where: { id: row.userId } });
+  if (!owner) return { ok: false, reason: "invalid" };
+  if (!isActive(owner)) {
+    await revokeFamily(row.familyId);
+    return { ok: false, reason: "blocked" };
+  }
   if (row.revokedAt) return { ok: false, reason: "revoked" };
   if (row.expiresAt.getTime() <= now) return { ok: false, reason: "expired" };
 
@@ -74,8 +84,7 @@ async function rotateSession(refreshToken, device = {}) {
     return { ok: false, reason: "reuse_detected" };
   }
 
-  const user = await prisma.user.findUnique({ where: { id: row.userId } });
-  if (!user) return { ok: false, reason: "invalid" };
+  const user = owner;
 
   await prisma.userSession.update({ where: { id: row.id }, data: { rotatedAt: new Date(), lastUsedAt: new Date() } });
   const issued = await issueSession(

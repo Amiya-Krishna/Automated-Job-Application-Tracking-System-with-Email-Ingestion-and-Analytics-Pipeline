@@ -151,6 +151,8 @@ npx prisma migrate deploy # applies the committed migrations in prisma/migration
 
 > **Note:** `npm run db:migrate` (`node migrate.js`) still exists in `package.json` but is dead code left over from an earlier, pre-Prisma version of this project — it reads a `db/schema.sql` file that no longer exists in the repository and will fail if you run it. Use the Prisma commands above instead.
 
+The latest migration, `20261006000000_user_account_status`, adds `users.status` / `blocked_at` / `token_version` (account blocking) and makes `match_scores.profile_id` cascade on delete. After pulling, run `npx prisma migrate deploy && npx prisma generate`; the server logs a boot warning if the columns are missing.
+
 If you're actively developing and want to create a new migration from schema changes, use `npx prisma migrate dev` instead of `deploy`.
 
 **Verify the database connection.** After applying the schema, start the server from the `server` directory:
@@ -826,6 +828,17 @@ awkward, this codebase uses `prisma.$queryRawUnsafe` via the `query()` helper
 exported from `server/lib/prisma.js` (see `services/analyticsService.js` for
 an example) rather than reaching for a separate `pg` pool.
 
+#### Test commands
+
+```bash
+cd server && npm test                      # TEST_DATABASE_URL=postgres://user:pw@localhost:5432/postgres npm test also runs the real-Postgres tests
+cd client && npm test && npm run lint && npm run build
+cd mobile && npm run typecheck && npm run lint && npm test
+cd browser-extension && npm test
+```
+
+Account lifecycle tests live in `server/tests/accounts/` (`accountLifecycle.test.js` over HTTP with a strict in-memory database; `postgres.test.js` against a real database when `TEST_DATABASE_URL` is set). Without a generated Prisma client the server suite can be run with `node --require ./tests/helpers/prismaClientFallback.js --test "tests/**/*.test.js"`.
+
 #### 5. Test Your Changes
 
 ```bash
@@ -932,7 +945,7 @@ git checkout -b feature/add-filters
 
 # 3. Test changes
 npm run dev  # Test frontend
-npm test     # Run tests if available
+npm test     # Run tests (see below for each package)
 
 # 4. Commit changes
 git add .

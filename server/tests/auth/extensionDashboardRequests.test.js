@@ -10,6 +10,9 @@ const cors = require("cors");
 const jwt = require("jsonwebtoken");
 
 process.env.JWT_SECRET = "test-secret";
+// authMiddleware checks the account on every request; give it an ACTIVE user (id 5).
+const prismaPath = require.resolve("../../lib/prisma");
+require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: { user: { findUnique: async ({ where }) => (where.id === 5 ? { id: 5, status: "ACTIVE", tokenVersion: 0 } : null) } } };
 const auth = require("../../middleware/authMiddleware");
 const { buildCorsOptions } = require("../../middleware/corsOptions");
 

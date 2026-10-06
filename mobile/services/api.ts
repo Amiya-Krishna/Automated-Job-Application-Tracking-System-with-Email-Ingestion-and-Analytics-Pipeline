@@ -24,10 +24,10 @@ import axios, { AxiosError, type AxiosInstance, type InternalAxiosRequestConfig 
 import { API_BASE_URL, API_CONFIG_OK, API_ORIGIN, API_TIMEOUT_MS, getAppInfo } from '@/services/config';
 import { isOffline } from '@/services/connectivity';
 import { reportError } from '@/services/logger';
-import { ensureFreshAccessToken, refreshSession } from '@/services/session';
+import { consumeBlockedRefresh, ensureFreshAccessToken, refreshSession } from '@/services/session';
 import { emitUnauthorized } from '@/services/sessionEvents';
 import { clearSession, getRefreshToken, getToken } from '@/services/tokenStore';
-import { ApiError, type ApiErrorResponse } from '@/types/api';
+import { ACCOUNT_BLOCKED_MESSAGE, ApiError, type ApiErrorResponse } from '@/types/api';
 
 declare module 'axios' {
   interface InternalAxiosRequestConfig {
@@ -41,6 +41,8 @@ const MAX_RETRIES = 2;
 const MAX_RETRY_WAIT_MS = 10_000;
 // Endpoints where a 401 means "wrong/invalid input", never "session expired".
 const AUTH_PUBLIC = /\/auth\/(login|register|refresh|logout|forgot-password|reset-password)$/;
+
+const LOGIN_PATH = /\/auth\/login$/;
 
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -162,6 +164,15 @@ api.interceptors.response.use(
     const { status, data } = error.response;
     const apiCode = data?.code ?? null;
 
+    // ---- 403 account_blocked: an administrator blocked this account. The session is over. ----
+    // (A blocked login attempt is a form error on the login screen, not a session end.)
+    if (status === 403 && apiCode === 'account_blocked' && !LOGIN_PATH.test((config.url ?? '').split('?')[0])) {
+      consumeBlockedRefresh();
+      await clearSession();
+      emitUnauthorized('blocked');
+      return Promise.reject(new ApiError(data?.message || ACCOUNT_BLOCKED_MESSAGE, 403, false, null, 'account_blocked'));
+    }
+
     // ---- 401: recover the session, or end it ----
     if (status === 401 && !AUTH_PUBLIC.test((config.url ?? '').split('?')[0])) {
       if (!config._authRetried && getRefreshToken()) {
@@ -176,6 +187,13 @@ api.interceptors.response.use(
         }
       }
       // Refresh rejected, no refresh token (legacy), or the replay still 401s.
+      const blockedMessage = consumeBlockedRefresh();
+      if (blockedMessage) {
+        // The refresh was refused because the account is blocked: say so instead of "expired".
+        await clearSession();
+        emitUnauthorized('blocked');
+        return Promise.reject(new ApiError(blockedMessage, 403, false, null, 'account_blocked'));
+      }
       await clearSession();
       emitUnauthorized();
       return Promise.reject(new ApiError('Your session has expired. Please sign in again.', 401, false, null, apiCode ?? 'session_expired'));

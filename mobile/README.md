@@ -251,6 +251,14 @@ and a `channel` in the `preview` and `production` profiles of `eas.json`. A test
 fails if this is only partly configured, and if `expo-updates` is *not* installed it fails when any of those
 settings is present.
 
+## Account deletion and blocked accounts
+
+**Settings -> Delete account** (`app/account/settings.tsx`) permanently deletes the signed-in user's own account via `DELETE /api/auth/account`. The user must type `DELETE` and their password; the screen lists what is deleted (applications, private jobs, profile and match scores, resumes, sessions, push devices, notifications) and what is not (shared job data fetched by admins). On success the session, caches and local data are cleared and the app returns to login. A last active administrator gets `409 last_admin`; a blocked account gets `403 account_blocked`.
+
+If an administrator blocks the account, the app ends the session and shows the blocked message (also at login). The mobile app has **no admin user-management UI**; blocking, unblocking and deleting other users is done in the web Admin panel only.
+
+Tests: `npm run typecheck && npm run lint && npm test`.
+
 ## Roles
 
 `AuthUser.role` (`'user' | 'admin'`) comes from `/api/auth/me`. The Discovery

@@ -13,8 +13,8 @@ const stub = (rel, exports) => { const id = require.resolve(path.join("..", ".."
 { const id = require.resolve("@prisma/client", { paths: [path.join(__dirname, "..", "..")] }); require.cache[id] = require.cache[id] || { id, filename: id, loaded: true, exports: { Prisma: { PrismaClientKnownRequestError: class extends Error {} } } }; }
 const hash = bcrypt.hashSync("secret12", 4);
 const users = [
-  { id: 1, name: "Admin", email: "admin@x.co", password: hash, role: "admin" },
-  { id: 2, name: "User", email: "user@x.co", password: hash, role: "user" },
+  { id: 1, name: "Admin", email: "admin@x.co", password: hash, role: "admin", status: "ACTIVE" },
+  { id: 2, name: "User", email: "user@x.co", password: hash, role: "user", status: "ACTIVE" },
 ];
 let issued = 0;
 stub("lib/prisma", {

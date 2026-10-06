@@ -189,7 +189,8 @@ pool with hand-written model files.
 
 ```
 schema.prisma
-- users, tracked_jobs (auth/manual tracker — per-user)
+- users (incl. `role`, `status` ACTIVE|BLOCKED, `blocked_at`, `token_version`),
+  tracked_jobs (auth/manual tracker — per-user)
 - jobs, companies, job_sources, applications, match_scores,
   user_profile, scrape_runs, analytics_daily (engine)
 - user_profile and match_scores are scoped per user (user_id / profile_id);
@@ -198,7 +199,9 @@ schema.prisma
   Trade-offs sections for the reasoning)
 
 migrations/
-- Timestamped, committed SQL migrations
+- Timestamped, committed SQL migrations (latest: `20261006000000_user_account_status`,
+  which adds account status/blocking columns and makes `match_scores.profile_id`
+  cascade on delete)
 - Applied via `npx prisma migrate deploy` (production) or
   `npx prisma migrate dev` (local development)
 ```
@@ -212,7 +215,10 @@ see [03_Setup_Installation_and_Contributing.md](03_Setup_Installation_and_Contri
 
 ### Directory: `server/lib/`
 
-`prisma.js` exports a single shared `PrismaClient` instance plus a `query()`
+`accountStatus.js` defines the `ACTIVE`/`BLOCKED` statuses, the `account_blocked`
+error payload and helpers shared by login, refresh and middleware; `sessions.js`
+issues, rotates and revokes refresh-token sessions (`user_sessions`) and embeds
+the `tv` token-version claim. `prisma.js` exports a single shared `PrismaClient` instance plus a `query()`
 helper that wraps `$queryRawUnsafe` for the aggregate/analytics SQL that's
 more natural to write as raw SQL than through Prisma's query builder (see
 `services/analyticsService.js`, `services/dedupService.js`).
@@ -229,7 +235,10 @@ current auth requirements.
 
 ```
 POST   /api/auth/register          - Create a user
-POST   /api/auth/login             - Log in, receive a JWT
+POST   /api/auth/login             - Log in, receive a JWT (403 account_blocked for blocked users)
+POST   /api/auth/refresh           - Rotate refresh token (403 account_blocked for blocked users)
+GET    /api/auth/me                - Current user (403 account_blocked for blocked users)
+DELETE /api/auth/account           - Self-service account deletion ({ password }); always the caller
 ```
 
 (also has a forgot/reset-password flow — see the route file and
@@ -265,7 +274,7 @@ GET    /api/scrape/platforms       - Provider keys (admin only: whole router is 
 
 #### `adminRoutes.js` — mounted at `/api/admin` (auth + requireAdmin)
 
-GET /overview · GET /users · PATCH /users/:id/role · DELETE /jobs/:id · DELETE /companies/:id · DELETE /sources/:id  (see docs/11)
+GET /overview · GET /users · POST /users/:id/block · POST /users/:id/unblock · DELETE /users/:id · PATCH /users/:id/role · DELETE /jobs/:id · DELETE /companies/:id · DELETE /sources/:id  (see docs/11)
 ```
 
 #### Engine routes — `ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js`, `companiesRoutes.js`, `sourcesRoutes.js`
@@ -281,7 +290,15 @@ All of them require the `token` header.
 
 - Reads the JWT from the `token` request header (not `Authorization: Bearer`)
 - Verifies it and attaches the decoded payload to `req.user`
-- Returns 401/400 on missing or invalid tokens
+- Looks the account up in the database on **every** authenticated request
+  (one primary-key query): missing account -> `401 token_invalid`; status
+  `BLOCKED` -> `403 account_blocked`; token `tv` claim different from
+  `users.token_version` -> `401 token_invalid`
+- Returns 401 on missing or invalid tokens
+
+`requireAdmin.js` runs after it and re-checks status and role from the database
+(fail closed). Account deletion logic lives in `services/accountDeletion.js`,
+shared by self-deletion and the admin delete endpoint.
 
 ### Directories: `server/services/`, `adapters/`, `workers/`, `queue/`
 
@@ -533,7 +550,9 @@ Render jobs
 
 - Token generated on login (unsigned expiry — no `expiresIn` set on the main login token)
 - Sent as a plain `token` request header (not `Authorization: Bearer`)
-- Verified on every protected route via `authMiddleware.js`
+- Verified on every protected route via `authMiddleware.js`, which also re-loads
+  the account from the database so deleted, blocked and pre-block tokens are
+  rejected immediately (see `docs/11`)
 
 ### Multi-User Data Isolation
 
@@ -544,6 +563,11 @@ the query level (not just hidden in the UI):
 - `user_profile` — one resume/skills profile per user (`user_profile.user_id`)
 - `match_scores` — scoped per `(job_id, profile_id, method)`, so two users' scores for the same job never collide
 - `scrape_runs` — Job Discovery run history, scoped per user, deletable only by its owner
+
+When an account is deleted (self-service or by an admin), exactly these
+user-owned rows are removed in one transaction, while global admin-fetched
+`jobs`, `companies` and `job_sources` are preserved (see `docs/11`). Blocking
+an account deletes nothing.
 
 `jobs`, `companies`, and `job_sources` are genuinely shared/global catalog
 data by design — every user legitimately sees the same underlying listings.

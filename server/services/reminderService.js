@@ -107,7 +107,8 @@ async function runReminders({ prisma = require("../lib/prisma"), sendToUser = re
   running = true;
   const stats = { users: 0, sent: 0, skipped: 0 };
   try {
-    const owners = await prisma.pushDevice.findMany({ where: { disabledAt: null }, distinct: ["userId"], select: { userId: true } });
+    // Blocked accounts keep their data but receive no push reminders.
+    const owners = await prisma.pushDevice.findMany({ where: { disabledAt: null, user: { status: "ACTIVE" } }, distinct: ["userId"], select: { userId: true } });
     for (const { userId } of owners) {
       try {
         stats.users += 1;

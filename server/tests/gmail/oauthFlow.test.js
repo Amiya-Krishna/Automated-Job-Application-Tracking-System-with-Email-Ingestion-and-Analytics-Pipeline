@@ -23,7 +23,7 @@ delete process.env.EXTENSION_REDIRECT_URL;
 
 // ---- in-memory database ----------------------------------------------------
 const db = { users: [], sessions: [] };
-const addUser = (id, email) => db.users.push({ id, name: `U${id}`, email, password: bcrypt.hashSync("pw-123456", 4), gmailRefreshToken: null });
+const addUser = (id, email) => db.users.push({ id, name: `U${id}`, email, status: "ACTIVE", password: bcrypt.hashSync("pw-123456", 4), gmailRefreshToken: null });
 addUser(1, "a@x.co");
 addUser(2, "b@x.co");
 const matches = (row, where) => Object.entries(where).every(([k, v]) => (v === null ? row[k] == null : row[k] === v));
@@ -31,6 +31,7 @@ const prismaStub = {
   user: {
     findUnique: async ({ where }) => db.users.find((u) => matches(u, where)) || null,
     update: async ({ where, data }) => Object.assign(db.users.find((u) => matches(u, where)), data),
+    updateMany: async ({ where, data }) => { const rows = db.users.filter((u) => matches(u, where)); rows.forEach((r) => Object.assign(r, data)); return { count: rows.length }; },
   },
   userSession: {
     create: async ({ data }) => { const row = { id: crypto.randomUUID(), rotatedAt: null, revokedAt: null, ...data }; db.sessions.push(row); return row; },

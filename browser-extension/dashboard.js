@@ -27,8 +27,8 @@ function setError(el, err, retry) {
   document.querySelectorAll(".skeleton").forEach((n) => n.remove());
   const info = errInfo(err);
   el.className = "error";
-  el.textContent = info.kind === "session" ? "Your session ended. Open the TrackTrail toolbar icon, sign in, then retry." : info.message;
-  if (retry && (info.retryable || info.kind === "session")) {
+  el.textContent = info.kind === "session" && err?.code !== "account_blocked" ? "Your session ended. Open the TrackTrail toolbar icon, sign in, then retry." : info.message;
+  if (retry && (info.retryable || (info.kind === "session" && err?.code !== "account_blocked"))) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "ghost-btn";

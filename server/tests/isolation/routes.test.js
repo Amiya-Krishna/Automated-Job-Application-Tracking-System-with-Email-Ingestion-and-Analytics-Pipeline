@@ -15,7 +15,7 @@ const db = makeDb({
   jobs: { $companies: { table: "companies", fk: "company_id" }, $job_sources: { table: "job_sources", fk: "source_id" }, match_scores: { table: "match_scores", fk: "job_id" } },
 });
 const A = 1, B = 2, ADMIN = 3;
-db.seed("user", [{ id: A, role: "user" }, { id: B, role: "user" }, { id: ADMIN, role: "admin" }]);
+db.seed("user", [{ id: A, role: "user", status: "ACTIVE" }, { id: B, role: "user", status: "ACTIVE" }, { id: ADMIN, role: "admin", status: "ACTIVE" }]);
 const SRC = {}; // name -> id
 const GLOBAL = ["linkedin", "naukri", "remotive", "unstop", "indeed", "wellfound", "internshala"], PRIVATE = ["manual", "gmail", "extension"];
 db.seed("job_sources", [...PRIVATE.map((name) => ({ name, scope: "private", base_url: null })), ...GLOBAL.map((name) => ({ name, scope: "global", base_url: `https://${name}.example` }))]);

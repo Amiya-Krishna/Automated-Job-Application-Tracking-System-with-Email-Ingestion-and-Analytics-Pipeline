@@ -27,4 +27,22 @@ async function warnIfSessionsTableMissing(db = prisma, log = console) {
   }
 }
 
-module.exports = { warnIfSessionsTableMissing };
+// Migration 20261006000000 adds users.status / token_version. Without it every authenticated
+// request would fail (the auth middleware reads them), so say so loudly at boot.
+async function warnIfAccountStatusMissing(db = prisma, log = console) {
+  try {
+    const rows = await db.$queryRaw`SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'users' AND column_name IN ('status', 'token_version')`;
+    if (!rows || rows.length < 2) {
+      log.error(
+        "[schema-check] users.status / users.token_version are missing, so every authenticated request will fail with HTTP 500. Run `npx prisma migrate deploy` (migration 20261006000000_user_account_status) and `npx prisma generate`.",
+      );
+      return false;
+    }
+    return true;
+  } catch (e) {
+    log.error(`[schema-check] could not verify users.status (${e && (e.code || e.name)})`);
+    return false;
+  }
+}
+
+module.exports = { warnIfSessionsTableMissing, warnIfAccountStatusMissing };

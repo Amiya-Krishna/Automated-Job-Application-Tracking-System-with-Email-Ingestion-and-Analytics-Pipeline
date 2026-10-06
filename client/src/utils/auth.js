@@ -10,3 +10,22 @@ export const setAccessToken = (token) => {
 export const clearAccessToken = () => {
   accessToken = null;
 };
+
+// Browser-side cache that belongs to a signed-in user's data. App keys are namespaced
+// "tracktrail:" / "tracktrail-"; the theme is a device preference and is kept.
+const THEME_KEY = "tracktrail-theme";
+
+export function clearLocalUserData() {
+  for (const storage of ["localStorage", "sessionStorage"]) {
+    try {
+      const store = window[storage];
+      const keys = [];
+      for (let i = 0; i < store.length; i += 1) keys.push(store.key(i));
+      keys
+        .filter((k) => k && k.startsWith("tracktrail") && k !== THEME_KEY)
+        .forEach((k) => store.removeItem(k));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+}

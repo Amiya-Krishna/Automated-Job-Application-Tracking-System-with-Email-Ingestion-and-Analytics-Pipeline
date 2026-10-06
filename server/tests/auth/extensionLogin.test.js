@@ -11,7 +11,7 @@ const jwt = require("jsonwebtoken");
 process.env.JWT_SECRET = "test-secret";
 process.env.RL_LOGIN_MAX = "1000";
 
-const db = { users: [{ id: 9, name: "Ext", email: "e@x.co", password: bcrypt.hashSync("pw-123456", 4) }], sessions: [], sessionsTableMissing: false };
+const db = { users: [{ id: 9, name: "Ext", email: "e@x.co", status: "ACTIVE", password: bcrypt.hashSync("pw-123456", 4) }], sessions: [], sessionsTableMissing: false };
 const stub = (rel, exports) => {
   const id = require.resolve(path.join("..", "..", rel));
   require.cache[id] = { id, filename: id, loaded: true, exports };

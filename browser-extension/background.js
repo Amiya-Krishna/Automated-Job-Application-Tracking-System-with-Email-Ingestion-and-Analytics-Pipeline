@@ -14,6 +14,7 @@ async function getWebAppUrl() {
 // that is not a TTError below is reported with GENERIC_MESSAGE.
 const NETWORK_MESSAGE = "Can't reach TrackTrail. Check your connection and try again.";
 const SERVER_MESSAGE = "TrackTrail is having trouble right now. Please try again in a moment.";
+const BLOCKED_MESSAGE = "Your account has been blocked. Please contact an administrator.";
 const GENERIC_MESSAGE = "Something went wrong. Please try again.";
 
 class TTError extends Error {
@@ -68,7 +69,11 @@ async function doRefresh() {
   }
   // Only a definitive rejection ends the session. A 429/5xx/outage must NOT
   // sign the user out — they can simply retry.
-  if (res.ok || [400, 401, 403].includes(res.status)) { await clearSession(); return null; }
+  if (res.ok || [400, 401, 403].includes(res.status)) {
+    await clearSession();
+    if (res.status === 403 && data.code === "account_blocked") throw blockedError(data);
+    return null;
+  }
   throw await apiError(res, SERVER_MESSAGE);
 }
 
@@ -77,12 +82,26 @@ async function getToken() {
   return accessToken || refreshSession();
 }
 
+// A blocked account gets 403 {code:"account_blocked"} on every authenticated call: end the session, never retry.
+function blockedError(data) {
+  return new TTError(typeof data?.message === "string" && data.message ? data.message : BLOCKED_MESSAGE, { code: "account_blocked" });
+}
+async function failIfBlocked(res) {
+  if (res.status !== 403) return;
+  const data = await (typeof res.clone === "function" ? res.clone() : res).json().catch(() => null);
+  if (data && data.code === "account_blocked") {
+    await clearSession();
+    throw blockedError(data);
+  }
+}
+
 async function authorizedFetch(path, options = {}) {
   const base = await getApiBaseUrl();
   let token = await getToken();
   if (!token) throw new TTError("Not logged in or session ended. Sign in again.", { code: "session_expired" });
   const request = (value) => netFetch(base, path, { ...options, headers: { "x-client": "extension", token: value, ...(options.headers || {}) } });
   let res = await request(token);
+  await failIfBlocked(res);
   if (res.status !== 401) return res;
   token = await refreshSession();
   if (!token) throw new TTError("Your session has ended. Sign in again.", { code: "session_expired" });
@@ -355,6 +374,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Ended session => logged out (with a reason). Offline / server
             // trouble => report the error but KEEP the session, so a network
             // blip never looks like a sign-out.
+            if (err.code === "account_blocked") { sendResponse({ ok: true, loggedIn: false, user: null, expired: true, notice: err.message }); break; }
             if (err.code === "session_expired") { sendResponse({ ok: true, loggedIn: false, user: null, expired: true }); break; }
             throw err;
           }

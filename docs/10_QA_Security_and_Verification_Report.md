@@ -564,3 +564,28 @@ stated in §7 and §11, not because they were assumed to work.
 | Mobile | PASS — `tsc --noEmit`, `expo lint` (0 errors, 2 pre-existing warnings), 66 tests, Android + iOS Metro bundles. **Not run on a device/emulator** |
 
 **Not verified:** live Naukri / Internshala / Wellfound / Unstop markup (fixtures only; the sites block most automation), real Gmail, real Google OAuth, the mobile app on a device, `prisma generate`.
+
+
+---
+
+## Addendum: account status, blocking and account deletion (2026-10-06)
+
+Migration `20261006000000_user_account_status`. Behaviour is documented in `docs/11`; this section records verification and its limits.
+
+| Area | Result |
+|---|---|
+| Server test suite (`node --require ./tests/helpers/prismaClientFallback.js --test "tests/**/*.test.js"`) | PASS — 308 tests: 302 pass, 0 fail, 6 skipped (the skipped tests need `TEST_DATABASE_URL` or other external services) |
+| Account lifecycle (`tests/accounts/accountLifecycle.test.js`) | PASS — 17 HTTP-level tests on a strict in-memory database covering the 20 required scenarios (block/unblock, immediate token death, login/refresh/me for blocked accounts, self-deletion with password, last-admin guard, admin guards, deletion scope, no sensitive fields in listings) |
+| Real-PostgreSQL migration/cascade test (`tests/accounts/postgres.test.js`) | Runs only when `TEST_DATABASE_URL` is set; the migration SQL was executed against a real PostgreSQL 16 scratch database |
+| Web / mobile / extension suites | Run with `cd client && npm test && npm run lint && npm run build`, `cd mobile && npm run typecheck && npm run lint && npm test`, `cd browser-extension && npm test` |
+
+**Security review points**
+
+- Authorization is server-side: every `/api/admin/users*` route sits behind `authMiddleware` + `requireAdmin`, which re-check status and role in the database; UI hiding is not relied on. Normal users get `403 admin_required`, anonymous `401`.
+- No IDOR on self-deletion: `DELETE /api/auth/account` has no id parameter and acts only on the authenticated user, with password re-entry and a rate limit (5/hour/user, `RL_DELETE_MAX`).
+- Admin target ids come from the URL and are re-loaded from the database; own account (`cannot_modify_self`) and other administrators (`cannot_manage_admin`) are refused, and the last active administrator can never be blocked or deleted (`last_admin` on self-deletion, Serializable isolation).
+- Blocking is immediate and sticky: `token_version` is bumped and all refresh sessions revoked in one transaction, and `authMiddleware` checks the database on every request, so old tokens do not revive after unblocking.
+- Listings never expose password hashes, tokens or the Gmail grant; audit lines (`[admin-audit] admin#<id> blocked|unblocked|deleted user#<id>`) contain ids only, no emails.
+- Deletion scope is limited to the user's own data in one transaction; global admin-fetched data is preserved.
+
+**Environment limitation (not verified here):** in the build sandbox `prisma generate` and `prisma migrate` could not run (Prisma engine binaries unreachable). The Prisma schema change and the Prisma Client queries were therefore verified by code review plus the strict in-memory tests only, while the migration SQL itself was executed against a real PostgreSQL 16 database. The owner must run `npx prisma migrate deploy && npx prisma generate` (and `npx prisma validate`) in their own environment before relying on this release. Not verified on a device/emulator: the mobile Delete account and blocked-session flows.

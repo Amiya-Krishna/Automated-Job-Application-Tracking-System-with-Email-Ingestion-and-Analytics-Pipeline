@@ -3,6 +3,11 @@
 process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret";
 process.env.DOTENV_CONFIG_QUIET = "true";
 const http = require("http");
+// The auth middleware checks the account on every request: every token id is an ACTIVE user here.
+{
+  const prismaPath = require.resolve("../../lib/prisma");
+  require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: { user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", tokenVersion: 0 }) } } };
+}
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const auth = require("../../middleware/authMiddleware");

@@ -203,3 +203,51 @@ test("mutations are never silently replayed after a session refresh", async () =
   assert.deepEqual([r.ok, r.code], [false, "session_restored"]);
   assert.equal(calls.filter((c) => c.url.endsWith("/resume/tailor")).length, 1);
 });
+
+// ---- blocked accounts ----
+const BLOCKED = { code: "account_blocked", message: "Your account has been blocked. Please contact an administrator." };
+const blockedRes = () => ({ ok: false, status: 403, json: async () => BLOCKED });
+
+async function bootWithSession(opts) {
+  const b = await boot(opts);
+  return { ...b, session: () => b.send({ type: "GET_SESSION" }) };
+}
+
+test("blocked account: an API call clears the stored session and reports account_blocked (no retry)", async () => {
+  const { send, calls } = await boot({ fetchImpl: () => blockedRes() });
+  const r = await send({ type: "RESUME_ANALYZE", job: {} });
+  assert.deepEqual(r, { ok: false, error: BLOCKED.message, code: "account_blocked" });
+  assert.equal(calls.length, 1, "not retried and no refresh attempted");
+  // session tokens are gone: the next call fails fast without the network
+  const r2 = await send({ type: "RESUME_ANALYZE", job: {} });
+  assert.equal(r2.code, "session_expired");
+  assert.equal(calls.length, 1);
+  assert.equal(globalThis.chrome.storage.session.get ? Object.values(await globalThis.chrome.storage.session.get(["accessToken", "refreshToken", "user"])).filter(Boolean).length : 0, 0);
+});
+
+test("GET_SESSION for a blocked account: logged out with the server notice", async () => {
+  const { session } = await bootWithSession({ fetchImpl: () => blockedRes() });
+  assert.deepEqual(await session(), { ok: true, loggedIn: false, user: null, expired: true, notice: BLOCKED.message });
+});
+
+test("GET_SESSION: refresh rejected as blocked also yields the notice; plain 401/403 stay generic", async () => {
+  const { session } = await bootWithSession({
+    fetchImpl: (url) => (url.endsWith("/auth/refresh") ? blockedRes() : json(401, { message: "expired" })),
+  });
+  assert.equal((await session()).notice, BLOCKED.message);
+  const plain = await bootWithSession({ fetchImpl: () => json(403, { message: "Forbidden" }) });
+  assert.deepEqual(await plain.session(), { ok: true, loggedIn: false, user: null, expired: true });
+});
+
+test("LOGIN with a blocked account surfaces the server message and code", async () => {
+  const { send } = await boot({ fetchImpl: () => blockedRes() });
+  assert.deepEqual(await send({ type: "LOGIN", email: "a@b.co", password: "pw" }), { ok: false, error: BLOCKED.message, code: "account_blocked" });
+});
+
+test("describe(): account_blocked is a non-retryable session error that keeps the server message", async () => {
+  await import("../ui-errors.js");
+  const { describe } = globalThis.TrackTrailErrors;
+  const d = describe({ error: BLOCKED.message, code: "account_blocked" });
+  assert.deepEqual([d.kind, d.retryable, d.message], ["session", false, BLOCKED.message]);
+  assert.equal(describe({ code: "account_blocked" }).message, BLOCKED.message);
+});

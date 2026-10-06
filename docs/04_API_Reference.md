@@ -27,8 +27,11 @@ Protected endpoints require a JWT, sent as a plain **`token`** request header
 token: <your_jwt_token>
 ```
 
-The token is returned by `POST /api/auth/login` and doesn't currently carry an
-expiry — it's valid until your `JWT_SECRET` changes.
+The token is returned by `POST /api/auth/login`. Every authenticated request
+also re-loads the account from the database: a deleted account gets
+`401 {"code":"token_invalid"}`, a blocked account `403 {"code":"account_blocked"}`,
+and a token issued before a block (its `tv` claim no longer matches
+`users.token_version`) `401 token_invalid`, even after unblocking.
 
 > **Session model by client (cross-reference):** the token described here is the web/extension legacy token (the mobile section below notes the 7-day token for web/extension). Mobile uses a 15-minute access token plus a rotating refresh token (see the mobile section below and `07`). Web uses memory-only access tokens with an `HttpOnly` refresh cookie (see `06`). The extension keeps tokens in `chrome.storage.session` and sends `x-client: extension` (see `08`).
 
@@ -45,8 +48,11 @@ database on every request, so a demoted admin loses access immediately).
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/admin/overview` | Headline counts (users, admins, jobs, companies, sources, discovery runs) |
-| GET | `/api/admin/users` | Accounts and roles (never password hashes/tokens) |
+| GET | `/api/admin/overview` | Headline counts (users, admins, `blockedUsers`, jobs, companies, sources, discovery runs) |
+| GET | `/api/admin/users?q=&status=ACTIVE\|BLOCKED&role=admin\|user&page=1&pageSize=50` | Paged accounts (`pageSize` max 200): `{ data:[{id,name,email,role,status,createdAt,blockedAt,gmailConnected,trackedJobs,lastActiveAt}], meta:{total,page,pageSize} }`. Never password hashes, tokens or the Gmail grant |
+| POST | `/api/admin/users/:id/block` | Block a normal user: sets `BLOCKED`, bumps `token_version`, revokes all sessions, in one transaction. Nothing is deleted |
+| POST | `/api/admin/users/:id/unblock` | Unblock (idempotent). Old tokens stay dead; the user signs in again |
+| DELETE | `/api/admin/users/:id` | Permanently delete a normal user (same service as self-deletion, see below) |
 | PATCH | `/api/admin/users/:id/role` | Body `{ "role": "admin" \| "user" }`. You cannot change your own role |
 | DELETE | `/api/admin/jobs/:id` | Delete a matched job (catalog row) |
 | DELETE | `/api/admin/companies/:id?withJobs=true` | Delete a company; `409` if it still has jobs and `withJobs` is not set |
@@ -57,6 +63,17 @@ for the affected job is in flight (`queued`/`running`/`awaiting_confirmation`).
 Users' `tracked_jobs` are **never** deleted; their `engine_job_id` link is
 nulled. Duplicate rows pointing at a deleted canonical job are removed with it.
 Errors: `401` no/invalid token, `403 admin_required`, `404`, `409`.
+
+**User management guards** (block / unblock / delete): invalid id `400`; your own
+account `400 {"code":"cannot_modify_self"}`; unknown id `404`; target is an
+administrator `403 {"code":"cannot_manage_admin"}` (demote first); non-admin caller
+`403 {"code":"admin_required"}`; anonymous `401`. The target always comes from the
+URL and is re-loaded from the database. Each action logs
+`[admin-audit] admin#<id> blocked|unblocked|deleted user#<id>` (no emails). The last
+active administrator can never be blocked or deleted through this API. Deleting a
+user removes their own data but preserves global admin-fetched jobs, companies and
+sources (details in `docs/11`). This differs from the catalog deletes above, which
+never touch `tracked_jobs`.
 
 ---
 
@@ -808,7 +825,7 @@ catalog, same as before — this endpoint doesn't expose per-user data.
 | GET | /api/auth/me | token | Current user + `gmailConnected`. 401 on missing/expired/invalid token. |
 | POST | /api/auth/logout | – | `{ refreshToken }` revokes that session family. Idempotent. |
 | POST | /api/auth/logout-all | token | Revokes every mobile session. Also triggered by a password reset. |
-| DELETE | /api/auth/account | token | `{ password }` permanently deletes the account and all its data (cascade) and revokes the Gmail grant. |
+| DELETE | /api/auth/account | token | `{ password }` permanently deletes the **authenticated** user's own account (no id parameter). Removes their tracked jobs, private jobs, profile and scores, resumes, sessions, push devices and notifications in one transaction; global admin-fetched jobs/companies/sources are preserved. Gmail grant revoked best-effort. Errors: 400 missing/wrong password, 401, 403 `account_blocked`, 409 `last_admin`, 429 (5/hour/user, `RL_DELETE_MAX`). |
 | POST/DELETE | /api/notifications/devices | token | Register / remove an Expo push token `{ expoPushToken, platform, deviceName, appVersion, timezone }`. |
 | GET/PUT | /api/notifications/preferences | token | `{ pushEnabled, interviewReminders, applicationReminders, jobReminders, timezone, reminderHour }`. |
 | POST | /api/notifications/test | token | Sends a test push to the caller's devices. |
@@ -817,6 +834,8 @@ catalog, same as before — this endpoint doesn't expose per-user data.
 | GET | /app/reset-password?token= | – | Universal/App Link target; falls back to the web reset page when the app is not installed. |
 
 Invalid or expired tokens now return **401** (previously 400 for an invalid token).
+
+**Blocked accounts.** `POST /api/auth/login` (every client), `POST /api/auth/refresh` and `GET /api/auth/me` answer `403 {"code":"account_blocked","message":"Your account has been blocked. Please contact an administrator."}`; login issues no session and refresh revokes the family and clears the web cookie. See `docs/11` for the full session-invalidation table and the account deletion semantics.
 
 ---
 
@@ -828,7 +847,9 @@ Invalid or expired tokens now return **401** (previously 400 for an invalid toke
 | 201  | Created - Resource created successfully                          |
 | 202  | Accepted - Work enqueued (discovery run, apply engine)           |
 | 400  | Bad Request - Invalid input                                      |
-| 401  | Unauthorized - Missing/invalid token                             |
+| 401  | Unauthorized - Missing/invalid token, or account deleted/token predates a block (`token_invalid`) |
+| 403  | Forbidden - `admin_required`, `account_blocked`, `cannot_manage_admin` |
+| 409  | Conflict - e.g. `last_admin`, catalog delete with dependents     |
 | 404  | Not Found - Resource not found (or not owned by the caller)      |
 | 429  | Too Many Requests - Discovery run rate limit exceeded            |
 | 500  | Server Error - Internal server error                             |
@@ -847,6 +868,12 @@ Invalid or expired tokens now return **401** (previously 400 for an invalid toke
 
 ```json
 { "message": "Token is not valid" }
+```
+
+### Blocked Account
+
+```json
+{ "message": "Your account has been blocked. Please contact an administrator.", "code": "account_blocked" }
 ```
 
 ### CORS Rejection
@@ -927,10 +954,11 @@ curl -X GET http://localhost:5000/api/scrape/runs/14 \
 ## Rate Limiting
 
 Job Discovery is rate-limited to 6 runs per hour per user (see endpoint 12,
-above). The engine's Playwright apply worker separately rate-limits itself
+above). Self-service account deletion (`DELETE /api/auth/account`) is limited to
+5 per hour per user (`RL_DELETE_MAX`). The engine's Playwright apply worker separately rate-limits itself
 per target domain via a Redis-backed token bucket (see
 `services/rateLimiter.js`) — an internal safeguard, not a client-facing API
-limit. No other endpoint in this API is rate-limited.
+limit. Other endpoints are not rate-limited, apart from the auth limiters noted in the cross-reference below.
 
 > **Cross-reference:** the mobile production release additionally documents rate limiting on login/register/forgot/reset/refresh (see `07`), while the final QA report (`10`, §10 item 2) records no rate limiting on `/api/auth/login` or `/api/auth/forgot-password`.
 

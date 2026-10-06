@@ -16,6 +16,7 @@ const stub = (rel, exports) => {
   require.cache[id] = { id, filename: id, loaded: true, exports };
 };
 stub("lib/prisma", {
+  user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", tokenVersion: 0 }) },
   pushDevice: {
     upsert: async ({ where, create, update }) => {
       const row = db.devices.find((d) => d.expoPushToken === where.expoPushToken);

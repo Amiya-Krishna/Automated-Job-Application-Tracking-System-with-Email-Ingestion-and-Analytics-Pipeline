@@ -20,6 +20,14 @@ model User {
   // always read from this column on each admin-gated request (see
   // middleware/requireAdmin.js); it is never taken from a token or from client input.
   role               String    @default("user") @db.VarChar(20)
+  // Account state: "ACTIVE" (default) or "BLOCKED" (CHECK constraint users_status_check, migration
+  // 20261006000000). Read from this column on EVERY authenticated request (middleware/authMiddleware.js)
+  // and at login / refresh; a blocked account keeps all of its data but cannot authenticate.
+  status             String    @default("ACTIVE") @db.VarChar(20)
+  blockedAt          DateTime? @map("blocked_at") @db.Timestamptz(6)
+  // Embedded in every access token as `tv`. Incrementing it (done when an admin blocks the
+  // account) invalidates every token issued before, including after a later unblock.
+  tokenVersion       Int       @default(0) @map("token_version")
   createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
 
   trackedJobs        TrackedJob[]
@@ -218,7 +226,7 @@ model match_scores {
   explanation  Json?
   scored_at    DateTime?     @default(now()) @db.Timestamptz(6)
   jobs         jobs?         @relation(fields: [job_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  user_profile user_profile? @relation(fields: [profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  user_profile user_profile? @relation(fields: [profile_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   // SECURITY FIX (multi-user audit, phase 12/13): was @@unique([job_id,
   // method]) — one score per job PERIOD, regardless of whose profile it

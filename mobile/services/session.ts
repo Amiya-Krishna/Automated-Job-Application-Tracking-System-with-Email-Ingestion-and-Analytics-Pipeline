@@ -25,12 +25,23 @@ export type RefreshOutcome = 'refreshed' | 'no_session' | 'invalid' | 'unavailab
 
 const client = axios.create({ baseURL: API_BASE_URL, timeout: API_TIMEOUT_MS });
 let inflight: Promise<RefreshOutcome> | null = null;
+// Set when the server rejected a refresh with 403 account_blocked, so services/api.ts can end the
+// session with the blocked notice instead of the generic "expired" one. Read-once.
+let blockedRefreshMessage: string | null = null;
+
+/** Returns (and clears) the server's message if the last refresh was rejected because the account is blocked. */
+export function consumeBlockedRefresh(): string | null {
+  const m = blockedRefreshMessage;
+  blockedRefreshMessage = null;
+  return m;
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 async function doRefresh(): Promise<RefreshOutcome> {
   const token = getRefreshToken();
   if (!token) return 'no_session';
+  blockedRefreshMessage = null;
   const info = getAppInfo();
   try {
     const { data } = await client.post<RefreshResponse>(
@@ -50,6 +61,11 @@ async function doRefresh(): Promise<RefreshOutcome> {
       // Someone else just rotated this token; give their write a moment to land.
       await sleep(750);
       return getRefreshToken() !== token ? 'refreshed' : 'invalid';
+    }
+    if (status === 403 && code === 'account_blocked') {
+      const msg = (err as { response?: { data?: { message?: string } } }).response?.data?.message;
+      blockedRefreshMessage = msg || 'Your account has been blocked. Please contact an administrator.';
+      return 'invalid';
     }
     if (status === 400 || status === 401 || status === 403) return 'invalid';
     return 'unavailable'; // no response, 429, 5xx: do NOT sign the user out

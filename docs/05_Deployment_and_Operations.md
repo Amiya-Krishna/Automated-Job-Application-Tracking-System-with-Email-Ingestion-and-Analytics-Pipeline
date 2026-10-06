@@ -548,6 +548,7 @@ jobs:
 - [ ] Monitor security advisories
 - [ ] Review logs weekly
 - [ ] Test disaster recovery
+- [ ] Remember that deleting an account is permanent and not recoverable from the app: back up before bulk admin deletions (blocking is the reversible option)
 
 ---
 
@@ -634,6 +635,14 @@ npx prisma migrate deploy
 # start
 npm start
 ```
+
+Migration `20261006000000_user_account_status` (account status/blocking, token
+version, `match_scores.profile_id` cascade) is additive and idempotent; apply it
+with the same `npx prisma migrate deploy` followed by `npx prisma generate`. If
+the columns are missing the server logs a boot warning, and since every
+authenticated request now reads the account row, requests will fail until the
+migration is applied. Optional `RL_DELETE_MAX` (default 5) limits self-service
+account deletions per user per hour.
 
 `npm run build` = `prisma generate`, `npm run release` = `prisma migrate deploy`.
 `npm run prisma:migrate` (`migrate dev`) now refuses to run with `NODE_ENV=production`.
@@ -724,6 +733,8 @@ pm2 delete app-name
 - [ ] CORS properly configured
 - [ ] Security headers in place
 - [ ] Rate limiting enabled
+- [ ] Migration `20261006000000_user_account_status` applied (`npx prisma migrate deploy && npx prisma generate`; run `npx prisma validate` too)
+- [ ] At least one administrator exists (admins can block/unblock/delete normal users; the last active admin cannot be removed)
 - [ ] Error tracking setup (Sentry)
 - [ ] Monitoring setup (New Relic)
 - [ ] Backups automated

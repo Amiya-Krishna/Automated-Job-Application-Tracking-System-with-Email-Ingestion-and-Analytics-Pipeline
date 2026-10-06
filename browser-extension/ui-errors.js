@@ -21,6 +21,9 @@
     const raw = String((result && result.error) || "");
     const base = { message: raw || fallback || text, retryable: true, retryAfterSeconds: null };
 
+    if (code === "account_blocked") {
+      return { ...base, kind: "session", retryable: false, message: raw || "Your account has been blocked. Please contact an administrator." };
+    }
     if (code === "session_expired" || code === "not_logged_in" || /not logged in|session (has )?(ended|expired)/i.test(raw)) {
       return { ...base, kind: "session", retryable: false, message: raw || "Your session ended. Sign in again." };
     }

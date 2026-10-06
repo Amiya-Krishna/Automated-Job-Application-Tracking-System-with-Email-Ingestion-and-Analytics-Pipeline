@@ -45,6 +45,11 @@ export async function setSavedJobsUser(userId: number | null): Promise<void> {
   }
 }
 
+/** Removes an account's on-device saved-jobs list (used after the account is deleted). */
+export async function purgeSavedJobsForUser(userId: number): Promise<void> {
+  await AsyncStorage.removeItem(`${LEGACY_STORAGE_KEY}/u${userId}`).catch(() => {});
+}
+
 export async function getSavedJobs(): Promise<EngineJob[]> {
   if (cachedJobs !== null) return cachedJobs;
   const key = storageKey();

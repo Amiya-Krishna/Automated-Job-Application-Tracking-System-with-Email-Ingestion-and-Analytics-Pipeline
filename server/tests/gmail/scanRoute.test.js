@@ -33,7 +33,7 @@ const gmailApi = {
 const imported = [{ externalJobId: "12" }];
 const created = [];
 stub("lib/prisma", {
-  user: { findUnique: async () => ({ id: 1, gmailRefreshToken: "rt" }) },
+  user: { findUnique: async () => ({ id: 1, status: "ACTIVE", gmailRefreshToken: "rt" }) },
   trackedJob: {
     findMany: async () => imported,
     findFirst: async ({ where }) => created.find((c) => c.externalJobId === where.externalJobId) || null,

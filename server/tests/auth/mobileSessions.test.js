@@ -13,7 +13,7 @@ process.env.CLIENT_URL = "https://app.example.test";
 process.env.REFRESH_REUSE_GRACE_SECONDS = "0.5";
 process.env.RL_LOGIN_MAX = "1000";
 
-const db = { users: [{ id: 7, name: "Ada", email: "a@b.co", password: bcrypt.hashSync("oldpass1", 4), gmailRefreshToken: null, createdAt: new Date() }], sessions: [] };
+const db = { users: [{ id: 7, name: "Ada", email: "a@b.co", status: "ACTIVE", password: bcrypt.hashSync("oldpass1", 4), gmailRefreshToken: null, createdAt: new Date() }], sessions: [] };
 const stub = (rel, exports) => {
   const id = require.resolve(path.join("..", "..", rel));
   require.cache[id] = { id, filename: id, loaded: true, exports };
@@ -23,6 +23,7 @@ stub("lib/prisma", {
   user: {
     findUnique: async ({ where }) => db.users.find((u) => match(u, where)) || null,
     update: async ({ where, data }) => Object.assign(db.users.find((u) => u.id === where.id), data),
+    count: async () => 0,
     delete: async ({ where }) => { db.users = db.users.filter((u) => u.id !== where.id); db.sessions = db.sessions.filter((s) => s.userId !== where.id); },
   },
   userSession: {
@@ -32,6 +33,11 @@ stub("lib/prisma", {
     updateMany: async ({ where, data }) => { const rows = db.sessions.filter((s) => match(s, where)); rows.forEach((r) => Object.assign(r, data)); return { count: rows.length }; },
     deleteMany: async () => ({ count: 0 }),
   },
+  // account deletion (services/accountDeletion.js) runs in a transaction over these:
+  user_profile: { findUnique: async () => null },
+  match_scores: { deleteMany: async () => ({ count: 0 }) },
+  jobs: { findMany: async () => [], updateMany: async () => ({ count: 0 }), deleteMany: async () => ({ count: 0 }) },
+  get $transaction() { return async (fn) => fn(this); },
 });
 stub("services/emailService", { sendPasswordResetEmail: async () => {} });
 

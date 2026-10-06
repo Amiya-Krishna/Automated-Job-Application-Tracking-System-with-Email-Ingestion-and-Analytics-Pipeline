@@ -43,6 +43,26 @@ const refreshApi = axios.create(axiosConfig);
 
 let refreshPromise = null;
 
+export const BLOCKED_CODE = "account_blocked";
+const BLOCKED_FALLBACK =
+  "Your account has been blocked. Please contact an administrator.";
+
+export const isBlockedError = (error) =>
+  error?.response?.status === 403 &&
+  error?.response?.data?.code === BLOCKED_CODE;
+
+// A blocked account ends the local session; the AuthContext listens for this event.
+function endBlockedSession(error) {
+  const message = error?.response?.data?.message || BLOCKED_FALLBACK;
+  error.userMessage = message;
+  clearAccessToken();
+  window.dispatchEvent(
+    new CustomEvent("tracktrail:session-ended", {
+      detail: { reason: "blocked", message },
+    })
+  );
+}
+
 const canRetry = (config) =>
   ["get", "head", "options"].includes(
     (config.method || "get").toLowerCase()
@@ -102,6 +122,18 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    // The login page shows its own persistent alert for a blocked sign-in.
+    if (isBlockedError(error)) {
+      if (/\/auth\/login\/?$/.test(config?.url || "")) {
+        error.userMessage =
+          response.data?.message || BLOCKED_FALLBACK;
+      } else {
+        endBlockedSession(error);
+      }
+
+      return Promise.reject(error);
+    }
+
     if (response.status === 429) {
       error.userMessage =
         "Too many requests. Please wait a moment and try again.";
@@ -148,6 +180,12 @@ api.interceptors.response.use(
       if (refreshCode === "refresh_in_progress") {
         refreshError.userMessage =
           "Your session is being restored. Please try again.";
+
+        return Promise.reject(refreshError);
+      }
+
+      if (isBlockedError(refreshError)) {
+        endBlockedSession(refreshError);
 
         return Promise.reject(refreshError);
       }

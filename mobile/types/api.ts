@@ -12,6 +12,11 @@ export interface ApiErrorResponse {
   retryAfterSeconds?: number;
 }
 
+/** Shown when the server reports `account_blocked` and has no message of its own. */
+export const ACCOUNT_BLOCKED_MESSAGE = 'Your account has been blocked. Please contact an administrator.';
+/** Shown on the login screen after the user deleted their own account. */
+export const ACCOUNT_DELETED_MESSAGE = 'Your account has been deleted.';
+
 export class ApiError extends Error {
   /** HTTP status code, or `null` for network/timeout/offline errors with no response. */
   status: number | null;

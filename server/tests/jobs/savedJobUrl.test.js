@@ -12,6 +12,7 @@ let nextId = 1;
 const match = (r, w) => Object.entries(w).every(([k, v]) => (v && typeof v === "object" && "equals" in v ? String(r[k]).toLowerCase() === String(v.equals).toLowerCase() : r[k] === v));
 const stub = (rel, exports) => { const id = require.resolve(path.join("..", "..", rel)); require.cache[id] = { id, filename: id, loaded: true, exports }; };
 stub("lib/prisma", {
+  user: { findUnique: async ({ where }) => ({ id: where.id, status: "ACTIVE", tokenVersion: 0 }) },
   trackedJob: {
     findFirst: async ({ where }) => rows.find((r) => match(r, where)) || null,
     create: async ({ data }) => { const r = { id: nextId++, ...data }; rows.push(r); return r; },

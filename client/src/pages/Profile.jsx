@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import api from "../api";
 import Navbar from "../components/Navbar";
+import ConfirmDialog from "../components/ConfirmDialog";
+import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
 import { emitNotificationEvent } from "../services/notificationEvents";
 
@@ -14,6 +17,37 @@ function Profile() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const { endSession } = useAuth();
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  const closeDelete = () => {
+    if (isDeleting) return;
+    setDeleteOpen(false);
+    setConfirmText("");
+    setDeletePassword("");
+    setDeleteError("");
+  };
+
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await api.delete("/auth/account", { data: { password: deletePassword }, _skipAuthRefresh: true });
+      endSession();
+      toast.success("Your account has been deleted.");
+      navigate("/login", { replace: true });
+    } catch (err) {
+      setDeleteError(
+        err.response?.data?.message || err.userMessage || "Could not delete your account. Please try again."
+      );
+      setIsDeleting(false);
+    }
+  };
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -175,7 +209,80 @@ function Profile() {
             </form>
           )}
         </div>
+
+        <section
+          aria-labelledby="danger-zone-title"
+          className="mt-8 rounded-[28px] border border-rose-200 bg-white p-6 shadow-sm dark:border-rose-900 dark:bg-slate-900 sm:p-8"
+        >
+          <h2 id="danger-zone-title" className="text-lg font-bold text-rose-700 dark:text-rose-400">
+            Danger zone
+          </h2>
+          <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+            Delete account
+          </p>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+            Deleting your account is permanent and cannot be undone. The following is removed:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+            <li>Applications and jobs you added</li>
+            <li>Jobs imported from Gmail and saved by the browser extension</li>
+            <li>Your notifications</li>
+            <li>Resumes and resume tailoring history</li>
+            <li>Your profile and preferences</li>
+          </ul>
+          <p className="mt-2 text-sm text-slate-600 dark:text-slate-300">
+            Shared jobs and companies fetched by administrators are not affected.
+          </p>
+          <button
+            type="button"
+            onClick={() => setDeleteOpen(true)}
+            className="tt-btn tt-btn--danger mt-4"
+          >
+            Delete account
+          </button>
+        </section>
       </div>
+
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete your account?"
+        confirmLabel={isDeleting ? "Deleting…" : "Delete my account"}
+        busy={isDeleting}
+        confirmDisabled={confirmText !== "DELETE" || !deletePassword}
+        error={deleteError}
+        onConfirm={handleDeleteAccount}
+        onCancel={closeDelete}
+      >
+        <p>
+          This permanently deletes your account and all of your data. This cannot be undone.
+        </p>
+        <div>
+          <label htmlFor="delete-confirm-text" className="mb-1 block font-semibold text-slate-700 dark:text-slate-200">
+            Type DELETE to confirm
+          </label>
+          <input
+            id="delete-confirm-text"
+            data-autofocus
+            autoComplete="off"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          />
+        </div>
+        <div>
+          <label htmlFor="delete-confirm-password" className="mb-1 block font-semibold text-slate-700 dark:text-slate-200">
+            Your password
+          </label>
+          <input
+            id="delete-confirm-password"
+            type="password"
+            autoComplete="current-password"
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-900 outline-none focus:border-rose-500 focus:ring-4 focus:ring-rose-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+          />
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

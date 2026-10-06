@@ -22,6 +22,7 @@ const requireAdmin = require('./middleware/requireAdmin');
 prisma.$connect()
   .then(() => console.log("Postgres connected"))
   .then(() => require("./lib/schemaCheck").warnIfSessionsTableMissing())
+  .then(() => require("./lib/schemaCheck").warnIfAccountStatusMissing())
   .then(() => seedJobSources())
   .then(() => require("./services/adminBootstrap").ensureAdmins())
   .then(() => console.log("job_sources seeded (manual/linkedin/indeed/gmail/extension)"))

@@ -11,7 +11,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Layout, Radius } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useTheme } from '@/hooks/use-theme';
-import { ApiError } from '@/types/api';
+import { ACCOUNT_DELETED_MESSAGE, ApiError } from '@/types/api';
 import type { LoginRole } from '@/types/auth';
 import { loginSchema, type LoginFormValues } from '@/utils/auth-validation';
 
@@ -22,8 +22,11 @@ export default function LoginScreen() {
   // Only "admin" selects the admin door; anything else (including a missing param) is the user door.
   const role: LoginRole = params.role === 'admin' ? 'admin' : 'user';
   const isAdminLogin = role === 'admin';
-  // Pre-filled when the server ended the session (expired/revoked) so the user knows why they are here.
-  const [formError, setFormError] = useState<string | null>(sessionNotice);
+  // A submit error wins; otherwise the session notice (expired / blocked / account deleted) stays visible
+  // so the user knows why they are here, even if the screen was already mounted when it was set.
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const formError = submitError ?? sessionNotice;
+  const isConfirmation = submitError == null && sessionNotice === ACCOUNT_DELETED_MESSAGE;
 
   const {
     control,
@@ -35,7 +38,7 @@ export default function LoginScreen() {
   });
 
   const onSubmit = async (values: LoginFormValues) => {
-    setFormError(null);
+    setSubmitError(null);
     clearSessionNotice();
     try {
       // `role` is only the door the person chose; the server verifies it against the account's
@@ -44,7 +47,8 @@ export default function LoginScreen() {
       // No explicit navigation call: the root layout's Stack.Protected guards switch from the
       // (auth) group to (drawer) once auth status flips to 'authenticated'.
     } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
+      // 4xx messages are user-facing and shown verbatim, including 403 account_blocked.
+      setSubmitError(err instanceof ApiError ? err.message : 'Something went wrong. Please try again.');
     }
   };
 
@@ -73,8 +77,11 @@ export default function LoginScreen() {
           </View>
 
           {formError ? (
-            <View accessibilityRole="alert" style={[styles.errorBanner, { borderColor: theme.danger }]}>
-              <ThemedText type="small" themeColor="danger">
+            <View
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={[styles.errorBanner, { borderColor: isConfirmation ? theme.border : theme.danger }]}>
+              <ThemedText type="small" themeColor={isConfirmation ? 'text' : 'danger'}>
                 {formError}
               </ThemedText>
               {isAdminLogin && formError.toLowerCase().includes('administrator') ? (

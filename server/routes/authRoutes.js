@@ -7,6 +7,8 @@ const { isAllowedResetRedirect } = require("../utils/mobileRedirect");
 const authMiddleware = require("../middleware/authMiddleware");
 const { createRateLimiter } = require("../middleware/rateLimit");
 const sessions = require("../lib/sessions");
+const { isActive, sendBlocked, tokenVersionOf, BLOCKED_CODE, BLOCKED_MESSAGE, DELETED_MESSAGE } = require("../lib/accountStatus");
+const { deleteUserAccount, LastAdminError } = require("../services/accountDeletion");
 
 const { Prisma } = require("@prisma/client");
 const prisma = require("../lib/prisma");
@@ -20,7 +22,7 @@ const resetLimiter = createRateLimiter({ name: "auth-reset", windowMs: 60 * 60 *
 // at the user-login rate.
 const adminLoginLimiter = createRateLimiter({ name: "auth-login-admin", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_ADMIN_LOGIN_MAX) || 8 });
 const refreshLimiter = createRateLimiter({ name: "auth-refresh", windowMs: 15 * 60 * 1000, max: Number(process.env.RL_REFRESH_MAX) || 120 });
-const deleteLimiter = createRateLimiter({ name: "auth-delete", windowMs: 60 * 60 * 1000, max: 5 });
+const deleteLimiter = createRateLimiter({ name: "auth-delete", windowMs: 60 * 60 * 1000, max: Number(process.env.RL_DELETE_MAX) || 5 });
 
 // Mobile opts in to rotating tokens in its JSON response. Web uses the same
 // session rows, but its refresh token stays in an HttpOnly cookie. The
@@ -167,6 +169,12 @@ router.post("/login", loginLimiter, (req, res, next) => (requestedPortal(req) ==
       });
     }
 
+    // Account status gate: a blocked account never gets a session or token, on any client / door.
+    // Only reached with a correct password, so it cannot be used to probe which emails are blocked.
+    if (!isActive(user)) {
+      return sendBlocked(res);
+    }
+
     // Role gate (server-side, from the database row just loaded - never from the request).
     // Only reached with a correct password, so it cannot be used to probe for admin emails.
     // No session / token is issued on refusal.
@@ -198,7 +206,7 @@ router.post("/login", loginLimiter, (req, res, next) => (requestedPortal(req) ==
 
     // ✅ Generate token (web / extension: unchanged)
     const token = jwt.sign(
-      { id: user.id },
+      { id: user.id, tv: tokenVersionOf(user) },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
@@ -227,6 +235,10 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
     const refreshToken = web ? readCookie(req, "tt_refresh") : (req.body || {}).refreshToken;
     const r = await sessions.rotateSession(refreshToken, deviceInfo(req));
     if (!r.ok) {
+      if (r.reason === "blocked") {
+        if (web) clearWebRefreshCookie(req, res);
+        return res.status(403).json({ message: BLOCKED_MESSAGE, code: BLOCKED_CODE });
+      }
       // `reused_recently` is a benign race (two requests refreshed at once):
       // tell the client to retry with the token it already received.
       const code = r.reason === "reused_recently" ? "refresh_in_progress" : "session_invalid";
@@ -250,7 +262,8 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
 router.get("/me", authMiddleware, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    if (!user) return res.status(401).json({ message: "Account no longer exists", code: "token_invalid" });
+    if (!user) return res.status(401).json({ message: DELETED_MESSAGE, code: "token_invalid" });
+    if (!isActive(user)) return sendBlocked(res);
     res.json({ user: { ...publicUser(user), gmailConnected: Boolean(user.gmailRefreshToken), createdAt: user.createdAt } });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -278,10 +291,13 @@ router.post("/logout-all", authMiddleware, async (req, res) => {
   }
 });
 
-// DELETE ACCOUNT — permanently removes the account and everything tied to it
-// (tracked jobs, resumes, tailoring history, profile, sessions, push devices;
-// all relations cascade). Requires the current password. Also revokes the
-// stored Gmail grant at Google (best effort).
+// DELETE ACCOUNT — a signed-in user permanently deletes THEIR OWN account. The target is always
+// the authenticated user from the verified token (req.user.id): there is no id parameter, so there
+// is nothing to tamper with. Requires the current password as the explicit confirmation.
+// Deletes the user's private data in one transaction and preserves global (admin-fetched) data,
+// see services/accountDeletion.js. All login sessions are removed with the account, so every
+// refresh token dies; the access token stops working at once because the account row is gone
+// (middleware/authMiddleware.js). Also revokes the Gmail grant at Google (best effort).
 router.delete("/account", deleteLimiter, authMiddleware, async (req, res) => {
   try {
     const { password } = req.body || {};
@@ -289,25 +305,20 @@ router.delete("/account", deleteLimiter, authMiddleware, async (req, res) => {
       return res.status(400).json({ message: "Password is required to delete your account" });
     }
     const user = await prisma.user.findUnique({ where: { id: req.user.id } });
-    if (!user) return res.status(401).json({ message: "Account no longer exists", code: "token_invalid" });
+    if (!user) return res.status(401).json({ message: DELETED_MESSAGE, code: "token_invalid" });
     if (!(await bcrypt.compare(password, user.password))) {
       return res.status(400).json({ message: "Password is incorrect" });
     }
 
-    if (user.gmailRefreshToken) {
-      try {
-        const { getOAuthClient } = require("../config/google");
-        await getOAuthClient().revokeToken(user.gmailRefreshToken);
-      } catch (e) {
-        console.error("Gmail revoke during account deletion failed");
-      }
-    }
-
-    await prisma.user.delete({ where: { id: user.id } });
+    await deleteUserAccount(user.id);
     if (isWebClient(req)) clearWebRefreshCookie(req, res);
     res.json({ message: "Your account and data have been deleted." });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    if (error instanceof LastAdminError) {
+      return res.status(409).json({ message: error.message, code: error.code });
+    }
+    console.error(`[auth/delete-account] failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Could not delete your account. Please try again." });
   }
 });
 

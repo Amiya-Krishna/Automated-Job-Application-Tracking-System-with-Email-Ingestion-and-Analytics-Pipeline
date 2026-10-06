@@ -116,7 +116,7 @@ function setMessage(el, message, kind = "error") {
 // If the failure means the session is over, go back to sign-in with a reason.
 function handleSessionEnd(result) {
   if (describe(result).kind !== "session") return false;
-  sessionNotice = "Your session ended. Sign in again.";
+  sessionNotice = result && result.code === "account_blocked" && result.error ? result.error : "Your session ended. Sign in again.";
   render();
   return true;
 }
@@ -733,7 +733,7 @@ async function render() {
   }
   if (session.ok) {
     showView("out");
-    loginError.textContent = sessionNotice || (session.expired ? "Your session ended. Sign in again." : "");
+    loginError.textContent = sessionNotice || session.notice || (session.expired ? "Your session ended. Sign in again." : "");
     sessionNotice = "";
     (authMode === "login" ? $("email") : $("regName")).focus();
     return;

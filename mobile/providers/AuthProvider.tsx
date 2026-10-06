@@ -5,13 +5,13 @@ import { AppState } from 'react-native';
 import * as authService from '@/services/auth';
 import { logger } from '@/services/logger';
 import { setMonitoringUser } from '@/services/monitoring';
-import { setSavedJobsUser } from '@/services/savedJobs';
+import { purgeSavedJobsForUser, setSavedJobsUser } from '@/services/savedJobs';
 import { clearQueryCache, restoreQueryCache, startQueryPersistence, stopQueryPersistence } from '@/services/queryPersistence';
 import { unregisterPushDevice, forgetLocalPushToken, registerForPushIfPermitted, watchPushTokenChanges } from '@/services/push';
 import { ensureFreshAccessToken } from '@/services/session';
-import { onUnauthorized } from '@/services/sessionEvents';
+import { onUnauthorized, type UnauthorizedReason } from '@/services/sessionEvents';
 import { clearSession, getCachedUser, getRefreshToken, getToken, hydrateSession, setCachedUser, setSession } from '@/services/tokenStore';
-import { ApiError } from '@/types/api';
+import { ACCOUNT_BLOCKED_MESSAGE, ACCOUNT_DELETED_MESSAGE, ApiError } from '@/types/api';
 import type { AuthUser, LoginRequest, RegisterRequest } from '@/types/auth';
 
 type AuthStatus = 'hydrating' | 'authenticated' | 'unauthenticated';
@@ -28,7 +28,7 @@ export interface AuthContextValue {
   login: (credentials: LoginRequest) => Promise<void>;
   register: (payload: RegisterRequest) => Promise<{ message: string }>;
   logout: () => Promise<void>;
-  /** Permanently deletes the account (server-side) and signs out. */
+  /** Permanently deletes the account (server-side), wipes local data and signs out with a confirmation notice. */
   deleteAccount: (password: string) => Promise<void>;
 }
 
@@ -67,6 +67,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [queryClient],
   );
 
+  /** Ends the local session after the server said it is over. Idempotent while a wipe is running. */
+  const endSession = useCallback(
+    (reason?: UnauthorizedReason) => {
+      if (endingRef.current) return;
+      endingRef.current = true;
+      setUser(null);
+      setStatus('unauthenticated');
+      setSessionNotice(reason === 'blocked' ? ACCOUNT_BLOCKED_MESSAGE : 'Your session has expired. Please sign in again.');
+      void wipeLocalUserData().finally(() => {
+        endingRef.current = false;
+      });
+    },
+    [wipeLocalUserData],
+  );
+
   // Confirms the session with GET /auth/me. Errors other than "session over"
   // (offline, 5xx) keep the user signed in; a real 401 is handled by services/api.ts
   // (which refreshes, or ends the session via emitUnauthorized).
@@ -79,10 +94,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(next);
       void setCachedUser(next);
       setMonitoringUser(me.id);
-    } catch {
-      // Intentionally silent: offline / transient failures must not affect the session.
+    } catch (err) {
+      // services/api.ts already cleared the tokens; make sure the UI follows even if the event was missed.
+      if (err instanceof ApiError && err.apiCode === 'account_blocked') {
+        endSession('blocked');
+      } else if (err instanceof ApiError && err.status === 401) {
+        endSession();
+      }
+      // Everything else (offline / transient failures) is intentionally silent and must not affect the session.
     }
-  }, []);
+  }, [endSession]);
 
   // ---- Startup: hydrate from SecureStore, restore cached reads, then validate ----
   useEffect(() => {
@@ -107,17 +128,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ---- Server ended the session (refresh rejected / legacy token expired) ----
   useEffect(() => {
-    return onUnauthorized(() => {
-      if (endingRef.current) return;
-      endingRef.current = true;
-      setUser(null);
-      setStatus('unauthenticated');
-      setSessionNotice('Your session has expired. Please sign in again.');
-      void wipeLocalUserData().finally(() => {
-        endingRef.current = false;
-      });
-    });
-  }, [wipeLocalUserData]);
+    return onUnauthorized((reason) => endSession(reason));
+  }, [endSession]);
 
   // ---- Foreground recovery: refresh a stale token and re-confirm the session ----
   useEffect(() => {
@@ -176,13 +188,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const deleteAccount = useCallback(
     async (password: string) => {
-      await authService.deleteAccount(password); // throws on wrong password / offline
-      await clearSession();
+      await authService.deleteAccount(password); // throws on wrong password / last admin / offline
+      const deletedUserId = user?.id ?? getCachedUser()?.id ?? null;
+      await clearSession(); // secure-store tokens + cached user
+      setSessionNotice(ACCOUNT_DELETED_MESSAGE); // the login screen confirms the deletion
       setUser(null);
       setStatus('unauthenticated');
-      await wipeLocalUserData();
+      await wipeLocalUserData(); // query cache (memory + persisted), push token, saved jobs, monitoring user
+      if (deletedUserId != null) await purgeSavedJobsForUser(deletedUserId);
     },
-    [wipeLocalUserData],
+    [wipeLocalUserData, user?.id],
   );
 
   const value = useMemo<AuthContextValue>(

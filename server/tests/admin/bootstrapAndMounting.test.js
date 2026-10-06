@@ -126,7 +126,7 @@ test("make-admin script: promotes, revokes, rejects unknown email and missing ar
 test("behaviour when no admin exists: normal users are denied everywhere (fail closed), and nothing auto-promotes", async () => {
   const jwt = require("jsonwebtoken");
   process.env.JWT_SECRET = "test-secret";
-  const users = [{ id: 1, role: "user" }, { id: 2, role: null }, { id: 3, role: "ADMIN" }, { id: 4, role: "administrator" }];
+  const users = [{ id: 1, role: "user" }, { id: 2, role: null }, { id: 3, role: "ADMIN" }, { id: 4, role: "administrator" }].map((u) => ({ status: "ACTIVE", ...u }));
   stub("lib/prisma", { user: { findUnique: async ({ where }) => users.find((u) => u.id === where.id) || null } });
   delete require.cache[stubPath("middleware/requireAdmin")];
   const requireAdmin = require("../../middleware/requireAdmin");

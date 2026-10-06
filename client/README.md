@@ -33,5 +33,19 @@ pieces: `/job-discovery` and `/admin` (wrapped in `components/AdminRoute.jsx`),
 the "Job Discovery"/"Admin" nav items, and `components/AdminDeleteButton.jsx`
 on Sources, Companies and Matched Jobs. The API enforces the same rules
 (`requireAdmin`), so hiding UI is only a convenience. Shared action-button
-styles (`.tt-btn`, `.tt-actions`) live in `src/index.css`. See
+styles (`.tt-btn`, `.tt-actions`) live in `src/index.css`. The Admin panel's
+**User management** (`components/UserManagement.jsx`) lists accounts (search,
+status filter, pagination) and lets admins block, unblock or delete normal users
+with confirmation dialogs; the signed-in admin and other admins are protected
+(the API refuses them with `cannot_modify_self` / `cannot_manage_admin`).
+`pages/Profile.jsx` has a **Danger zone** to delete your own account (type
+`DELETE` + password). `Login` shows a persistent "account blocked" message,
+also after an active session is ended by a block (`403 account_blocked`). See
 `docs/11_Roles_Permissions_Platforms_and_Release_Notes.md`.
+
+## Tests
+
+```bash
+cd client
+npm test && npm run lint && npm run build
+```

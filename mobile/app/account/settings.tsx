@@ -20,6 +20,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { DELETE_ACCOUNT_URL } from '@/services/config';
 import { sendTestPush } from '@/services/pushApi';
 import { ApiError } from '@/types/api';
+import { DELETE_CONFIRM_WORD, isDeleteConfirmed } from '@/utils/account-deletion';
 
 /**
  * Settings screen, reached from the Profile tab and the drawer.
@@ -45,19 +46,23 @@ export default function SettingsScreen() {
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [password, setPassword] = useState('');
+  const [typedConfirm, setTypedConfirm] = useState('');
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const onDelete = async () => {
-    if (!password) return setDeleteError('Enter your password to confirm.');
+    if (deleting || !isDeleteConfirmed(typedConfirm, password)) return;
     setDeleting(true);
     setDeleteError(null);
     try {
       await deleteAccount(password); // signs out on success; the router switches to the login screen
     } catch (err) {
+      // Wrong password (400), last administrator (409), offline and other errors all carry a user-facing message.
       setDeleteError(err instanceof ApiError ? err.message : 'Could not delete your account. Please try again.');
       setDeleting(false);
     }
   };
+
+  const deleteDisabled = deleting || !isDeleteConfirmed(typedConfirm, password);
 
   const onTestPush = async () => {
     setTestMessage('Sending…');
@@ -200,10 +205,35 @@ export default function SettingsScreen() {
       <ThemedView style={styles.section}>
         <SectionHeader title="Delete account" />
         <ThemedText type="small" themeColor="textSecondary">
-          Permanently deletes your account, applications, resumes, tailoring history and Gmail connection. This cannot be undone.
+          Permanently deletes your account and data. This cannot be undone.
         </ThemedText>
         {confirmDelete ? (
           <ThemedView style={styles.section}>
+            <ThemedText type="smallBold" themeColor="danger">
+              This permanently deletes your account. This cannot be undone.
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              The following will be erased:{'\n'}
+              {'• '}Your applications and jobs{'\n'}
+              {'• '}Jobs imported from Gmail and jobs saved with the browser extension{'\n'}
+              {'• '}Your notifications{'\n'}
+              {'• '}Your resumes and tailoring history{'\n'}
+              {'• '}Your profile and preferences
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              Shared jobs and companies fetched by administrators are not affected.
+            </ThemedText>
+            <TextInput
+              value={typedConfirm}
+              onChangeText={setTypedConfirm}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              editable={!deleting}
+              placeholder={`Type ${DELETE_CONFIRM_WORD} to confirm`}
+              placeholderTextColor={theme.textSecondary}
+              accessibilityLabel={`Type ${DELETE_CONFIRM_WORD} to confirm account deletion`}
+              style={[styles.input, { borderColor: theme.border, color: theme.text }]}
+            />
             <TextInput
               value={password}
               onChangeText={setPassword}
@@ -211,6 +241,7 @@ export default function SettingsScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               textContentType="password"
+              editable={!deleting}
               placeholder="Confirm with your password"
               placeholderTextColor={theme.textSecondary}
               accessibilityLabel="Password to confirm account deletion"
@@ -223,17 +254,21 @@ export default function SettingsScreen() {
             ) : null}
             <Pressable
               accessibilityRole="button"
-              accessibilityState={{ disabled: deleting }}
-              disabled={deleting}
+              accessibilityLabel="Permanently delete my account"
+              accessibilityState={{ disabled: deleteDisabled, busy: deleting }}
+              disabled={deleteDisabled}
               onPress={onDelete}
-              style={[styles.deleteButton, { backgroundColor: theme.danger, opacity: deleting ? 0.6 : 1 }]}>
+              style={[styles.deleteButton, { backgroundColor: theme.danger, opacity: deleteDisabled ? 0.5 : 1 }]}>
               {deleting ? <ActivityIndicator color="#ffffff" /> : <ThemedText type="smallBold" style={styles.deleteText}>Permanently delete my account</ThemedText>}
             </Pressable>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Cancel account deletion"
+              disabled={deleting}
               onPress={() => {
                 setConfirmDelete(false);
                 setPassword('');
+                setTypedConfirm('');
                 setDeleteError(null);
               }}
               style={styles.cancelButton}>

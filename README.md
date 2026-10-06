@@ -162,8 +162,18 @@ flowchart LR
 - Enforced in the backend (`server/services/visibility.js`, scoped SQL/Prisma filters, a DB trigger `enforce_job_scope`, and partial unique indexes), not by hiding UI. Foreign ids return `404`. `/api/ingest` can never create a global job and client-supplied `source` values are re-classified server-side.
 - **Notifications** are stored per user (`notifications.user_id`) and served from `/api/notifications/inbox`; web and mobile clients hold no cross-user cache and clear it on logout.
 - Setup after pulling: `cd server && npx prisma generate && npx prisma migrate deploy` (applies `20261004000000_ownership_scopes_and_notifications`).
-- Real-database isolation tests: `TEST_DATABASE_URL=postgres://user:pass@host:5432/db npm test` (skipped when unset).
+- Account status migration: `20261006000000_user_account_status` (`users.status`, `blocked_at`, `token_version`; see "Account status, blocking and deletion" below). Apply with `npx prisma migrate deploy && npx prisma generate` (never `migrate dev` in production).
+- Real-database isolation tests: `TEST_DATABASE_URL=postgres://user:pass@host:5432/db npm test` (skipped when unset); this also runs the real-PostgreSQL account migration/cascade test (`server/tests/accounts/postgres.test.js`).
+- Test commands: server `cd server && npm test`; web `cd client && npm test && npm run lint && npm run build`; mobile `cd mobile && npm run typecheck && npm run lint && npm test`; extension `cd browser-extension && npm test`.
 - Mobile: expo-router groups `(drawer)/(tabs)` (Home, Jobs, Tracker, Alerts, Profile) plus role chooser/login; push registration is skipped on web and Expo Go.
+
+### Account status, blocking and deletion
+
+- `users.status` is `ACTIVE` or `BLOCKED` (plus `blocked_at` and `token_version`). Admins can block, unblock and delete **normal users** in the web Admin panel (**User management**, `/api/admin/users`). They cannot touch other admins or themselves, so at least one admin always remains.
+- **Blocking is reversible and deletes nothing.** The server re-checks the account in the database on every authenticated request; a blocked user gets `403 account_blocked` at login (web, mobile, extension), on refresh and on `/auth/me`. Blocking bumps `token_version` and revokes all sessions, so earlier tokens die immediately and stay dead after unblocking (the user signs in again).
+- **Deleting is permanent.** Users can delete their own account (web Profile -> Danger zone, mobile Settings -> Delete account; type `DELETE` + password). Admins can delete normal users. One transaction removes the user's tracked jobs, private jobs, profile and match scores, resumes and tailoring data, sessions, push devices and notifications, and revokes the Gmail grant at Google (best effort). Global admin-fetched jobs, companies and sources are **preserved**.
+- There is no admin user-management UI on mobile; it is web-only.
+- Full details, tables and error codes: [docs/11](docs/11_Roles_Permissions_Platforms_and_Release_Notes.md) and [docs/04](docs/04_API_Reference.md).
 
 ### Roles & permissions
 
@@ -174,7 +184,9 @@ flowchart LR
 | Companies | ✅ global companies + companies from your own jobs | ✅ same rule (global + own) |
 | Job Discovery (UI **and** `/api/scrape/*`) | ❌ (no nav item, route redirects, API `403`) | ✅ |
 | Delete Sources, Companies, Matched Jobs (`/api/admin/*`) | ❌ | ✅ |
-| Admin panel (`/admin`): users, roles, overview | ❌ | ✅ |
+| Admin panel (`/admin`): overview, roles, **User management** (list, block, unblock, delete normal users) | ❌ | ✅ |
+| Block / unblock / delete **other admins** or **yourself** via the admin API | n/a | ❌ (`cannot_manage_admin`, `cannot_modify_self`; demote first) |
+| Delete your **own** account (`DELETE /api/auth/account`, password required) | ✅ | ✅ (not if you are the last active admin: `409 last_admin`) |
 
 `users.role` is `"user"` (default) or `"admin"`. The server re-reads the role from the database on every admin request (fail-closed), so the UI gating is a convenience, not the security boundary. Bootstrap the first admin with `ADMIN_EMAILS=a@x.com,b@y.com` in `server/.env` (applied at boot to existing accounts, never demotes) or `npm run make-admin -- a@x.com`; further roles are managed in the Admin panel.
 
@@ -501,6 +513,7 @@ Zero-denominator behavior is intentional: a metric with no denominator (e.g. `In
 | `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | Optional | Forgot-password emails; skipped (logged, not sent) if unset |
 | `SERVER_URL` / `EXTENSION_REDIRECT_URL` | Optional | Used to build Gmail OAuth success/callback redirects for the extension flow |
 | `ADMIN_EMAILS` | Optional | Comma-separated emails promoted to admin at boot |
+| `RL_DELETE_MAX` | Optional (5) | Self-service account deletions allowed per user per hour |
 | `SCRAPE_DETAIL_LIMIT` | Optional (15) | Detail-page visits per discovery run for the new job-board adapters |
 | `LINKEDIN_TALENT_API_TOKEN` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current LinkedIn discovery path uses Playwright and does not require this token |
 | `INDEED_PARTNER_FEED_URL` | Legacy/optional | Retained for compatibility with older documentation/configuration; the current Indeed discovery path uses Playwright and does not require this feed URL |
@@ -554,7 +567,7 @@ cd server
 npm install
 cp .env.example .env        # then fill in DATABASE_URL, JWT_SECRET, CLIENT_URL
 npx prisma generate
-npx prisma migrate deploy   # applies the committed migrations in prisma/migrations
+npx prisma migrate deploy   # applies the committed migrations in prisma/migrations (latest: 20261006000000_user_account_status)
 npm start
 
 # client (separate terminal)

@@ -659,12 +659,12 @@
       if (st.error) {
         const e = el("div", "err");
         e.append(el("div", "", st.error.message));
-        if (st.error.kind === "session") e.append(el("div", "", "Click the TrackTrail toolbar icon to sign in, then retry."));
+        if (st.error.kind === "session" && st.error.code !== "account_blocked") e.append(el("div", "", "Click the TrackTrail toolbar icon to sign in, then retry."));
         const actions = el("div", "row");
         if (st.error.code === "no_resume" || st.error.code === "resume_unreadable") {
           actions.append(linkAction("Add your resume in TrackTrail", () => openWeb("/resumes"), "add-resume"));
         }
-        if (st.lastAction && (st.error.retryable || st.error.kind === "session")) {
+        if (st.lastAction && (st.error.retryable || (st.error.kind === "session" && st.error.code !== "account_blocked"))) {
           actions.append(button("Retry", () => { const run = st.lastAction; st.error = null; run(); }, { secondary: true, key: "retry" }));
         }
         if (actions.childNodes.length) e.append(actions);

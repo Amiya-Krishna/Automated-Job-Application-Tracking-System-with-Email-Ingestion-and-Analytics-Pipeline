@@ -8,8 +8,8 @@ const jwt = require("jsonwebtoken");
 process.env.JWT_SECRET = "test-secret";
 const db = {
   users: [
-    { id: 1, name: "Admin", email: "a@x.co", role: "admin" },
-    { id: 2, name: "User", email: "u@x.co", role: "user" },
+    { id: 1, name: "Admin", email: "a@x.co", role: "admin", status: "ACTIVE" },
+    { id: 2, name: "User", email: "u@x.co", role: "user", status: "ACTIVE" },
   ],
   deleted: [],
 };
@@ -35,7 +35,7 @@ const jobsByCompany = { 1: [{ id: 9n }] };
 tx.jobs.findMany = async ({ where }) => (where.company_id ? jobsByCompany[where.company_id] || [] : where.source_id ? [] : []);
 const prisma = {
   user: {
-    findUnique: async ({ where }) => db.users.find((u) => u.id === where.id) || null,
+    findUnique: async ({ where }) => db.users.find((u) => u.id === where.id) || null, // rows carry status below
     findMany: async () => db.users,
     count: async () => db.users.length,
     update: async ({ where, data }) => Object.assign(db.users.find((u) => u.id === where.id), data),
@@ -82,7 +82,7 @@ test("a forged role claim in the token does not grant access (role is read from 
 });
 
 test("demotion takes effect immediately for already-issued tokens", async () => {
-  db.users.push({ id: 3, name: "Temp", email: "t@x.co", role: "admin" });
+  db.users.push({ id: 3, name: "Temp", email: "t@x.co", role: "admin", status: "ACTIVE" });
   const t = tok(3);
   assert.equal((await call("GET", "/api/admin/overview", t)).status, 200);
   db.users.find((u) => u.id === 3).role = "user";
@@ -119,7 +119,7 @@ test("role management: valid values only, cannot change own role", async () => {
 });
 
 test("promotion takes effect immediately: the same user token gains access after being made admin", async () => {
-  db.users.push({ id: 4, name: "Soon", email: "s@x.co", role: "user" });
+  db.users.push({ id: 4, name: "Soon", email: "s@x.co", role: "user", status: "ACTIVE" });
   const t = tok(4);
   assert.equal((await call("GET", "/api/admin/overview", t)).status, 403);
   assert.equal((await call("PATCH", "/api/admin/users/4/role", tok(1), { role: "admin" })).status, 200);

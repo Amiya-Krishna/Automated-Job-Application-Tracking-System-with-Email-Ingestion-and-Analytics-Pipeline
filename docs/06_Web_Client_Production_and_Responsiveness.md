@@ -14,7 +14,7 @@
 - Replaced browser JWT persistence with the existing rotating session architecture. Web access tokens are memory-only; the API stores the web refresh token in an `HttpOnly` cookie and rotates it through `/api/auth/refresh`. Mobile JSON refresh tokens and extension legacy tokens remain unchanged.
 - Added startup restoration through `/auth/refresh` and `/auth/me`, safe GET-only 401 retry, explicit sign-out, request timeout, and consistent offline/permission/rate-limit/server error messages.
 - Added a React error boundary with optional sanitized error-event reporting, route-level code splitting, loading states, production API URL validation, metadata, and an SPA rewrite already present in `client/vercel.json`.
-- Hardened API transport with CSP/security headers, production `CLIENT_URL` enforcement, strict CORS in production, cookie cleanup on logout/account deletion, and sanitized server/Gmail error logs.
+- Hardened API transport with CSP/security headers, production `CLIENT_URL` enforcement, strict CORS in production, cookie cleanup on logout/account deletion (self-service from Profile -> Danger zone, and when a blocked account's refresh is refused), and sanitized server/Gmail error logs.
 - Added client lint/test/build validation to CI and a public-only client environment example.
 
 ### Areas changed

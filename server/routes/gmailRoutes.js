@@ -180,11 +180,16 @@ router.get("/callback", async (req, res) => {
       return res.redirect(redirectTarget("no_refresh_token", ctx));
     }
 
-    // ✅ Save refresh token in DB — only for the user the signed state names.
-    await prisma.user.update({
-      where: { id: decoded.id },
+    // ✅ Save refresh token in DB — only for the user the signed state names, and only while that
+    // account still exists and is ACTIVE (this route is unauthenticated: the state token alone
+    // must not let a blocked or deleted account keep connecting Gmail).
+    const saved = await prisma.user.updateMany({
+      where: { id: decoded.id, status: "ACTIVE" },
       data: { gmailRefreshToken: tokens.refresh_token },
     });
+    if (!saved || saved.count !== 1) {
+      return res.redirect(redirectTarget("error", ctx));
+    }
 
     res.redirect(redirectTarget("connected", ctx));
   } catch (err) {

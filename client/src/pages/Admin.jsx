@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../api";
 import Navbar from "../components/Navbar";
+import UserManagement from "../components/UserManagement";
 import AdminDeleteButton from "../components/AdminDeleteButton";
 import { useAuth } from "../context/AuthContext";
 import toast from "react-hot-toast";
@@ -21,23 +22,19 @@ function Stat({ label, value }) {
 function Admin() {
   const { user } = useAuth();
   const [overview, setOverview] = useState(null);
-  const [users, setUsers] = useState([]);
   const [sources, setSources] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [savingId, setSavingId] = useState(null);
 
   const load = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [o, u, s, c] = await Promise.all([
+      const [o, s, c] = await Promise.all([
         api.get("/admin/overview"),
-        api.get("/admin/users"),
         api.get("/sources"),
         api.get("/companies?pageSize=100"),
       ]);
       setOverview(o.data?.data || null);
-      setUsers(u.data?.data || []);
       setSources(s.data?.data || []);
       setCompanies(c.data?.data || []);
     } catch (err) {
@@ -49,18 +46,12 @@ function Admin() {
 
   useEffect(() => { load(); }, [load]);
 
-  const changeRole = async (target, role) => {
-    setSavingId(target.id);
+  const refreshOverview = useCallback(async () => {
     try {
-      const res = await api.patch(`/admin/users/${target.id}/role`, { role });
-      setUsers((prev) => prev.map((x) => (x.id === target.id ? { ...x, role: res.data?.data?.role || role } : x)));
-      toast.success(`${target.email} is now ${role}`);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "Could not change role");
-    } finally {
-      setSavingId(null);
-    }
-  };
+      const o = await api.get("/admin/overview");
+      setOverview(o.data?.data || null);
+    } catch { /* stats are best-effort */ }
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -77,41 +68,17 @@ function Admin() {
           <div className="mt-6 h-40 animate-pulse rounded-[24px] bg-slate-100 dark:bg-slate-800" />
         ) : (
           <>
-            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-7">
               <Stat label="Users" value={overview?.users} />
               <Stat label="Admins" value={overview?.admins} />
+              <Stat label="Blocked" value={overview?.blockedUsers} />
               <Stat label="Jobs" value={overview?.jobs} />
               <Stat label="Companies" value={overview?.companies} />
               <Stat label="Sources" value={overview?.sources} />
               <Stat label="Discovery runs" value={overview?.discoveryRuns} />
             </div>
 
-            <section className={`${card} mt-6`}>
-              <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Users &amp; roles</h2>
-              <ul className="mt-3 divide-y divide-slate-100 dark:divide-slate-800">
-                {users.map((u) => (
-                  <li key={u.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{u.name || u.email}</p>
-                      <p className="truncate text-xs text-slate-500 dark:text-slate-400">{u.email}</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${u.role === "admin" ? "bg-rose-100 text-rose-800" : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"}`}>{u.role}</span>
-                      {u.id !== user?.id && (
-                        <button
-                          type="button"
-                          disabled={savingId === u.id}
-                          onClick={() => changeRole(u, u.role === "admin" ? "user" : "admin")}
-                          className="tt-btn tt-btn--primary"
-                        >
-                          {u.role === "admin" ? "Make user" : "Make admin"}
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <UserManagement currentUserId={user?.id} onChanged={refreshOverview} />
 
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
               <section className={card}>
