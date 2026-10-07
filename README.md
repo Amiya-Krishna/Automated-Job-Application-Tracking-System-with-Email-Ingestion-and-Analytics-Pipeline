@@ -573,8 +573,6 @@ For server database verification against real PostgreSQL, configure `TEST_DATABA
 
 ---
 
-## Project Ownership
+## Project Scope
 
-TrackTrail is an individual project covering backend, database, web, mobile, browser-extension, testing, and documentation work.
-
-AI coding assistants were used during development. The repository's design decisions, implementation boundaries, verification, and documented limitations are owned by the project author.
+TrackTrail is an individual full-stack engineering project covering backend APIs, PostgreSQL data management, web and mobile clients, browser-extension integration, testing, and technical documentation. The repository documents the implemented architecture, verification steps, and known limitations.

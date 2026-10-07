@@ -52,6 +52,15 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const displayEmail = profile.data?.email || user?.email || null;
 
   const go = (href: Href) => {
+    // Analytics is a drawer screen. Navigate within the drawer navigator first,
+    // then close it in the same interaction so a close-transition race cannot
+    // swallow the navigation on mobile devices.
+    if (href === '/analytics') {
+      navigation.navigate('analytics');
+      navigation.dispatch(DrawerActions.closeDrawer());
+      return;
+    }
+
     navigation.dispatch(DrawerActions.closeDrawer());
     router.push(href);
   };
