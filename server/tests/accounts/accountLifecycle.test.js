@@ -393,3 +393,24 @@ test("push reminders skip blocked accounts (query filters on user status)", asyn
   const src = require("node:fs").readFileSync(path.join(__dirname, "..", "..", "services", "reminderService.js"), "utf8");
   assert.match(src, /user: \{ status: "ACTIVE" \}/);
 });
+
+test("a password reset also kills access tokens issued before it (legacy 7-day token included)", async () => {
+  const crypto = require("node:crypto");
+  const U = add.user({ name: "Reset Me", email: "reset@x.co", password: hash });
+  const legacy = await call("POST", "/api/auth/login", { body: { email: "reset@x.co", password: PW } }); // no x-client => legacy JWT
+  assert.equal(legacy.status, 200);
+  assert.equal((await call("GET", "/api/my/jobs", { token: legacy.body.token })).status, 200);
+
+  const pv = crypto.createHash("sha256").update(U.password).digest("hex").slice(0, 16);
+  const resetToken = jwt.sign({ id: U.id, purpose: "password_reset", pv }, process.env.JWT_SECRET, { expiresIn: "30m" });
+  const r = await call("POST", "/api/auth/reset-password", { body: { token: resetToken, password: "brand-new-pass" } });
+  assert.equal(r.status, 200);
+
+  const after = await call("GET", "/api/my/jobs", { token: legacy.body.token });
+  assert.equal(after.status, 401);
+  assert.equal(after.body.code, "token_invalid");
+  // the reset link is single-use, and the new password works
+  assert.equal((await call("POST", "/api/auth/reset-password", { body: { token: resetToken, password: "another-pass" } })).status, 400);
+  const fresh = await call("POST", "/api/auth/login", { body: { email: "reset@x.co", password: "brand-new-pass" } });
+  assert.equal(fresh.status, 200);
+});

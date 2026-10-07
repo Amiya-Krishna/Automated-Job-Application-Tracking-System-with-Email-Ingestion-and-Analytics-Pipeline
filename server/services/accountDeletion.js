@@ -33,7 +33,10 @@ class LastAdminError extends Error {
   }
 }
 
-async function runDeletion(tx, user) {
+async function runDeletion(tx, initial) {
+  // Re-read inside the transaction: the role seen before it started may be stale (a concurrent
+  // promotion would otherwise skip the last-administrator check).
+  const user = (await tx.user.findUnique({ where: { id: initial.id }, select: { id: true, role: true } })) || initial;
   if (user.role === ADMIN_ROLE) {
     const otherAdmins = await tx.user.count({ where: { role: ADMIN_ROLE, status: STATUS.ACTIVE, NOT: { id: user.id } } });
     if (otherAdmins === 0) throw new LastAdminError();

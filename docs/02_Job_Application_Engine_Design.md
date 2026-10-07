@@ -1,280 +1,82 @@
-# Intelligent Job Application Engine (Decision-Based + Semi-Automated)
+# 02 — Ingestion, Discovery, Matching and Apply Engine
 
-> **Consolidated from:** `intelligent-job-application-engine-design.md`.
+This document covers the pipeline behind the tracker: how jobs enter the system, how they are de-duplicated and scored, and how automated application preparation works. Ownership rules (global vs private) are in [docs/01](01_Project_Structure_and_Architecture.md) and [docs/11](11_Roles_Permissions_Platforms_and_Release_Notes.md).
 
-### System Design — upgrade path from TrackTrail (current: Node/Express + PostgreSQL + browser extension)
+## 1. Single ingestion path
 
-> **Note on your current stack vs. this design:** the repo now runs Express 5
-> on a single hosted PostgreSQL database, accessed via **Prisma** (not raw
-> `pg` model files — see "Migration Notes" at the bottom, updated to reflect
-> what's actually done). The engine described in this document has since
-> been substantially implemented: dedup, TF-IDF matching, the human-in-the-
-> loop Playwright apply flow, the learning loop, and live per-user analytics
-> all exist in the current codebase — see the README for what's actually
-> running today versus what below is still aspirational design.
->
-> **Current implementation correction:** Job Discovery now has seven active
-> providers. Remotive uses its public API; LinkedIn and Indeed use the shared
-> Playwright scraper in `server/services/scraper.js`, and Naukri, Internshala, Wellfound and Unstop use `services/jobBoards/scrapePlatform.js`, all invoked through adapters by the BullMQ scrape worker (admin-only). All sources feed the same
-> `ingestJob()` normalization/deduplication path. The browser extension still
-> provides manual capture through `/api/ingest`. Playwright discovery is not an
-> anti-bot bypass mechanism: CAPTCHA, authentication walls, rate limits, and
-> provider-side blocking are surfaced as errors/blocked states.
+Every job — admin discovery, extension capture, Gmail import, manual tracker — enters through `ingestJob()` (`server/services/ingestionService.js`). One place owns normalisation and de-duplication.
 
----
+| Step | Detail |
+|---|---|
+| Resolve source | The **source row decides ownership**: a private source (`manual`, `gmail`, `extension`) requires an owner; a global source never has one, whatever the payload says. |
+| Normalise | Lower-case, strip punctuation, collapse whitespace; HTML stripped from descriptions; URLs validated (`jobUrl.js`). |
+| Company | Atomic `INSERT ... ON CONFLICT (normalized_name) DO UPDATE ... RETURNING id`. Concurrent ingests of a brand-new company reuse one row instead of failing on the unique constraint. |
+| Exact duplicate | Indexed `content_hash` lookup. |
+| Fuzzy duplicate | Only on an exact miss: same company, ±14 days, title Jaro-Winkler combined with description TF-IDF cosine similarity; threshold `0.85` (`dedupService.js`). Scoped to the same owner for private jobs. |
+| Insert | New rows point at themselves as `canonical_job_id`; duplicates point at the original. Conflict targets match the partial unique indexes. |
+| Enqueue | `match:score` on the `match` queue. |
 
-## 1. High-Level Architecture
+Design choice: de-duplication is **synchronous**, not a queue stage. The candidate set is bounded, and running it inline closes a race in which two near-simultaneous ingests would both pass an asynchronous "no duplicate yet" check. The cost is a little latency on the ingest call.
 
-Four services, one shared Postgres instance, one Redis instance for queues/cache. Everything async and worker-driven — the API layer never blocks on scraping, matching, or browser automation.
+The extension endpoint (`POST /api/ingest`) enqueues instead of writing inline, with a deterministic job id (`ingest:<origin>:u<userId>:<externalId|hash>`) so repeated clicks cannot enqueue twice; 5 attempts with exponential backoff.
+
+## 2. Job discovery (admin only)
 
 ```
-                         ┌─────────────────────────┐
-                         │   Browser Extension      │
-                         │ (existing capture path)  │
-                         └────────────┬─────────────┘
-                                      │ POST /ingest (manual capture)
-                                      ▼
-┌──────────────┐   enqueue    ┌───────────────┐   enqueue    ┌──────────────────┐
-│  Playwright    │───────────▶│  Ingestion API  │───────────▶│  Redis Queues     │
-│  Scrapers      │  scrape:*  │  (Express)      │  match:*    │  (BullMQ)         │
-│  (LinkedIn,    │            │                 │  apply:*    │                   │
-│   Indeed)      │            └───────┬─────────┘  analytics:*└─────────┬─────────┘
-└──────────────┘                     │                                 │
-                                       │ writes                         │ consumes
-                                       ▼                                 ▼
-                            ┌───────────────────┐            ┌───────────────────────┐
-                            │   PostgreSQL       │◀──────────│  Worker Pool           │
-                            │  (jobs, companies, │  writes   │  - MatchWorker         │
-                            │  applications,      │           │  - DedupWorker         │
-                            │  match_scores,      │           │  - ApplyWorker         │
-                            │  user_profile,      │           │  - AnalyticsWorker     │
-                            │  job_sources)       │           └───────────┬───────────┘
-                            └─────────┬──────────┘                       │
-                                      │                                  │ drives (headed)
-                                      ▼                                  ▼
-                            ┌───────────────────┐            ┌───────────────────────┐
-                            │  REST API           │◀─────────│  Playwright Apply       │
-                            │  (jobs, analytics,   │  status  │  Session (human-in-loop)│
-                            │  apply-review)       │  updates │                         │
-                            └─────────┬──────────┘            └───────────────────────┘
-                                      │
-                                      ▼
-                            ┌───────────────────┐
-                            │  React Dashboard    │
-                            └───────────────────┘
+POST /api/scrape/run  ->  ScrapeRun(queued)  ->  "scrape" queue  ->  scrapeWorker (concurrency 2)
+   -> per-source adapter -> ingestJob() -> ScrapeRun: running -> succeeded | failed | blocked
+GET  /api/scrape/runs/:id   (polled by the UI; Cache-Control: no-store)
 ```
 
-**Services:**
+| Source | Method |
+|---|---|
+| Remotive | Public JSON API; no credentials; remote roles only |
+| LinkedIn, Indeed, Naukri, Internshala, Wellfound, Unstop | Playwright, via one shared adapter factory and the same extractor module the browser extension uses (kept in sync by `npm run sync:extractors`, verified by a test) |
 
-1. **Ingestion pipeline** — extends your existing capture. Two sources feed the same table: (a) Playwright scrapers running on a schedule (cron via BullMQ repeatable jobs), (b) your existing browser extension for ad-hoc manual capture. Both write through the same `POST /internal/ingest` endpoint so dedup/normalization logic lives in one place instead of being duplicated in the extension and the scraper.
-2. **Matching service** — a worker that consumes `match:score` jobs, runs TF-IDF (v1) or embedding similarity (v2) against the user's profile, writes to `match_scores`.
-3. **Apply service** — queue-based, Playwright-driven, but stops before the final submit click (human-in-the-loop). Emits `apply:pending_review` events the dashboard subscribes to.
-4. **Analytics service** — scheduled aggregation worker + read-optimized API endpoints (materialized views, not live joins, once volume grows).
+- Each adapter reports `ok`, `error`, `blocked` or `unavailable` with a message. A login wall or bot check becomes `blocked` for that source while the others in the run continue. The system does **not** attempt to bypass CAPTCHAs, authentication walls or anti-bot controls.
+- Detail pages are visited for at most `SCRAPE_DETAIL_LIMIT` results per run (default 15) to read description, salary/stipend and skills.
+- A run row deleted mid-flight (a user clears history) is handled: updates that hit Prisma `P2025` are treated as "nobody to report to", not as crashes.
+- The polling endpoint disables ETags/caching: a `304` would make the web client's axios call reject and stop polling.
+- The UI stops polling after 45 s still `queued` and tells the user the worker may not be running.
+- Playwright Chromium must be installed on the worker host; discovery is inherently less stable than a documented API.
 
-**Why queue-based instead of synchronous request/response:** scraping and Playwright automation are slow (seconds to minutes) and flaky (timeouts, layout changes, CAPTCHAs). Putting them behind a queue means the API stays responsive, retries are centralized, and you get a natural audit trail (queue job history) for free — this is the single biggest "why did you design it this way" answer you'll give in an interview.
-
----
-
-## 2. Data Flow
+## 3. Matching
 
 ```
-1. Scrape trigger (cron, every N hours) or manual save (extension)
-      → raw HTML/JSON payload
-2. Ingestion API normalizes payload → checks job_sources + companies
-      → enqueue `dedup:check`
-3. DedupWorker: fuzzy-match against existing jobs
-      → if duplicate: link to existing job_id, mark source as secondary listing
-      → if new: INSERT into jobs (status = 'new')
-      → enqueue `match:score`
-4. MatchWorker: pulls job + user_profile
-      → runs TF-IDF or embedding scorer
-      → INSERT into match_scores
-      → if score > threshold: mark job status = 'matched', enqueue `notify:matched` (optional)
-5. User reviews matched jobs on dashboard → clicks "Prepare Application"
-      → enqueue `apply:prepare`
-6. ApplyWorker (Playwright): opens job page, autofills known fields,
-      pauses at submit → status = 'pending_review'
-7. User manually reviews & clicks submit in the browser session (or confirms via dashboard)
-      → status = 'applied', applied_at = now()
-      → enqueue `analytics:recompute`
-8. Outcome updates (interview/rejected) come in via dashboard forms
-      → AnalyticsWorker recomputes aggregates
-      → LearningLoop adjusts scoring weights
+score = 0.6 * tfidf_cosine(resume, job) + 0.4 * weighted_skill_overlap     (clamped to 0–100)
 ```
 
-Every arrow above is a queue message, a DB write, or an API call — nothing in this pipeline is a synchronous chain of function calls, which is what makes it recoverable (any stage can crash and be retried without losing state).
+- TF-IDF uses corpus-relative IDF from a sample of recent jobs; skill overlap uses a curated vocabulary (`services/skills.js`) with per-skill weights.
+- Every score is stored in `match_scores` with a JSON explanation (matched skills, missing skills, raw similarity). Unique on `(job_id, profile_id, method)`, so two users' scores for one job never collide.
+- Score ≥ 70 sets a job's status to `matched` (`matchWorker`, concurrency 4).
+- This is **deterministic scoring, not a trained model**. An embedding scorer is defined behind the same interface (`scoreEmbedding`) but is not enabled; the reason for TF-IDF is that each score must be explainable.
 
----
+### Learning loop
 
-> *Source note: the design notes below refer to schema elements (`canonical_job_id`, `content_hash`, `explanation JSONB`, `resume_embedding VECTOR(768)`); the schema definition itself is not present in the source file.*
+Recorded outcomes adjust per-skill weights: interview +0.05, offer +0.1, rejection −0.02; weights are clamped to [0.1, 3.0] so no single event dominates. It has a cold-start problem: until enough outcomes exist, ranking is TF-IDF plus flat weights.
 
-**Design notes (interview-relevant):**
-- `canonical_job_id` self-referencing FK is the dedup backbone: duplicates point to the "real" job, so `applications` only ever needs a FK to the canonical row — you physically cannot apply twice to the same job even if it was scraped from both LinkedIn and Indeed.
-- `content_hash` gives an O(1) exact-duplicate check before falling back to the more expensive fuzzy-match pass (section 5).
-- `explanation JSONB` on `match_scores` is what turns "we compute a score" into "we can explain the score" in the UI — cheap to add, high UX/interview value.
-- `resume_embedding VECTOR(768)` requires the `pgvector` extension (`CREATE EXTENSION vector;`) — mention this explicitly if asked, since plain Postgres doesn't have vector similarity ops.
+## 4. Apply engine (human in the loop)
 
----
+`POST /api/applications/:jobId` queues a preparation job. `applyWorker` (concurrency 2, per-domain Redis rate limiting) opens the posting with Playwright, fills fields it can identify (Greenhouse adapter plus a generic label-based fallback), screenshots the result and stops at `pending_review`. **It never submits.** The user confirms (`POST /api/applications/:id/submit`) and later records the outcome (`/outcome`).
 
-## 3. Matching Engine
+Hardening that came from real-page failures: visibility-aware field resolution (duplicate ids across hidden steps), one retry on a navigation race, and missing-profile failures recorded on the application row instead of only in server logs.
 
-### (A) Free version — TF-IDF / keyword-based
+Ownership: `applications` is a per-job engine record with no user column. A user may act on one only through their own `tracked_jobs` row (`ownsApplicationJob`), and may only queue jobs they can see (`visibleJobsWhere`).
 
-**Preprocessing:**
-1. Lowercase, strip HTML/markdown from job description.
-2. Tokenize, remove stopwords, lemmatize (e.g. `natural` or `compromise` in Node, or call a small Python microservice with `spaCy`/`nltk` if you want better lemmatization).
-3. Extract a **skills vocabulary** — a curated list (React, Node.js, PostgreSQL, Docker, ...) you maintain, plus generic n-gram extraction for anything not in the list.
-4. Build TF-IDF vectors: corpus = all scraped job descriptions (IDF improves as your corpus grows), document = job description, query = resume text.
+Limit: adapter coverage (Greenhouse + generic) bounds how much is hands-off; multi-step wizards fall back to `pending_review` with unmapped fields flagged.
 
-> *Source note: the original file contains an empty code block at this point; no pseudocode was present in the source.*
+## 5. Analytics
 
-**Tradeoffs:** fast, free, fully explainable (you can literally show which words drove the score), but blind to synonyms — "ML" vs "machine learning", "React" vs "React.js" need a synonym map you maintain by hand. Precision drops on jobs with generic descriptions.
+`/api/analytics` computes per-user numbers live from that user's `tracked_jobs` (`WHERE user_id = $1`). A system-wide rollup (`analytics_daily`) is still populated by `analyticsWorker` but is not what the dashboard reads.
 
-### (B) Advanced version — embeddings-based
-
-**Preprocessing:** same cleanup, but no stopword removal/stemming needed — embedding models handle semantics natively. Chunk long job descriptions if they exceed the model's context window (rare for job postings, but resumes with lots of project detail can run long).
-
-> *Source note: the original file contains an empty code block at this point; no pseudocode was present in the source.*
-
-**Tradeoffs:** captures semantic matches TF-IDF misses ("led a team of engineers" ~ "management experience"), but costs money per call (or GPU if self-hosted), is a black box for the "explanation" requirement, and needs `pgvector` + an ANN index (`ivfflat` or `hnsw`) once you have more than a few thousand jobs, or cosine-similarity scans get slow.
-
-**Recommendation for a 2–4 week resume project:** ship (A) as the default, add (B) as an optional "smart mode" toggle. This is a stronger interview answer than shipping only embeddings — it shows you understand when the simpler, cheaper, explainable approach is the right engineering call, not just the fancier one.
-
----
-
-## 4. Apply Engine (Semi-Automated, Playwright)
-
-**Flow:**
 ```
-ApplyWorker.process(job):
-    1. launch persistent browser context (reuse cookies/session across runs)
-    2. navigate to job.source_url
-    3. detect page type:
-         - "Easy Apply" style (LinkedIn) → in-page modal form
-         - External redirect (many Indeed listings, most companies) → follow redirect, land on ATS (Greenhouse/Lever/Workday)
-    4. formFieldMapper.detect(page) → returns a field map { name, email, phone, resume_upload, ... }
-       (built via a library of known ATS DOM signatures + a generic fallback: label-text matching)
-    5. for each known field in map: fill from user_profile
-    6. for unknown/custom fields (e.g. "why do you want to work here?"): leave blank, flag for user
-    7. STOP before clicking Submit. Take a screenshot, save playwright_log.
-    8. set applications.status = 'pending_review'
-    9. surface in dashboard: "Ready — 8/10 fields filled, 2 need your input"
-    10. user reviews in a live/headed browser tab (or a screen-share style session) and clicks submit themselves
+Applied → Interview = count(status='Interview') / count(*)
+Interview → Offer   = count(status='Offer') / count(status='Interview')
+Applied → Offer     = count(status='Offer') / count(*)
 ```
 
-**Handling dynamic forms:** maintain a small registry of ATS "adapters" (Greenhouse, Lever, Workday, LinkedIn Easy Apply each have fairly stable DOM patterns) with a generic fallback adapter that matches `<label>` text to field types via fuzzy string match. New/unrecognized ATS platforms fall back to: fill what you can via `autocomplete` attributes and `name`/`id` heuristics, flag everything else.
+A metric with no denominator renders `—`, not `0%`. **Limitation:** only the *current* status is stored, so the figures mean "share currently at this stage", not "ever reached". Average response time is not computed because the schema has no reliable outcome timestamp. `GET /api/analytics/summary` is admin-only.
 
-**Failures:**
-- **Timeouts:** wrap every `page.goto` / `page.click` in a retry with exponential backoff (max 3 attempts), then mark `applications.status = 'failed'`, `failure_reason`.
-- **Broken pages / layout changes:** wrap field detection in try/catch per-field, not per-page — one broken selector shouldn't fail the whole run. Log which fields failed so you can patch the adapter.
-- **CAPTCHA:** detect via known selectors (`iframe[src*=recaptcha]`, hCaptcha markers) or a timeout heuristic (page stuck > N seconds with no navigation). On detection: **pause the job, set status = 'needs_captcha'**, surface a "solve manually" action in the dashboard that hands control of that specific browser session to the user, then resumes the worker once solved.
+## 6. Reminders and push
 
-**Rate limiting / anti-bot considerations:**
-- Random delays between actions (`sleep(random(800, 2500))` ms) instead of instant fills — instant, uniform timing is the single easiest bot signal.
-- Cap applications per domain per hour (e.g. max 5/hour to any single ATS domain) via a Redis-backed token bucket per source domain.
-- Reuse a persistent, "warmed" browser profile per platform (real cookies, real session) rather than a fresh headless context every time — cold, cookie-less sessions from a datacenter IP are the most common trigger for bot-detection.
-- Respect `robots.txt` / ToS realistically: this system is explicitly designed as **assistive, human-in-the-loop** — it never submits without you, which is both the right engineering call and the honest answer if an interviewer asks about ToS/ethics.
-
----
-
-## 5. Job Deduplication
-
-**Two-stage approach:**
-
-**Stage 1 — exact/near-exact (fast path):** compare `content_hash = sha256(normalized_title + normalized_company + first_500_chars_of_description)`. Catches identical postings re-scraped on a schedule, or the same listing appearing verbatim on both platforms.
-
-**Stage 2 — fuzzy match (for re-worded cross-platform postings):**
-```
-function findDuplicate(newJob):
-    candidates = jobs.where(
-        company_id = newJob.company_id,
-        posted_at BETWEEN newJob.posted_at - 14 days AND newJob.posted_at + 14 days
-    )
-    for candidate in candidates:
-        titleSim = jaroWinkler(newJob.normalized_title, candidate.normalized_title)
-        descSim  = cosineSimilarity(tfidfVec(newJob.description), tfidfVec(candidate.description))
-        combinedScore = 0.4 * titleSim + 0.6 * descSim
-        if combinedScore > 0.85:
-            return candidate   # treat as duplicate
-    return null   # genuinely new job
-```
-Narrowing candidates by `company_id` + a date window before running the expensive similarity check keeps this from becoming an O(n²) scan as the jobs table grows — this narrowing step is usually the detail interviewers probe for, since naive dedup implementations skip it and don't scale past a few thousand rows.
-
-On duplicate: insert the new row anyway (for audit/history — you still want to know it was seen on Indeed too), but set `canonical_job_id` to the existing job's id, and leave `status` as an inert `'duplicate'` so it never enters the matching/apply pipeline twice.
-
----
-
-## 6. Analytics Dashboard (Backend)
-
-**Metrics:** matched, applied, response rate, interview conversion (the live funnel starts at *matched*; there is no "scraped" stage).
-
-Store this as a materialized view (`analytics_daily`) refreshed by the worker rather than computing it live on every dashboard load — at low volume it doesn't matter, but it's the right answer when asked "how would this scale."
-
-> **What actually shipped:** the live dashboard (`GET /api/analytics`) computes
-> conversion/response metrics directly from `tracked_jobs`, scoped to the
-> authenticated user, on every request — not from this materialized view.
-> `analytics_daily` and its worker still exist and still run, but as a
-> separate, genuinely system-wide (no per-user dimension) rollup that the
-> current frontend doesn't read from. The reasoning: a shared daily rollup
-> has no way to answer "this user's own conversion rate" without adding a
-> user dimension to it, and at this project's scale a live per-user query
-> is cheap enough that doing so directly was simpler than extending the
-> rollup. Also note: current conversion metrics reflect each application's
-> *current* status only — `tracked_jobs` has no stage-history log, so
-> "Applied → Interview" means "currently at Interview," not "ever reached
-> Interview." See the README's Analytics section for the full accounting.
-
-**API endpoints:**
-```
-GET  /api/engine/jobs?status=matched&minScore=70&page=1
-GET  /api/engine/jobs/:id
-POST /api/applications/:jobId       -> enqueues apply:prepare
-GET  /api/applications?status=pending_review
-POST /api/applications/:id/submit   -> user confirms manual submit, sets status='applied'
-POST /api/applications/:id/outcome  -> body: { status: 'interview' | 'rejected' | 'offer' }
-GET  /api/analytics/summary?range=30d
-GET  /api/analytics/funnel          -> matched -> applied -> interview -> offer
-```
-
-*(These are the actual mounted routes — `engineJobsRoutes.js`, `applyRoutes.js`,
-`analyticsRoutes.js` — see [04_API_Reference.md](04_API_Reference.md) for full
-request/response shapes.)*
-
----
-
-## 7. Learning Loop
-
-**Concept:** treat outcomes as labeled training signal for a lightweight per-skill/per-keyword weight vector, not a full model retrain — this is realistic to implement in 2–4 weeks, a full ML retraining pipeline is not.
-
-This is simple enough to explain end-to-end in an interview (it's essentially a bandit-style weight update, not a black box), and directly answers "how does the system improve over time" without requiring you to stand up a training pipeline.
-
----
-
-## 8. Interview Discussion Points
-
-| Component | Why this design | Tradeoffs | Scaling considerations | Likely questions |
-|---|---|---|---|---|
-| Queue-based architecture | Decouples slow/flaky I/O (scraping, browser automation) from the API; centralizes retries | Extra infra (Redis) and eventual-consistency UX (statuses update async) vs. a simpler synchronous monolith | Add more workers horizontally; partition queues by source/priority | "Why not just call Playwright synchronously from the API route?" |
-| `canonical_job_id` self-FK dedup | One `applications` row per real job, physically enforced by a unique constraint | Requires a correct dedup pass *before* insert, or you get orphaned duplicates | Narrow candidates by company+date window before fuzzy match to avoid O(n²) | "How do you handle a false-positive dedup merge?" |
-| TF-IDF default, embeddings optional | Explainable, free, fast to ship; embeddings added as opt-in | Embeddings score better semantically but cost money/compute and are harder to explain | pgvector + ANN index (ivfflat/hnsw) once job count grows past a few thousand | "Why not embeddings from day one?" |
-| Human-in-the-loop apply | Real ToS/ethical constraint + safety net against broken auto-fills | Slower than full automation, but avoids garbage submissions and account bans | Rate-limit per domain via Redis token bucket; adapter registry per ATS | "How do you handle CAPTCHA?" / "What stops this from spamming applications?" |
-| Learning loop as weight updates, not model retraining | Realistic for a 2–4 week solo project; still demonstrably "learns" | Not a real ML model — say this proactively, it shows judgment | Could later become a real logistic regression over `match_scores` + outcomes once you have enough labeled data | "How would you turn this into a proper ML model later?" |
-
----
-
-## Migration Notes from Your Current TrackTrail Repo
-
-1. **MongoDB → PostgreSQL: done, and since migrated again onto Prisma.**
-   `users` and `tracked_jobs` (plus every engine table) now live in
-   `server/prisma/schema.prisma`, applied via `npx prisma migrate deploy` —
-   there's no hand-written `db/schema.sql` and no `models/User.js` /
-   `models/Job.js` plain-function layer in the current codebase; route
-   handlers call `prisma.<model>.<method>()` directly (see
-   `server/lib/prisma.js`). Single database for the whole app, not a
-   dual-write or a long-term Mongo/Postgres split.
-2. **Browser extension stays** — it does manual capture, feeding the same
-   `/api/ingest` entrypoint that all Job Discovery adapters also feed
-   (not the Playwright scraper shown in the diagram above — see the
-   correction note at the top of this document).
-3. **Auth (JWT + bcrypt, already in `authRoutes.js`)** carries over as-is; it's orthogonal to this redesign — only its storage layer changed (Postgres via Prisma instead of Mongo).
-4. **What's actually been built since this doc was written:** dedup logic, the TF-IDF matcher, live per-user analytics endpoints, the Playwright apply flow (generic + Greenhouse adapters, human-in-the-loop, never auto-submits), the learning loop, and an async Job Discovery pipeline (BullMQ-backed, Remotive + Playwright-based LinkedIn/Indeed discovery) — see the README for the current, accurate module map. Genuine remaining future work: a stage-history model for analytics (current implementation is current-status-only, not historical), stronger scraper fixtures/observability for LinkedIn/Indeed markup drift, and additional ATS adapters beyond Greenhouse/generic.
+`reminderService` evaluates, in each user's own timezone and at their chosen hour, interview reminders, application follow-ups (default after 7 days, up to 30 days old) and high-match job alerts (score ≥ 70). Delivery uses Expo push. Exactly-once is guaranteed by inserting a `notification_log` row with a unique `(user_id, dedupe_key)` before sending; if no device accepted the push the row is removed so the next pass retries. Only `ACTIVE` accounts are considered. The scheduler runs in-process, or via `POST /api/notifications/run-reminders` with `CRON_SECRET` (GitHub Actions cron workflow provided for hosts that sleep).

@@ -1,969 +1,117 @@
-# API Reference
+# 04 — API Reference
 
-Complete reference for all TrackTrail API endpoints.
+Base URL: the API origin (for example `https://api.example.com`); all routes below are under `/api`. JSON in, JSON out.
 
-> **Consolidated from:** `API_ENDPOINTS.md` (Last Updated: August 25, 2026), including its appended "Mobile sessions, account & notifications" section.
+## Conventions
 
----
+| Topic | Rule |
+|---|---|
+| Authentication | `token: <access JWT>` header (or `Authorization: Bearer <jwt>`). Web also sends `x-client: web` and an HttpOnly refresh cookie; mobile sends `x-client: mobile`; the extension `x-client: extension`. |
+| Error body | `{ "message": "...", "code": "..." }`. `code` is present for conditions clients branch on. In production every `5xx` message is replaced by a generic one. |
+| Auth failures | `401` `no_token` / `token_expired` / `token_invalid` (sign in again or refresh); `403 account_blocked`; `403 admin_required`. |
+| Ownership | Every per-user route is scoped to the caller. Another user's id returns `404`, never `403`, so ids cannot be probed. |
+| Rate limiting | `429 { code: "rate_limited", retryAfterSeconds }` with a `Retry-After` header. Limits are per process. |
+| IDs | Integers (jobs/companies expose Postgres `BIGINT` as numbers/strings as documented per client). |
 
----
+Legend: 🔓 public · 🔑 any signed-in, active user · 🛡 admin only.
 
-## Base URL
+## 1. Auth — `/api/auth`
 
-```
-http://localhost:5000/api
-```
-
-In production this is whatever host you deploy the server to.
-
----
-
-## Authentication
-
-Protected endpoints require a JWT, sent as a plain **`token`** request header
-(not the `Authorization: Bearer` convention):
-
-```
-token: <your_jwt_token>
-```
-
-The token is returned by `POST /api/auth/login`. Every authenticated request
-also re-loads the account from the database: a deleted account gets
-`401 {"code":"token_invalid"}`, a blocked account `403 {"code":"account_blocked"}`,
-and a token issued before a block (its `tv` claim no longer matches
-`users.token_version`) `401 token_invalid`, even after unblocking.
-
-> **Session model by client (cross-reference):** the token described here is the web/extension legacy token (the mobile section below notes the 7-day token for web/extension). Mobile uses a 15-minute access token plus a rotating refresh token (see the mobile section below and `07`). Web uses memory-only access tokens with an `HttpOnly` refresh cookie (see `06`). The extension keeps tokens in `chrome.storage.session` and sends `x-client: extension` (see `08`).
-
-**Current auth coverage** (verified against `server/server.js`'s route mounting
-and each route file): `/api/auth` and `/api/gmail` are public/self-contained;
-`/api/jobs` requires the token on every route (checked inside `jobRoutes.js`).
-`/api/ingest`, `/api/engine/jobs`, `/api/applications`, `/api/analytics`,
-`/api/profile`, `/api/companies`, `/api/sources` and `/api/notifications/inbox` all require the token (sources and companies are role-/owner-scoped inside the routers),
-applied at the `app.use(...)` mount level in `server.js`. `/api/scrape` and
-`/api/admin` additionally require `requireAdmin` (role is read from the
-database on every request, so a demoted admin loses access immediately).
-
-## 🛡️ Admin Endpoints (`/api/admin`, admin only)
-
-| Method | Path | Purpose |
+| Method & path | Access | Purpose |
 |---|---|---|
-| GET | `/api/admin/overview` | Headline counts (users, admins, `blockedUsers`, jobs, companies, sources, discovery runs) |
-| GET | `/api/admin/users?q=&status=ACTIVE\|BLOCKED&role=admin\|user&page=1&pageSize=50` | Paged accounts (`pageSize` max 200): `{ data:[{id,name,email,role,status,createdAt,blockedAt,gmailConnected,trackedJobs,lastActiveAt}], meta:{total,page,pageSize} }`. Never password hashes, tokens or the Gmail grant |
-| POST | `/api/admin/users/:id/block` | Block a normal user: sets `BLOCKED`, bumps `token_version`, revokes all sessions, in one transaction. Nothing is deleted |
-| POST | `/api/admin/users/:id/unblock` | Unblock (idempotent). Old tokens stay dead; the user signs in again |
-| DELETE | `/api/admin/users/:id` | Permanently delete a normal user (same service as self-deletion, see below) |
-| PATCH | `/api/admin/users/:id/role` | Body `{ "role": "admin" \| "user" }`. You cannot change your own role |
-| DELETE | `/api/admin/jobs/:id` | Delete a matched job (catalog row) |
-| DELETE | `/api/admin/companies/:id?withJobs=true` | Delete a company; `409` if it still has jobs and `withJobs` is not set |
-| DELETE | `/api/admin/sources/:id?withJobs=true` | Delete a source; same rule |
-
-Deletes run in a transaction and are refused with `409` while any application
-for the affected job is in flight (`queued`/`running`/`awaiting_confirmation`).
-Users' `tracked_jobs` are **never** deleted; their `engine_job_id` link is
-nulled. Duplicate rows pointing at a deleted canonical job are removed with it.
-Errors: `401` no/invalid token, `403 admin_required`, `404`, `409`.
-
-**User management guards** (block / unblock / delete): invalid id `400`; your own
-account `400 {"code":"cannot_modify_self"}`; unknown id `404`; target is an
-administrator `403 {"code":"cannot_manage_admin"}` (demote first); non-admin caller
-`403 {"code":"admin_required"}`; anonymous `401`. The target always comes from the
-URL and is re-loaded from the database. Each action logs
-`[admin-audit] admin#<id> blocked|unblocked|deleted user#<id>` (no emails). The last
-active administrator can never be blocked or deleted through this API. Deleting a
-user removes their own data but preserves global admin-fetched jobs, companies and
-sources (details in `docs/11`). This differs from the catalog deletes above, which
-never touch `tracked_jobs`.
-
----
-
-## Response Format
-
-Responses are plain JSON — there is no `{ success, data }` envelope. A
-successful response returns the resource (or an object with a `message`)
-directly; an error response is:
-
-```json
-{ "message": "Error description" }
-```
-
----
-
-## 🔐 Auth Endpoints (`/api/auth`)
-
-### 1. Register
-
-**POST** `/api/auth/register`
-
-**Request Body:**
-
-```json
-{
-  "name": "John Doe",
-  "email": "john@example.com",
-  "password": "SecurePass123"
-}
-```
-
-**Response (200):**
-
-```json
-{ "message": "User Registered Successfully" }
-```
-
-**Error (400):**
-
-```json
-{ "message": "User already exists" }
-```
-
-### 2. Login
-
-**POST** `/api/auth/login`
-
-**Request Body:**
-
-```json
-{
-  "email": "john@example.com",
-  "password": "SecurePass123"
-}
-```
-
-**Response (200):**
-
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": 1,
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-}
-```
-
-**Error (400):**
-
-```json
-{ "message": "User not found" }
-```
-
-or
-
-```json
-{ "message": "Invalid Password" }
-```
-
-> There is no `/logout` endpoint — logout is handled entirely on the frontend
-> by discarding the stored token. There is also a forgot/reset-password flow
-> (`server/routes/authRoutes.js`, `RESEND_API_KEY`-backed) not detailed here —
-> see the route file directly for its exact shape.
-
----
-
-## 💼 Job Tracker Endpoints (`/api/jobs`)
-
-All endpoints below require the `token` header and only ever operate on jobs
-owned by the authenticated user.
-
-### 3. Create Job
-
-**POST** `/api/jobs`
-
-**Request Body:**
-
-```json
-{
-  "company": "Tech Corp",
-  "role": "Frontend Developer",
-  "status": "Applied",
-  "interviewDate": "2026-08-01",
-  "notes": "Great company"
-}
-```
-
-**Response (200):**
-
-```json
-{
-  "id": 12,
-  "userId": 1,
-  "company": "Tech Corp",
-  "role": "Frontend Developer",
-  "status": "Applied",
-  "interviewDate": "2026-08-01",
-  "notes": "Great company",
-  "createdAt": "2026-07-20T08:00:00.000Z",
-  "updatedAt": "2026-07-20T08:00:00.000Z"
-}
-```
-
-If enough data is present (company + role + a description or a source URL),
-the job is also bridged into the engine pipeline in the background so it can
-be matched/scored like a discovered job — see `services/engineBridge.js`.
-This is fire-and-forget and never blocks or fails this response.
-
-### 4. Get All Jobs
-
-**GET** `/api/jobs`
-
-Returns every job belonging to the authenticated user, newest first. No
-pagination, filtering, or search query params are supported — the frontend
-filters client-side.
-
-**Response (200):**
-
-```json
-[
-  {
-    "id": 12,
-    "userId": 1,
-    "company": "Tech Corp",
-    "role": "Frontend Developer",
-    "status": "Applied",
-    "interviewDate": "2026-08-01",
-    "notes": "Great company",
-    "createdAt": "2026-07-20T08:00:00.000Z",
-    "updatedAt": "2026-07-20T08:00:00.000Z"
-  }
-]
-```
-
-### 5. Update Job
-
-**PUT** `/api/jobs/:id`
-
-**Request Body (any subset of):**
-
-```json
-{
-  "status": "Interview",
-  "notes": "Had a great interview, waiting for response"
-}
-```
-
-**Response (200):** the updated job (same shape as above).
-
-**Error (404):**
-
-```json
-{ "message": "Job not found" }
-```
-
-(returned if the id doesn't exist, or belongs to a different user)
-
-### 6. Delete Job
-
-**DELETE** `/api/jobs/:id`
-
-**Response (200):**
-
-```json
-{ "message": "Job deleted" }
-```
-
-**Error (404):**
-
-```json
-{ "message": "Job not found" }
-```
-
----
-
-## 📧 Gmail Integration Endpoints (`/api/gmail`)
-
-See [09_Gmail_Integration_and_Resume_Tailoring.md](09_Gmail_Integration_and_Resume_Tailoring.md) for the full OAuth setup.
-All endpoints below require the `token` header.
-
-### 7. Get Auth URL
-
-**GET** `/api/gmail/auth-url`
-
-**Response (200):**
-
-```json
-{ "url": "https://accounts.google.com/o/oauth2/v2/auth?..." }
-```
-
-### 8. OAuth Callback
-
-**GET** `/api/gmail/callback`
-
-Not called directly by the frontend — Google redirects the browser here after
-consent. Redirects on to `${CLIENT_URL}/integrations?gmail=connected` (or
-`...=error` / `...=no_refresh_token`). No auth header (unauthenticated
-browser redirect).
-
-### 9. Connection Status
-
-**GET** `/api/gmail/status`
-
-**Response (200):**
-
-```json
-{ "connected": true }
-```
-
-### 10. Disconnect
-
-**POST** `/api/gmail/disconnect`
-
-**Response (200):**
-
-```json
-{ "message": "Gmail disconnected" }
-```
-
-### 11. Scan Inbox
-
-**GET** `/api/gmail/scan`
-
-Fetches **only job/internship-related** mail from the last `days` days
-(default 30, max 365; `limit` default 25, max 50). Filtering happens in
-three stages so unrelated mail is never downloaded or returned:
-
-1. **Gmail query** (`buildGmailQuery`) excludes Promotions/Social/Forums/Spam
-   and requires job subject phrases or known ATS / job-board senders.
-2. **Metadata-only fetch** (subject, From, Reply-To, List-Unsubscribe,
-   Precedence, snippet) in batches of 10 — no bodies.
-3. **Local scoring** (`services/emailRelevance.js`) rejects newsletters,
-   promos, receipts, social notifications and job-alert digests, then
-   de-duplicates by thread, by company+role+status signature, and against
-   emails already imported (`externalJobId`).
-
-**Response (200):**
-
-```json
-{
-  "messages": [
-    {
-      "id": "18cfa1...",
-      "subject": "Moving forward with your application",
-      "from": "Acme Recruiting <recruiting@acme.com>",
-      "date": "Sat, 18 Jul 2026 10:00:00 -0700",
-      "snippet": "We'd like to schedule...",
-      "company": "Acme",
-      "role": "Backend Engineer",
-      "status": "Interview",
-      "contactEmail": "recruiting@acme.com",
-      "classification": { "kind": "job", "score": 7, "reasons": ["..."] }
-    }
-  ],
-  "stats": { "scanned": 42, "relevant": 5,
-             "skipped": { "notJobRelated": 20, "promotional": 9, "transactional": 4,
-                          "social": 2, "alreadyImported": 1, "duplicate": 1 } }
-}
-```
-
-`company`, `role`, `status` and `contactEmail` are best-effort and may be
-`null`; clients fall back to their local parser and every field stays editable.
-
-`POST /api/gmail/import` is idempotent on `messageId` and accepts an
-optional `contactEmail` (stored in the notes) and `sourceUrl` (normalized).
-
-**Error (400):**
-
-```json
-{ "message": "Gmail is not connected" }
-```
-
----
-
-## 🔎 Job Discovery Endpoints (`/api/scrape`)
-
-Async discovery runs — the client triggers a run, then polls for status. See
-the README's "Job Discovery" section for the full architecture. All endpoints
-below require the `token` header and are ownership-scoped to the
-authenticated user (a user can only see/act on their own runs).
-
-> **Admin only.** The whole `/api/scrape` router is mounted behind
-> `auth` **and** `requireAdmin`; normal users get `403 {"code":"admin_required"}`.
-> `GET /api/scrape/platforms` lists the available provider keys.
-
-**Discovery providers:** `remotive`, `linkedin`, `indeed`, `naukri`, `internshala`, `wellfound` and `unstop` are all valid `sources` values (the last four use the same Playwright adapter factory as LinkedIn/Indeed). Remotive uses its public API. LinkedIn and Indeed use Playwright through their discovery adapters and the shared `server/services/scraper.js` implementation. Their results enter the same ingestion/deduplication pipeline. Browser/runtime failures and provider blocking are returned as per-source `error`/`blocked` results rather than fabricated empty success.
-
-### 12. Start a Discovery Run
-
-**POST** `/api/scrape/run`
-
-**Request Body:**
-
-```json
-{
-  "query": "backend engineer",
-  "location": "remote",
-  "sources": ["linkedin", "indeed", "remotive"],
-  "limit": 25
-}
-```
-
-`query` is required (max 255 chars). `location` is optional. `sources`
-defaults to all registered sources if omitted; any value not in
-`["linkedin", "indeed", "remotive"]` is rejected. `limit` defaults to 25, max
-50. Rate-limited to 6 runs per hour per user.
-
-**Response (202):**
-
-```json
-{ "status": "queued", "runId": 14, "sources": ["linkedin", "indeed", "remotive"] }
-```
-
-**Error (400):** invalid query/sources/limit.
-**Error (429):**
-
-```json
-{ "message": "You can trigger at most 6 discovery runs per hour. Try again later." }
-```
-
-### 13. List Recent Runs
-
-**GET** `/api/scrape/runs`
-
-Returns the authenticated user's most recent runs (newest first, capped at
-20) — this is what powers the "Recent runs" list on the Job Discovery page.
-
-**Response (200):**
-
-```json
-{
-  "data": [
-    { "id": 14, "query": "backend engineer", "sources": ["linkedin", "indeed", "remotive"], "status": "succeeded", "createdAt": "2026-08-20T10:00:00.000Z" }
-  ]
-}
-```
-
-### 14. Poll a Run's Status
-
-**GET** `/api/scrape/runs/:id`
-
-The dynamic polling endpoint the dashboard calls every few seconds while a
-run is `queued`/`running`. Intentionally sent with `Cache-Control: no-store`
-and without an `ETag`, so it can never return a `304 Not Modified` — a stock
-Express JSON response would otherwise be conditionally cacheable, and a raw
-304 reaching the frontend's axios client (which only treats 2xx as success)
-would throw and silently kill the polling loop. This is the only endpoint in
-the API with this behavior; nothing else was changed.
-
-**Response (200):**
-
-```json
-{
-  "data": {
-    "id": 14,
-    "status": "succeeded",
-    "query": "backend engineer",
-    "sources": ["linkedin", "indeed", "remotive"],
-    "results": {
-      "linkedin": { "status": "ok", "found": 10, "ingested": 8 },
-      "indeed": { "status": "ok", "found": 12, "ingested": 9 },
-      "remotive": { "status": "ok", "found": 12, "ingested": 9 }
-    },
-    "createdAt": "2026-08-20T10:00:00.000Z"
-  }
-}
-```
-
-`status` is one of `queued`, `running`, `succeeded`, `failed`, `blocked`.
-
-**Error (404):** run doesn't exist, or belongs to a different user.
-
-### 15. Remove a Run
-
-**DELETE** `/api/scrape/runs/:id`
-
-Deletes one of the authenticated user's own run-history rows. This removes
-only that `ScrapeRun` record — it never touches the shared `jobs` catalog,
-`applications`, `match_scores`, or any `tracked_jobs` row, since a discovery
-run's history is unrelated to what it may have ingested.
-
-**Response (200):**
-
-```json
-{ "message": "Run removed" }
-```
-
-**Error (404):** run doesn't exist, or belongs to a different user (never
-distinguishes the two, so a user can't probe for other users' run ids).
-
----
-
-## 🤖 Intelligent Job Application Engine
-
-These endpoints back the scraping/matching/apply/analytics engine described
-in [02_Job_Application_Engine_Design.md](02_Job_Application_Engine_Design.md).
-They read/write the Postgres `jobs`, `companies`, `job_sources`,
-`applications`, `match_scores`, `user_profile`, and `tracked_jobs` tables
-(via Prisma) — separate from `/api/jobs`' `tracked_jobs`-only usage above,
-though `tracked_jobs` is also the source of truth for Applied Jobs and
-Analytics. **All endpoints in this section require the `token` header**
-(applied at the `app.use(...)` mount level in `server.js`).
-
-### 16. Ingest a Job
-
-**POST** `/api/ingest`
-
-Shared entrypoint used by Job Discovery (Remotive, LinkedIn, and Indeed results), the browser
-extension's manual capture, and the manual tracker's engine bridge — one
-normalization/dedup code path for all three.
-
-**Request Body:**
-
-```json
-{
-  "title": "Backend Engineer",
-  "company": "Acme Inc",
-  "description": "Full job description text...",
-  "location": "Remote",
-  "remoteType": "remote",
-  "sourceName": "remotive",
-  "sourceUrl": "https://remotive.com/remote-jobs/software-dev/backend-engineer-12345",
-  "externalJobId": "12345",
-  "postedAt": "2026-07-15T00:00:00.000Z"
-}
-```
-
-`title`, `company`, `description`, `sourceName`, and `sourceUrl` are required.
-
-**Response (201):** result of normalization/dedup/insert (job id, whether it
-was a duplicate, etc. — see `services/ingestionService.js`).
-
-### 17. Browse Engine Jobs
-
-**GET** `/api/engine/jobs?status=matched&minScore=70&page=1&pageSize=25`
-
-**Response (200):**
-
-```json
-{
-  "data": [
-    {
-      "id": 101,
-      "title": "Backend Engineer",
-      "location": "Remote",
-      "remote_type": "remote",
-      "status": "matched",
-      "source_url": "https://...",
-      "company": "Acme Inc",
-      "score": 82.5,
-      "explanation": { "matchedSkills": ["node.js", "postgresql"] }
-    }
-  ],
-  "meta": { "page": 1, "pageSize": 25 }
-}
-```
-
-### 18. Get a Single Engine Job
-
-**GET** `/api/engine/jobs/:id`
-
-**Response (200):** `{ "data": { ...full job row, company, score, explanation } }`
-**Error (404):** `{ "message": "Job not found" }`
-
-### 19. Start an Application
-
-**POST** `/api/applications/:jobId`
-
-Enqueues the Playwright apply worker for this job (`apply:prepare`), and also
-creates/updates a `TrackedJob` row for the authenticated user so it shows up
-on their Applied Jobs page. `applications` itself is a global, job-keyed
-automation record (see the README's Database Design section) — ownership for
-subsequent actions on it is derived through the caller's own `TrackedJob`.
-
-**Response (202):**
-
-```json
-{ "status": "queued", "jobId": 101, "trackedJobId": 57 }
-```
-
-### 20. List Applications
-
-**GET** `/api/applications?status=pending_review`
-
-Returns only the engine applications whose underlying job the authenticated
-user has actually tracked/applied to (via their own `TrackedJob` rows) — not
-every user's applications.
-
-**Response (200):**
-
-```json
-{
-  "data": [
-    {
-      "id": 5,
-      "job_id": 101,
-      "status": "pending_review",
-      "jobs": { "title": "Backend Engineer", "source_url": "https://...", "companies": { "name": "Acme Inc" } }
-    }
-  ]
-}
-```
-
-### 21. Confirm Manual Submit
-
-**POST** `/api/applications/:id/submit`
-
-Called once the user has manually clicked submit in the Playwright-driven
-session. Ownership-checked (404, not 403, if the application isn't tied to
-one of the caller's own tracked jobs — never confirms another user's
-application id even exists). Also syncs the matching `TrackedJob.status` to
-`Applied`.
-
-**Response (200):**
-
-```json
-{ "status": "applied", "jobId": 101 }
-```
-
-### 22. Record an Outcome
-
-**POST** `/api/applications/:id/outcome`
-
-**Request Body:**
-
-```json
-{ "status": "interview" }
-```
-
-`status` must be one of `interview`, `rejected`, `offer`. Ownership-checked
-the same way as `/submit`. Also mirrors the outcome onto the caller's
-`TrackedJob.status` (Title-Case: `Interview`/`Rejected`/`Offer`) so Applied
-Jobs and Analytics reflect it, and nudges the matching engine's per-skill
-weights via the learning loop.
-
-**Response (200):**
-
-```json
-{ "status": "updated" }
-```
-
-### 23. Analytics Summary (live, per-user)
-
-**GET** `/api/analytics?range=30`
-
-This is the endpoint the Analytics dashboard actually calls (`/api/analytics/metrics`
-is an identical alias). Computed live, scoped to the authenticated user's own
-`tracked_jobs` — never aggregates across users. `range` is a number of days
-(default 30).
-
-**Response (200):**
-
-```json
-{
-  "meta": { "rangeDays": 30, "computedFrom": ["tracked_jobs.application_date", "tracked_jobs.status", "scoped to the authenticated user"] },
-  "data": {
-    "totalApplications": 10,
-    "responseRatePct": 30.0,
-    "conversionRate": {
-      "appliedToInterviewPct": 20.0,
-      "interviewToOfferPct": 50.0,
-      "appliedToOfferPct": 10.0
-    },
-    "averageResponseTimeHours": null,
-    "counts": { "responses": 3, "interviews": 2, "offers": 1 }
-  }
-}
-```
-
-`conversionRate` percentages are based on each application's *current*
-status (not full stage history — see the README's Analytics section).
-`averageResponseTimeHours` is always `null` — the schema has no reliable
-stage-transition timestamp to compute it from, so it's intentionally left
-unset rather than reporting an inaccurate number. A denominator of zero
-renders as `null` here (shown as `—` in the UI), never `0`.
-
-### 24. Analytics Funnel (live, per-user)
-
-**GET** `/api/analytics/funnel`
-
-**Response (200):**
-
-```json
-{
-  "data": {
-    "matched": 8,
-    "applied": 10,
-    "interview": 2,
-    "offer": 1
-  }
-}
-```
-
-The funnel starts at **matched**; the former global `scraped` stage was
-removed (it measured the shared catalog, not the user's progress). `matched` is scoped to
-jobs matched against the authenticated user's own profile
-(`match_scores.profile_id -> user_profile.user_id`). `applied`/`interview`/
-`offer` come from the user's own `tracked_jobs`.
-
-### 25. Legacy Analytics Snapshot (not used by the frontend)
-
-**GET** `/api/analytics/summary?range=30`
-
-A separate, older endpoint reading from the `analytics_daily` rollup table
-(populated by a scheduled worker, `workers/analyticsWorker.js`). Still
-mounted and functional, but **the current frontend does not call this
-endpoint** — it's kept for any external tooling that might still expect the
-precomputed-rollup shape. `analytics_daily` itself has no per-user dimension
-(it's a genuinely system-wide daily aggregate), unlike endpoint 23 above.
-
-**Response (200):**
-
-```json
-{
-  "data": {
-    "jobs_scraped": 120,
-    "jobs_matched": 34,
-    "applications_sent": 18,
-    "responses": 5,
-    "response_rate_pct": 27.8
-  },
-  "meta": { "rangeDays": 30 }
-}
-```
-
-### 26. Get Profile
-
-**GET** `/api/profile`
-
-Returns the authenticated user's own resume/skills profile.
-
-**Response (200):** `{ "data": { ...user_profile row for this user, or null if they haven't created one } }`
-
-### 27. Create/Update Profile
-
-**POST** `/api/profile`
-
-**Request Body:**
-
-```json
-{
-  "fullName": "Jane Doe",
-  "email": "jane@example.com",
-  "resumeText": "...",
-  "skills": ["react", "node.js", "postgresql"],
-  "experienceYears": 3
-}
-```
-
-Creates or updates the authenticated user's own profile row — every user has
-their own; profiles are not shared.
-
-**Response:** `201 { "status": "created" }` on first save, or
-`200 { "status": "updated" }` on subsequent saves.
-
-### 28. List Companies
-
-**GET** `/api/companies?search=acme&page=1&pageSize=25`
-
-Browses the `companies` table (deduped employers discovered by the
-ingestion pipeline — shared/global, not per-user), with a job count per
-company. `search` matches against name or domain (case-insensitive).
-
-**Response (200):**
-
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Acme Inc",
-      "normalizedName": "acme-inc",
-      "domain": "acme.com",
-      "createdAt": "2026-06-01T00:00:00.000Z",
-      "jobCount": 12
-    }
-  ],
-  "meta": { "page": 1, "pageSize": 25, "total": 40 }
-}
-```
-
-### 29. Get a Single Company
-
-**GET** `/api/companies/:id`
-
-**Response (200):** `{ "data": { ...company row, "jobs": [ ...up to 25 recent jobs ] } }`
-**Error (404):** `{ "message": "Company not found" }`
-
-### 30. List Job Sources
-
-**GET** `/api/sources`
-
-Browses the `job_sources` table (shared/global — `manual`, `linkedin`,
-`indeed`, `remotive`, `gmail`, `extension`), with a job count per source.
-`linkedin`/`indeed`/`remotive` are treated as "global engine source" counts
-(jobs ingested by Job Discovery); their job counts reflect the whole shared
-catalog, same as before — this endpoint doesn't expose per-user data.
-
-**Response (200):**
-
-```json
-{
-  "data": [
-    { "id": 1, "name": "remotive", "baseUrl": "https://remotive.com", "createdAt": "2026-05-01T00:00:00.000Z", "jobCount": 84 },
-    { "id": 2, "name": "linkedin", "baseUrl": "https://www.linkedin.com", "createdAt": "2026-05-01T00:00:00.000Z", "jobCount": 0 }
-  ]
-}
-```
-
-### 31. Get a Single Source
-
-**GET** `/api/sources/:id`
-
-**Response (200):** `{ "data": { ...source row, "jobs": [ ...up to 25 recent jobs ] } }`
-**Error (404):** `{ "message": "Source not found" }`
-
----
-
-## 📱 Mobile Sessions, Account & Notifications Endpoints
-
-*(Added for the mobile production release.)*
-
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| POST | /api/auth/login | – | Send header `X-Client: mobile` (or body `client: "mobile"`) to receive `{ accessToken, accessTokenExpiresAt, expiresIn, refreshToken, user }` (15-min access token). Web/extension unchanged (7-day `token`). |
-| POST | /api/auth/refresh | – | `{ refreshToken }` -> new access token + **rotated** refresh token. 401 `session_invalid` = sign in again; 401 `refresh_in_progress` = benign race. Rate limited. |
-| GET | /api/auth/me | token | Current user + `gmailConnected`. 401 on missing/expired/invalid token. |
-| POST | /api/auth/logout | – | `{ refreshToken }` revokes that session family. Idempotent. |
-| POST | /api/auth/logout-all | token | Revokes every mobile session. Also triggered by a password reset. |
-| DELETE | /api/auth/account | token | `{ password }` permanently deletes the **authenticated** user's own account (no id parameter). Removes their tracked jobs, private jobs, profile and scores, resumes, sessions, push devices and notifications in one transaction; global admin-fetched jobs/companies/sources are preserved. Gmail grant revoked best-effort. Errors: 400 missing/wrong password, 401, 403 `account_blocked`, 409 `last_admin`, 429 (5/hour/user, `RL_DELETE_MAX`). |
-| POST/DELETE | /api/notifications/devices | token | Register / remove an Expo push token `{ expoPushToken, platform, deviceName, appVersion, timezone }`. |
-| GET/PUT | /api/notifications/preferences | token | `{ pushEnabled, interviewReminders, applicationReminders, jobReminders, timezone, reminderHour }`. |
-| POST | /api/notifications/test | token | Sends a test push to the caller's devices. |
-| POST | /api/notifications/run-reminders | `x-cron-secret` | Runs one reminder pass (for external schedulers). 404 unless `CRON_SECRET` is set. |
-| GET | /.well-known/assetlinks.json, /.well-known/apple-app-site-association | – | Verified deep links; served only when the env vars in server/.env.example are set. |
-| GET | /app/reset-password?token= | – | Universal/App Link target; falls back to the web reset page when the app is not installed. |
-
-Invalid or expired tokens now return **401** (previously 400 for an invalid token).
-
-**Blocked accounts.** `POST /api/auth/login` (every client), `POST /api/auth/refresh` and `GET /api/auth/me` answer `403 {"code":"account_blocked","message":"Your account has been blocked. Please contact an administrator."}`; login issues no session and refresh revokes the family and clears the web cookie. See `docs/11` for the full session-invalidation table and the account deletion semantics.
-
----
-
-## Status Codes Reference
-
-| Code | Meaning                                                          |
-| ---- | ---------------------------------------------------------------- |
-| 200  | OK - Successful request                                          |
-| 201  | Created - Resource created successfully                          |
-| 202  | Accepted - Work enqueued (discovery run, apply engine)           |
-| 400  | Bad Request - Invalid input                                      |
-| 401  | Unauthorized - Missing/invalid token, or account deleted/token predates a block (`token_invalid`) |
-| 403  | Forbidden - `admin_required`, `account_blocked`, `cannot_manage_admin` |
-| 409  | Conflict - e.g. `last_admin`, catalog delete with dependents     |
-| 404  | Not Found - Resource not found (or not owned by the caller)      |
-| 429  | Too Many Requests - Discovery run rate limit exceeded            |
-| 500  | Server Error - Internal server error                             |
-
----
-
-## Common Errors
-
-### Missing Token
-
-```json
-{ "message": "No token, authorization denied" }
-```
-
-### Invalid Token
-
-```json
-{ "message": "Token is not valid" }
-```
-
-### Blocked Account
-
-```json
-{ "message": "Your account has been blocked. Please contact an administrator.", "code": "account_blocked" }
-```
-
-### CORS Rejection
-
-Requests from an origin not in `CLIENT_URL` (and not a `chrome-extension://`
-origin) are rejected by the CORS middleware and surfaced via the server's
-catch-all JSON error handler:
-
-```json
-{ "message": "Not allowed by CORS" }
-```
-
----
-
-## Example cURL Requests
-
-### Register
-
-```bash
-curl -X POST http://localhost:5000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "John Doe",
-    "email": "john@example.com",
-    "password": "SecurePass123"
-  }'
-```
-
-### Login
-
-```bash
-curl -X POST http://localhost:5000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john@example.com",
-    "password": "SecurePass123"
-  }'
-```
-
-### Create Job
-
-```bash
-curl -X POST http://localhost:5000/api/jobs \
-  -H "token: <your_token>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "company": "Tech Corp",
-    "role": "Frontend Developer",
-    "status": "Applied"
-  }'
-```
-
-### Get All Jobs
-
-```bash
-curl -X GET http://localhost:5000/api/jobs \
-  -H "token: <your_token>"
-```
-
-### Start a Discovery Run (Remotive, LinkedIn, or Indeed)
-
-```bash
-curl -X POST http://localhost:5000/api/scrape/run \
-  -H "token: <your_token>" \
-  -H "Content-Type: application/json" \
-  -d '{"query": "backend engineer", "location": "India", "sources": ["linkedin", "indeed", "remotive"], "limit": 25}'
-```
-
-### Poll a Run
-
-```bash
-curl -X GET http://localhost:5000/api/scrape/runs/14 \
-  -H "token: <your_token>"
-```
-
----
-
-## Rate Limiting
-
-Job Discovery is rate-limited to 6 runs per hour per user (see endpoint 12,
-above). Self-service account deletion (`DELETE /api/auth/account`) is limited to
-5 per hour per user (`RL_DELETE_MAX`). The engine's Playwright apply worker separately rate-limits itself
-per target domain via a Redis-backed token bucket (see
-`services/rateLimiter.js`) — an internal safeguard, not a client-facing API
-limit. Other endpoints are not rate-limited, apart from the auth limiters noted in the cross-reference below.
-
-> **Cross-reference:** the mobile production release additionally documents rate limiting on login/register/forgot/reset/refresh (see `07`), while the final QA report (`10`, §10 item 2) records no rate limiting on `/api/auth/login` or `/api/auth/forgot-password`.
-
----
-
-## Versioning
-
-**Base URL**: `/api` (no version prefix currently in use)
+| `POST /register` | 🔓 | `{ name, email, password (6–200) }` → `201`. Never accepts a role. `400` if the email exists. |
+| `POST /login` | 🔓 | `{ email, password, role?: "user"\|"admin", rememberMe? }`. Mobile/extension: `{ token, accessToken, accessTokenExpiresAt, expiresIn, refreshToken, user }`. Web: same without `refreshToken` (cookie set). Legacy: `{ token (7d), user }`. `403 account_blocked`; `403 admin_required` when the admin door is used by a non-admin. The admin door has a tighter rate limit and generic errors. |
+| `POST /refresh` | 🔓 | Rotates the refresh token (body `refreshToken`, or cookie for web). `401 session_invalid`, `401 refresh_in_progress` (retry with the token you already have), `403 account_blocked`. |
+| `GET /me` | 🔑 | `{ user: { id, name, email, role, gmailConnected, createdAt } }`. |
+| `POST /logout` | 🔓 | Revokes the refresh-token family; idempotent. |
+| `POST /logout-all` | 🔑 | Revokes every session of the caller. |
+| `DELETE /account` | 🔑 | Self-delete. Body `{ password }`. `400` wrong password · `403 account_blocked` · `409 last_admin` · `429`. See [docs/11](11_Roles_Permissions_Platforms_and_Release_Notes.md). |
+| `POST /forgot-password` | 🔓 | `{ email, source?: "mobile"\|"extension", redirectUri? }`. Always the same response, whether or not the account exists. Mobile must supply an allow-listed deep link. |
+| `POST /reset-password` | 🔓 | `{ token, password }`. The link is single-use and ends all sessions and earlier tokens. |
+
+## 2. Tracked jobs — `/api/jobs` (🔑)
+
+| Method & path | Purpose |
+|---|---|
+| `POST /` | Create a tracked job (`company`, `role` required; optional status, dates, notes, `sourceUrl`, description, location, `salaryText`, `skills`, `sourceName`, `platform`). Origin is decided server-side. A duplicate (same user + external id or URL) is merged and returned with `duplicate: true`. |
+| `GET /` | The caller's tracked jobs, newest first. |
+| `GET /applied` | Unified Applied Jobs view (tracked jobs + engine applications tied to the caller's own tracked jobs). |
+| `PUT /:id` · `DELETE /:id` | Update / delete one of the caller's jobs (`404` otherwise). |
+
+`POST /api/ingest` (🔑) — extension capture: `{ title, company, description, sourceName, sourceUrl, ... }` → queued (`202`) with a deterministic queue id. Can only create the caller's **private** job.
+
+## 3. Catalog — `/api/engine/jobs`, `/api/companies`, `/api/sources` (🔑)
+
+| Method & path | Notes |
+|---|---|
+| `GET /api/engine/jobs?status=&minScore=&page=&pageSize=` | Jobs the caller may see (global + own private) with the caller's match score. |
+| `GET /api/engine/jobs/:id` | One visible job; `404` if private to someone else. |
+| `GET /api/companies?search=&page=&pageSize=` · `GET /api/companies/:id` | Companies visible to the caller, with job counts limited to visible jobs. |
+| `GET /api/sources` · `GET /api/sources/:id` | Audience decided by the database role: users get Manual/Gmail/Extension (own data); admins get the seven fetched sources. A source of the other audience is `404`. |
+
+## 4. Apply engine — `/api/applications` (🔑)
+
+| Method & path | Purpose |
+|---|---|
+| `POST /:jobId` | Queue preparation for a job the caller can see; creates/updates the caller's tracked job. Idempotent. |
+| `GET /?status=` | Engine applications tied to the caller's tracked jobs. |
+| `POST /:id/submit` | The user confirms they submitted (the engine never submits). |
+| `POST /:id/outcome` | `{ status }` records interview / offer / rejected and feeds the learning loop. |
+
+## 5. Profile, analytics
+
+| Method & path | Access | Purpose |
+|---|---|---|
+| `GET /api/profile` · `POST /api/profile` | 🔑 | The caller's matching profile (name/email fall back to the account). |
+| `GET /api/analytics` · `/metrics` · `/funnel` (`?range=days`) | 🔑 | Per-user numbers computed live from the caller's tracked jobs. |
+| `GET /api/analytics/summary` | 🛡 | System-wide summary. |
+
+## 6. Gmail — `/api/gmail`
+
+| Method & path | Access | Purpose |
+|---|---|---|
+| `GET /auth-url?source=web\|extension\|mobile&redirectUri=&returnTo=` | 🔑 | Returns the Google consent URL. The redirect is signed into a short-lived `state` token and validated against an allow-list (no open redirect). |
+| `GET /callback` | 🔓 (signed `state`) | OAuth callback. Saves the refresh token only for an **active** account named by the state. |
+| `GET /status` · `POST /disconnect` | 🔑 | Connection state; revoke and remove the stored grant. |
+| `GET /scan?days=1–365&limit=1–50` | 🔑 | Read-only (`gmail.readonly`) metadata scan; returns relevance-scored job mail with suggested company/role/status. |
+| `POST /import` | 🔑 | Adds a scanned email as a private tracked job. |
+
+## 7. Resume tailoring — `/api/resume` (🔑)
+
+Documented in [docs/09](09_Gmail_Integration_and_Resume_Tailoring.md): `GET /current`, `POST /upload` (PDF/DOCX ≤ 2 MB), `GET /resumes`, `GET /resumes/:id`, `POST /resumes/:id/activate`, `DELETE /resumes/:id`, `GET /original/file`, `POST /analyze`, `POST /tailor`, `GET /sessions/:id`, `GET /tailored/:id`, `GET /versions`, `GET /match-analysis/:jobId`, `POST /versions/:id/preview|approve|export`. Typical errors: `no_resume`, `jd_too_short`, `resume_unreadable`, `rate_limited`, `session_in_progress`.
+
+## 8. Notifications — `/api/notifications` (🔑)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /inbox?limit=&unread=true` · `GET /inbox/unread-count` | The caller's in-app inbox. |
+| `POST /inbox` · `POST /inbox/read-all` · `POST /inbox/:id/read` · `DELETE /inbox/:id` · `DELETE /inbox` | Create-for-self, mark read, delete, clear. Foreign ids are `404`. |
+| `POST /devices` · `DELETE /devices` | Register / remove an Expo push token (`expoPushToken`, platform, timezone). |
+| `GET /preferences` · `PUT /preferences` | Push and reminder settings, timezone, reminder hour. |
+| `POST /test` | Send a test push to the caller's devices. |
+| `POST /run-reminders` | Cron only: `x-cron-secret` header; `404` when `CRON_SECRET` is unset. |
+
+## 9. Discovery — `/api/scrape` (🛡)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /platforms` | Available sources. |
+| `POST /run` | `{ query, location?, sources[], limit (1–50) }` → `202 { runId, status: "queued" }`. |
+| `GET /runs/:id` · `GET /runs` · `DELETE /runs/:id` | Poll a run (`no-store`), list history, delete one's own run. Per-source results: `ok` / `error` / `blocked` / `unavailable`. |
+
+## 10. Admin — `/api/admin` (🛡)
+
+| Method & path | Purpose |
+|---|---|
+| `GET /overview` | Counts: users, admins, blocked users, global jobs, companies, sources, discovery runs. |
+| `GET /users?q=&status=&role=&page=&pageSize=` | Paged user list (no secrets). |
+| `POST /users/:id/block` · `POST /users/:id/unblock` | Reversible account block. |
+| `DELETE /users/:id` | Permanent deletion of a normal user. |
+| `PATCH /users/:id/role` | `{ role: "admin"\|"user" }`; not your own. |
+| `DELETE /jobs/:id` · `/companies/:id?withJobs=` · `/sources/:id?withJobs=` | Catalog deletion; `409` when in use or in flight. |
+
+Error codes for user actions: `cannot_modify_self` (400), `cannot_manage_admin` (403), `last_admin` (409), `account_blocked` (403), `admin_required` (403).
+
+## 11. Public and platform routes
+
+`GET /.well-known/assetlinks.json`, `GET /.well-known/apple-app-site-association` (mobile app links, from environment configuration), `GET /app/reset-password` (app-link landing), static `/legal/*` pages (privacy, terms, delete-account) and `/extension/gmail-success.html`.

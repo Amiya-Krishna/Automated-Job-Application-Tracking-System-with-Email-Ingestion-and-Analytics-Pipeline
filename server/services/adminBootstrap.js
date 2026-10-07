@@ -15,7 +15,25 @@ async function ensureAdmins(db = prisma, log = console) {
   const emails = parseAdminEmails();
   if (!emails.length) return { promoted: 0 };
   try {
-    const users = await db.user.findMany({ where: { email: { in: emails, mode: "insensitive" }, NOT: { role: "admin" } }, select: { id: true } });
+    // Emails are stored exactly as typed and registration compares them case-sensitively, so
+    // "Boss@x.com" and "boss@x.com" can be two different accounts. If a listed address matches more
+    // than one account, promote NONE of them: otherwise anyone could register a case variant of an
+    // administrator's address and be promoted at the next boot. (Use `npm run make-admin` to
+    // promote a specific account in that situation.)
+    const matches = await db.user.findMany({ where: { email: { in: emails, mode: "insensitive" } }, select: { id: true, email: true, role: true } });
+    const byEmail = new Map();
+    for (const u of matches) {
+      const key = String(u.email).toLowerCase();
+      byEmail.set(key, [...(byEmail.get(key) || []), u]);
+    }
+    const users = [];
+    for (const [email, group] of byEmail) {
+      if (group.length > 1) {
+        log.error(`[admin-bootstrap] ${email} matches ${group.length} accounts differing only by letter case; none promoted`);
+        continue;
+      }
+      if (group[0].role !== "admin") users.push(group[0]);
+    }
     if (!users.length) return { promoted: 0 };
     const r = await db.user.updateMany({ where: { id: { in: users.map((u) => u.id) } }, data: { role: "admin" } });
     log.log(`[admin-bootstrap] promoted ${r.count} account(s) from ADMIN_EMAILS`);

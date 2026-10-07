@@ -1,227 +1,32 @@
-# TrackTrail Browser Extension
+# TrackTrail Browser Extension (Chrome, Manifest V3)
 
-Manage your whole job search from the extension popup — no need to open the
-dashboard site. Adds a floating **"+ Save to TrackTrail"** button on
-LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop job postings,
-and the popup itself is now a mini dashboard: browse, search, filter, add,
-change status, and delete jobs. Saved jobs keep their original posting
-link ("View posting ↗" in the popup and on the web app).
+Saves job postings from LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop to your TrackTrail account, shows how well your resume matches, and starts truthful resume tailoring. Details: [docs/08](../docs/08_Browser_Extension_Status_and_Hardening.md).
 
-## Supported job platforms (v1.2.0)
+## Install (unpacked)
 
-| Platform | Detail pages recognised | Notes |
-|---|---|---|
-| LinkedIn | `/jobs/view/<id>` and `/jobs/view/<slug>-<id>`, `?currentJobId=` | |
-| Indeed | `viewjob?jk=`, `?vjk=` (search pane), any country host | Saved URL is canonicalised to `https://<host>/viewjob?jk=<id>` |
-| Naukri | `/job-listings-…-<id>` | |
-| Internshala | `/internship/detail/…`, `/job/detail/…` | stipend saved as salary |
-| Wellfound | `/jobs/<id>-<slug>`, `/company/<c>/jobs/<id>-<slug>`, `?job_listing_slug=` | |
-| Unstop | `/internships/…`, `/jobs/…`, `/o/<id>` | |
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. **Load unpacked** → select this `browser-extension/` folder.
+3. Click the toolbar icon and sign in with your TrackTrail account.
 
-Extracted fields: title, company, location, description, salary/stipend,
-skills, source and URL (contact email when the page shows one). Extraction
-is layered per field: **platform selectors → schema.org `JobPosting`
-JSON-LD → `<title>`/og meta**, so a changed class name degrades to the next
-layer instead of failing. All selectors live in one file,
-`platform-extractors.js` (the server keeps a verified copy:
-`npm run sync:extractors`). Pages that are not a single posting (search or
-listing pages) are ignored rather than saved with the wrong URL.
+The API origin is `DEFAULT_API_BASE_URL` in `config.js` and in the manifest `host_permissions`; change both to use another deployment. Not published to the Chrome Web Store.
 
-> Selectors are written from each site's public markup and fixtures; these
-> sites change markup often and some sit behind login/bot walls — if a field
-> is missing you can still edit it in the Save panel.
+## Features
 
-## Gmail OAuth in the browser extension
+- **On-page**: "Save to TrackTrail" button and a Resume match panel (Analyze JD, Tailor Resume, Save Job).
+- **Popup**: Jobs, Add, Stats; open the full dashboard from there.
+- **Dashboard**: Matched Jobs (read-only), Applications, Analytics, Profile, Sources, Companies, Email (Gmail scan), My Resumes.
 
-The extension uses `chrome.tabs.update() on the existing extension tab` for Gmail. It does **not** open a normal Google tab with `chrome.tabs.create()`.
+## How extraction works
 
-The server derives the extension ID from the authenticated `chrome-extension://<id>` request when available, with `EXTENSION_ID` kept as a fallback for environments that omit `Origin`. The server signs the relay URL and extension ID into the Gmail OAuth state and redirects to its same-origin `/extension/gmail-success.html` page after the Google callback. Gmail refresh tokens remain server-side.
+Per field: platform selectors → schema.org `JobPosting` JSON-LD → page title/meta. Selectors live in `platform-extractors.js`; the server keeps a verified copy (`cd ../server && npm run sync:extractors`). Listing/search pages are ignored. Selectors were written from public markup and fixtures and are not guaranteed against the live sites; every field is editable before saving.
 
-The Google OAuth client continues to use the server callback in `GOOGLE_REDIRECT_URI`; do not replace it with the `chromiumapp.org` URL.
+## Security
 
-## Install (unpacked, for now — not published to the Chrome Web Store)
+Minimal permissions (`storage`, `activeTab`, the API host); content scripts only on the six job sites; no AI logic or credentials in the extension; short-lived access token with rotating refresh token; saved jobs are always private to the user; a blocked account is signed out without retrying; admin APIs are never called.
 
-1. Open `chrome://extensions` in Chrome (or `edge://extensions` in Edge).
-2. Turn on **Developer mode** (top-right toggle).
-3. Click **Load unpacked** and select this `browser-extension` folder.
-4. The TrackTrail icon should appear in your toolbar. Pin it for easy access.
-
-## First-time setup
-
-1. Click the TrackTrail icon in your toolbar.
-2. Log in with the same email/password you use on the TrackTrail website.
-   The extension talks to whatever backend URL is set as `DEFAULT_API_BASE_URL`
-   in `config.js` — there's no in-popup settings UI for changing it; if you
-   redeploy the backend elsewhere, edit that constant directly (see
-   "API settings — removed", below).
-
-## What's in the popup now
-
-- **Jobs tab** — search by company/role, filter by status chip
-  (Applied / Interviewing / Offer / Rejected), change a job's status
-  inline from a dropdown, delete a job, open the original posting link.
-- **Add tab** — add a job manually (company, role, status, link, notes)
-  without needing to be on LinkedIn/Indeed.
-- **Stats tab** — quick counts of total jobs and jobs per status.
-- **Settings (gear icon)** — change the backend API URL without editing
-  code.
-
-## Using the on-page save button
-
-1. Browse to any job posting on LinkedIn (`linkedin.com/jobs/...`) or
-   Indeed (`indeed.com/...`).
-2. A dark "+ Save to TrackTrail" button appears in the bottom-right corner.
-3. Click it. The job's company and role are auto-detected from the page
-   and saved with status "Applied". Edit the status or delete it later
-   from the popup's Jobs tab.
-
-## How detection works (and its limits)
-
-The content script reads the job title and company name from the page
-using a few known CSS selectors, with a fallback to parsing the page's
-`<title>` tag if those selectors don't match. LinkedIn and Indeed change
-their page markup periodically, so if the button stops picking up the
-right company/role, the selectors in `content.js` likely need a quick
-update — check `detectLinkedIn()` / `detectIndeed()`.
-
-## Backend routes this extension uses (confirmed against `server/routes/jobRoutes.js`)
-
-- `POST /api/auth/login`
-- `GET /api/jobs` — list, scoped to the logged-in user
-- `POST /api/jobs` — used for both on-page save and the manual Add tab
-- `PUT /api/jobs/:id` — used by the status dropdown in the Jobs tab
-- `DELETE /api/jobs/:id` — used by the delete button
-
-`TrackedJob` fields (from `prisma/schema.prisma`): `company`, `role`,
-`status`, `applicationDate`, `interviewDate`, `notes`. There's no `link`/URL
-field on this model, so the popup doesn't send or display one.
-
-The backend also has a separate, bigger "intelligent apply engine" (Job
-Discovery, TF-IDF matching, apply queue, analytics, profile) under
-`/api/engine/jobs`, `/api/applications`, `/api/analytics`, `/api/profile` —
-the popup's Jobs/Add/Stats tabs above don't touch it, but the full dashboard
-(next section) does.
-
-## Full dashboard (new)
-
-The popup now has an **"Open full dashboard ↗"** button (visible once
-logged in) that opens `dashboard.html` in a new tab. This is where the
-bigger "intelligent apply engine" lives, since a 360px popup isn't enough
-room for it:
-
-- **Matched Jobs** — scraped jobs from `/api/engine/jobs`, filterable by
-  status and minimum match score, with a "Queue apply" button that calls
-  `POST /api/applications/:jobId`.
-- **Applications** — `/api/applications`, filterable by status, with
-  "Mark as applied" and outcome buttons (Interview / Offer / Rejected).
-- **Analytics** — summary + conversion rates from `/api/analytics`, and
-  a matched → applied → interview → offer funnel from
-  `/api/analytics/funnel`.
-- **Profile** — view/edit the resume/skills profile used for matching,
-  via `/api/profile`.
-
-These engine routes require the same `token` auth header as everything else
-in this extension — `/api/engine/jobs`, `/api/applications`, `/api/analytics`,
-`/api/profile` and `/api/companies` are all mounted with
-`auth` at the `app.use(...)` level in `server.js`, and the dashboard's
-`apiAuth()` helper in `dashboard.js` already attaches the stored token to
-every one of these calls.
-
-`jobs.id`, `applications.id`, and similar Postgres `BigInt` columns are
-already handled: `server/lib/prisma.js` and `server.js` both add a
-`BigInt.prototype.toJSON` override before any route runs, so `res.json()`
-serializes them without throwing.
-
-If you want a shareable install link instead of "load unpacked": zip this
-folder's contents (not the folder itself) and submit it through the
-[Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole)
-(one-time $5 developer fee). Not required for a portfolio/demo.
-
-## Sign up (new)
-
-The login screen now has a "Don't have an account? Sign up" link that
-switches to a registration form (name, email, password). It calls
-`POST /api/auth/register`, then automatically logs in with the same
-credentials so there's no extra step.
-
-## Gmail integration (new)
-
-The dashboard's **Email** tab mirrors the Gmail integration already on the
-website (`routes/gmailRoutes.js`):
-
-- **Connect Gmail** — calls `GET /api/gmail/auth-url` and opens the Google
-  consent screen in a new tab. The server's OAuth callback redirects to
-  your website's `/integrations` page (not back to the extension) — after
-  finishing consent, come back to this tab and click "Refresh status".
-- **Scan inbox** — calls `GET /api/gmail/scan` (last 30 days). The server
-  returns only job/internship-related mail (promos, receipts, social and
-  digests are filtered out; threads and already-imported mail are
-  de-duplicated) with company, role, status and a contact email pre-filled.
-  Each one has an editable company field + "Save as job" button that calls
-  `POST /api/gmail/import` to add it to your tracker.
-- **Disconnect** — calls `POST /api/gmail/disconnect`.
-
-These routes require the same auth token as the Jobs tab, so you need to
-be logged in via the popup first. Gmail also needs `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` set in `server/.env` —
-see `config/google.js`.
-
-## API settings — removed
-
-The earlier "API settings" panel (editable backend URL) has been removed.
-The extension now always uses `DEFAULT_API_BASE_URL` from `config.js`. If
-you redeploy the backend to a different URL, update that constant instead.
-
-## "Interviewing" renamed to "Interview"
-
-The manual tracker's status option/filter/badge that used to say
-"Interviewing" is now "Interview" everywhere (Add form, status dropdown,
-filter chip, stats). Status matching in the popup is now case-insensitive
-too, so a job saved with any casing of a known status still filters and
-displays correctly.
-
-## Resume match & tailoring (v1.1)
-
-On a LinkedIn or Indeed job page a **Resume match** button appears above the
-Save pill. It opens a panel with **Save Job**, **Analyze JD** and **Tailor
-Resume**:
-
-- **Analyze JD** shows your match % and ✓ / ⚠ / ✕ per requirement. ✕ means the
-  skill is *not on your resume* — it is never added to it.
-- **Tailor Resume** starts a tailoring run on the backend, shows the real
-  progress stages, and then hands off to the web app (**Review in TrackTrail**)
-  where you approve each change. Nothing is applied until you approve.
-- **View Full Analysis** opens the cached analysis in the web app **without**
-  saving the job.
-
-The extension contains no AI logic and no AI credentials: it extracts the job
-(`jd-extract.js`), sends it to the authenticated `/api/resume/*` API via the
-background worker, and displays the result (`tailor-panel.js`).
-
-The web app URL defaults to `DEFAULT_WEB_APP_URL` in `config.js` and can be
-overridden with `chrome.storage.local.webAppUrl`.
-
-### Blocked accounts
-
-If an administrator blocks the account, the next request returns `403 account_blocked`: the extension signs the user out, shows the blocked message and does not retry, and signing in again shows the same message until the account is unblocked. Admin user management and account deletion are not available in the extension (use the web app, Profile -> Danger zone).
-
-### Tests
+## Tests
 
 ```bash
-cd browser-extension
-npm install      # dev-only: jsdom
-npm test
+npm ci
+npm test       # 92 tests (Node test runner + jsdom); needs ../server dependencies installed
 ```
-
-## My Resumes (dashboard)
-
-The dashboard has a **My Resumes** section (document icon in the sidebar). It shows the resumes stored on your
-TrackTrail account — the same ones the web app and mobile app show; nothing is stored in the extension.
-
-- **Upload Resume** (PDF or DOCX). The file is sent only to the TrackTrail backend, which validates and parses it.
-- Each card shows name, upload date, file type, *Active/Available*, and the actions **View**, **Use for Tailoring**,
-  **Versions** and **Delete**.
-- **Versions** lists the original resume (upload date, parsed-facts count, active status) and every tailored version
-  (job title, company, created date, match score, provenance) with **View** (opens the web app), **Preview** and **Export**.
-  Drafts must be approved in the web app before they can be exported.
-- On a LinkedIn/Indeed job, **Tailor Resume** uses your only resume automatically, or asks you to *Select resume for this job*.

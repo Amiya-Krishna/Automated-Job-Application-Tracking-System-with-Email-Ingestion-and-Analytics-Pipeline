@@ -1,7 +1,6 @@
 # Gmail Integration & AI-Powered Resume Tailoring
 
-> **Consolidated from:** `GMAIL_INTEGRATION.md` and `RESUME_TAILORING.md`.
-> Related: Gmail endpoints and `/api/resume/*` summary → `04` (Gmail) and Part 2 below (resume); environment variables → `03`; verification status of Gmail OAuth → `10`.
+Related: endpoint summary → [04](04_API_Reference.md); environment variables → [03](03_Setup_Installation_and_Contributing.md); verification status → [10](10_QA_Security_and_Verification_Report.md).
 
 ---
 
@@ -31,8 +30,7 @@ pre-provisioned for you.
 4. Scopes: add `.../auth/gmail.readonly`.
 5. Test users: while the app is in "Testing" mode, add the Gmail
    address(es) you'll log in with — Google only allows listed test users
-   until you submit for verification (not required for a demo/portfolio
-   project).
+   until you submit the app for Google verification (required for public use).
 
 ### 4. Create OAuth client credentials
 
@@ -51,8 +49,7 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI=https://your-backend.onrender.com/api/gmail/callback
 ```
 
-Also set the same three variables in your Render dashboard's environment
-variables (Render doesn't read your local `.env` file).
+Set the same variables in your host's environment settings (hosts do not read your local `.env`).
 
 ### 6. Try it
 
@@ -71,7 +68,8 @@ variables (Render doesn't read your local `.env` file).
   full email body.
 - Nothing from Gmail is stored in the database; only the refresh token
   (used to re-authenticate future scans) is saved, and only for the
-  logged-in user who connected it.
+  logged-in user who connected it. Blocked or deleted accounts cannot
+  complete the OAuth callback, and account deletion revokes the grant at Google (best effort).
 - Disconnecting (via the Integrations page) deletes that refresh token
   immediately.
 
@@ -81,7 +79,7 @@ The mobile app (`mobile/`) uses this exact same setup — same Google Cloud
 project, same env vars, no separate credentials. It calls
 `GET /api/gmail/auth-url?source=mobile&redirectUri=...` instead of
 `source=web`/`source=extension`, so the OAuth callback can send the
-browser back to the app via its own `mobile://` (or, in Expo Go,
+browser back to the app via its own `tracktrail://` (or, in Expo Go,
 `exp://`) redirect instead of the web dashboard. See
 `mobile/README.md`'s "Gmail integration" section for the full mechanism.
 
@@ -313,7 +311,7 @@ are server-only and appear in none of the clients.
 
 ```bash
 cd server && npm install && npx prisma migrate deploy && npx prisma generate
-npm test                          # 100+ tests, incl. adversarial safety + provider/security tests
+npm test                          # full server suite, incl. adversarial safety and provider/security tests
 cd ../client && npm install && npm test && npm run build
 cd ../browser-extension && npm install && npm test
 cd ../mobile && npm install && npm run test:integration && npx tsc --noEmit

@@ -1,651 +1,133 @@
-# Project Structure & Architecture
+# 01 — Architecture, Data Model and Security Design
 
-Comprehensive guide to TrackTrail's structure and architecture.
-
-> **Consolidated from:** `PROJECT_STRUCTURE.md` (Last Updated: August 25, 2026).
-> **Related documents in this set:** engine design → `02`; setup → `03`; API → `04`; deployment → `05`; web client → `06`; mobile → `07`; browser extension → `08`; Gmail and resume tailoring → `09`; QA and security → `10`.
-> The `docs/` folder listing in the directory tree below reproduces the original document names as they appeared in the source.
-
----
-
-## Directory Structure
+## 1. System overview
 
 ```
-TrackTrail/
-│
-├── 📄 README.md                          # Project overview, architecture, and quick start
-│
-├── 📁 server/                            # Backend - Node.js/Express/Prisma
-│   ├── 📄 server.js                      # Express server entry point
-│   ├── 📄 package.json                   # Backend dependencies
-│   ├── 📄 worker.js                      # Boots the BullMQ background workers
-│   ├── 📄 .env.example                   # Template for server/.env (not committed)
-│   │
-│   ├── 📁 prisma/                        # Prisma ORM — schema + migrations
-│   │   ├── schema.prisma                 # Full schema (tracker + engine tables) — the single source of truth for the DB shape
-│   │   └── migrations/                   # Committed, timestamped SQL migrations, applied via `npx prisma migrate deploy`
-│   │
-│   ├── 📁 lib/
-│   │   └── prisma.js                     # Shared PrismaClient instance + a `query()` helper for raw SQL (used for aggregate queries Prisma's query builder doesn't express well)
-│   │
-│   ├── 📁 config/
-│   │   └── google.js                     # Gmail OAuth client setup
-│   │
-│   ├── 📁 routes/                        # API route definitions (logic lives directly in routes — no separate controllers/ layer)
-│   │   ├── authRoutes.js                 # /api/auth — register, login, forgot/reset password
-│   │   ├── jobRoutes.js                  # /api/jobs — manual tracker CRUD (tracked_jobs)
-│   │   ├── gmailRoutes.js                # /api/gmail — OAuth connect + inbox scan
-│   │   ├── ingestRoutes.js               # /api/ingest — engine: shared job ingestion entrypoint
-│   │   ├── scrapeRoutes.js               # /api/scrape — Job Discovery: trigger/poll/delete async discovery runs
-│   │   ├── engineJobsRoutes.js           # /api/engine/jobs — engine: browse discovered/matched jobs
-│   │   ├── applyRoutes.js                # /api/applications — engine: apply + outcome tracking
-│   │   ├── analyticsRoutes.js            # /api/analytics — engine: live per-user summary + funnel
-│   │   ├── profileRoutes.js              # /api/profile — engine: per-user resume/skills profile
-│   │   ├── companiesRoutes.js            # /api/companies — engine: browse the companies table
-│   │   └── sourcesRoutes.js              # /api/sources — engine: browse the job_sources table
-│   │
-│   ├── 📁 middleware/
-│   │   └── authMiddleware.js             # JWT verification (reads the `token` header)
-│   │
-│   ├── 📁 services/                      # Intelligent Job Application Engine logic
-│   │   ├── ingestionService.js           # normalize → dedup → insert → enqueue match
-│   │   ├── jobDiscovery/index.js         # orchestrates a discovery run across the registered adapters, ingests results
-│   │   ├── dedupService.js               # exact hash + fuzzy duplicate detection
-│   │   ├── matchingService.js            # TF-IDF cosine similarity + curated skill-vocabulary overlap
-│   │   ├── learningService.js            # adjusts skill weights from recorded outcomes
-│   │   ├── applyEngine.js                # Playwright-driven, human-in-the-loop apply flow
-│   │   ├── analyticsService.js           # live, per-user analytics SQL (what /api/analytics actually queries)
-│   │   ├── appliedJobsService.js         # merges tracked_jobs + bridged engine data into one Applied Jobs view
-│   │   ├── engineBridge.js               # bridges a manually-added TrackedJob into the engine pipeline for matching
-│   │   ├── rateLimiter.js                # Redis token bucket for discovery/apply rate limits
-│   │   ├── seedSources.js                # idempotently seeds the job_sources table on server startup
-│   │   ├── emailService.js               # Resend-backed forgot-password emails
-│   │   ├── skills.js                     # skill keyword extraction
-│   │   ├── textUtils.js                  # text normalization, hashing, HTML stripping
-│   │   └── scraper.js                    # STANDALONE, NOT wired into any worker/route — see "Known limitations" in the README
-│   │
-│   ├── 📁 adapters/                      # Two unrelated kinds of adapter live in this one folder:
-│   │   ├── remotiveJobsAdapter.js        #   Job Discovery: Remotive's public API (real, working)
-│   │   ├── createJobBoardAdapter.js      #   Job Discovery: shared Playwright factory used by the LinkedIn and Indeed adapters
-│   │   ├── linkedinJobsAdapter.js        #   Job Discovery: LinkedIn discovery (thin wrapper over the factory)
-│   │   ├── indeedJobsAdapter.js          #   Job Discovery: Indeed discovery (thin wrapper over the factory)
-│   │   ├── greenhouseAdapter.js          #   Apply engine: per-ATS field-mapping for Greenhouse
-│   │   ├── genericAdapter.js             #   Apply engine: fallback field-mapping for unrecognized ATS platforms
-│   │   └── index.js                      #   Apply engine: selects an adapter for a given application URL
-│   │
-│   ├── 📁 workers/                       # BullMQ worker processes (run together via `npm run worker`)
-│   │   ├── ingestWorker.js               # consumes the ingest queue
-│   │   ├── matchWorker.js                # consumes the match queue
-│   │   ├── applyWorker.js                # consumes the apply queue
-│   │   ├── analyticsWorker.js            # consumes the analytics queue (populates the legacy analytics_daily rollup — not what the live dashboard reads)
-│   │   └── scrapeWorker.js               # consumes the scrape queue — runs Job Discovery adapters, ingests results
-│   │
-│   ├── 📁 queue/
-│   │   └── index.js                      # BullMQ queue definitions (ingest, dedup, match, apply, analytics, scrape)
-│   │
-│   ├── 📁 scripts/
-│   │   └── clearApplyQueue.js            # one-off maintenance script (`npm run clear-apply-queue`)
-│   │
-│   └── 📁 playwright-profile/            # Persistent browser profile for the apply engine (gitignored in practice)
-│
-├── 📁 client/                            # Frontend - React/Vite
-│   ├── 📄 index.html                     # HTML entry point
-│   ├── 📄 package.json                   # Frontend dependencies
-│   ├── 📄 vite.config.js                 # Vite configuration
-│   │
-│   ├── 📁 src/
-│   │   ├── 📄 main.jsx                   # React entry point
-│   │   ├── 📄 App.jsx                    # Route definitions
-│   │   ├── 📄 api.js                     # Axios instance (base URL + token header + 401 handling)
-│   │   ├── 📄 index.css                  # Global styles (Tailwind)
-│   │   │
-│   │   ├── 📁 components/
-│   │   │   ├── Navbar.jsx
-│   │   │   ├── AuthShell.jsx             # Shared layout for login/register/forgot-password
-│   │   │   ├── StateViews.jsx            # Shared loading/empty/error state components
-│   │   │   ├── ThemeToggle.jsx           # Light/dark mode toggle
-│   │   │   └── ProtectedRoute.jsx        # Redirects to /login if not authenticated
-│   │   │
-│   │   ├── 📁 pages/
-│   │   │   ├── Landing.jsx               # `/` — public marketing/landing page
-│   │   │   ├── Login.jsx                 # `/login`
-│   │   │   ├── Register.jsx              # `/register`
-│   │   │   ├── ForgotPassword.jsx        # `/forgot-password`
-│   │   │   ├── ResetPassword.jsx         # `/reset-password`
-│   │   │   ├── Dashboard.jsx             # `/dashboard`
-│   │   │   ├── JobForm.jsx               # `/add-job`, `/edit-job/:id`
-│   │   │   ├── JobDiscovery.jsx          # `/job-discovery` — trigger/poll/remove multi-source discovery runs
-│   │   │   ├── AppliedJobs.jsx           # `/applied-jobs` — the unified tracked_jobs view (manual + engine-applied)
-│   │   │   ├── Integrations.jsx          # `/integrations` — Gmail connect/scan
-│   │   │   ├── Profile.jsx               # `/profile` — user_profile table (per-user)
-│   │   │   ├── Analytics.jsx             # `/analytics` — live per-user conversion/funnel dashboard
-│   │   │   ├── MatchedJobs.jsx           # `/matched-jobs` — jobs + match_scores tables
-│   │   │   ├── EngineApplications.jsx    # `/engine-applications` — the automated apply engine's own applications table
-│   │   │   ├── Companies.jsx             # `/companies` — companies table
-│   │   │   ├── Sources.jsx               # `/sources` — job_sources table
-│   │   │   └── NotFound.jsx              # `*`
-│   │   │
-│   │   └── 📁 utils/
-│   │       ├── auth.js                   # Token storage helpers
-│   │       └── emailParser.js            # Parses pasted/Gmail email text into job fields
-│   │
-│   └── 📁 public/                        # Static assets (favicon, icons.svg)
-│
-├── 📁 browser-extension/                 # Chrome extension (Manifest V3) — manual capture + full engine dashboard
-│   ├── manifest.json
-│   ├── content.js / content.css          # Injects a "Save to TrackTrail" button on LinkedIn/Indeed job postings
-│   ├── background.js
-│   ├── popup.html / popup.js / popup.css # Toolbar popup — login, tracked_jobs list, add job
-│   ├── dashboard.html / dashboard.js / dashboard.css
-│   │                                      # Full-page dashboard (chrome-extension://<id>/dashboard.html):
-│   │                                      #   Matched Jobs, Applications, Analytics, Companies, Sources,
-│   │                                      #   Profile, Email — all authenticated, mirroring the web client
-│   └── config.js                         # DEFAULT_API_BASE_URL
-│
-├── 📁 mobile/                             # Native Expo/React Native app — same backend, no duplicated logic
-│   ├── 📄 README.md                      # Full architecture, setup, env vars, and known limitations
-│   ├── 📄 app.json                       # Expo config — scheme: "mobile" (used by Gmail OAuth + password-reset deep links)
-│   ├── 📁 app/                           # Expo Router file-based routes ((tabs)/, (auth)/, application/, job/, account/, companies/, sources/)
-│   ├── 📁 services/                      # One file per API area, wrapping the shared Axios client — the only layer that knows endpoint paths
-│   ├── 📁 hooks/                         # TanStack Query hooks built on services/
-│   ├── 📁 types/                         # One file per API area, documenting the exact backend contract each type matches
-│   └── 📁 components/                    # Shared UI (cards, badges, empty/loading/error states, form fields)
-│
-└── 📁 docs/                              # Documentation (this folder)
-    ├── GETTING_STARTED.md
-    ├── INSTALLATION.md
-    ├── API_ENDPOINTS.md
-    ├── PROJECT_STRUCTURE.md              # This file
-    ├── DEPLOYMENT.md
-    ├── GMAIL_INTEGRATION.md
-    ├── CONTRIBUTING.md
-    └── intelligent-job-application-engine-design.md
+ Web (React 19)   Mobile (Expo 57)   Chrome extension (MV3)   Admin console (inside the web app)
+        \               |                   |                        /
+         +--------------+---- REST API (Express 5, server.js) -------+
+                         security headers · CORS allow-list · JSON
+                         auth middleware · requireAdmin · rate limiters
+                                      |
+                   +------------------+---------------------+
+                   |                                        |
+        PostgreSQL via Prisma + pg                  Redis + BullMQ (worker.js)
+        (migrations, triggers, indexes)             queues: ingest · match · scrape · apply · analytics
+                                                                |
+                                         Playwright (discovery, apply engine) · Gmail API · Expo push · optional LLM
 ```
 
----
+Two processes are deployed from `server/`:
 
-## Backend Architecture
+| Process | Entry | Responsibility |
+|---|---|---|
+| API | `server.js` | Authentication, validation, thin reads/writes, enqueueing. Never scrapes, scores or drives a browser inline. |
+| Worker | `worker.js` | BullMQ consumers: `ingestWorker`, `matchWorker`, `scrapeWorker`, `applyWorker`, `analyticsWorker`. |
 
-### File: `server/server.js`
+Why they are separate: scraping and browser automation take seconds to minutes and fail in ways a request/response path should not absorb (timeouts, markup drift, CAPTCHAs). Separation keeps API latency independent of them, lets each side restart on its own, and lets workers scale per queue.
 
-**Purpose**: Express server entry point
-
-```javascript
-// Key responsibilities:
-- Initialize Express app
-- Connect to Postgres via Prisma ($connect()) and fail fast if it's unreachable
-- Seed job_sources on startup (manual/linkedin/indeed/remotive/gmail/extension)
-- Setup CORS (allowlist from CLIENT_URL, plus chrome-extension:// origins)
-- Mount all route modules (auth, jobs, gmail, and the engine routes)
-- Add BigInt.prototype.toJSON so res.json() can serialize BigInt id columns
-- Centralized JSON error handler
-- Start server on the configured PORT
-```
-
-### Directory: `server/prisma/`
-
-**Database schema and migrations** — this project uses Prisma, not a raw `pg`
-pool with hand-written model files.
+## 2. Repository layout
 
 ```
-schema.prisma
-- users (incl. `role`, `status` ACTIVE|BLOCKED, `blocked_at`, `token_version`),
-  tracked_jobs (auth/manual tracker — per-user)
-- jobs, companies, job_sources, applications, match_scores,
-  user_profile, scrape_runs, analytics_daily (engine)
-- user_profile and match_scores are scoped per user (user_id / profile_id);
-  jobs/companies/job_sources are shared/global catalog data; applications
-  stays global/job-keyed by design (see the README's Database Design and
-  Trade-offs sections for the reasoning)
-
-migrations/
-- Timestamped, committed SQL migrations (latest: `20261006000000_user_account_status`,
-  which adds account status/blocking columns and makes `match_scores.profile_id`
-  cascade on delete)
-- Applied via `npx prisma migrate deploy` (production) or
-  `npx prisma migrate dev` (local development)
+server/
+  server.js, worker.js          process entry points
+  routes/                       15 route modules (auth, admin, jobs, gmail, resume, scrape, ...)
+  middleware/                   authMiddleware, requireAdmin, rateLimit, corsOptions
+  lib/                          prisma client, sessions (refresh tokens), accountStatus, schemaCheck
+  services/                     ingestion, dedup, matching, learning, reminders, push, account deletion,
+                                catalog deletion, visibility rules, resumeTailoring/, jobBoards/, jobDiscovery/
+  adapters/                     one adapter per job source + shared factory
+  workers/                      BullMQ workers
+  prisma/                       schema.prisma + migrations/ (9)
+  tests/                        311 tests (accounts, admin, auth, isolation, jobs, notifications, resumeTailoring, ...)
+client/                         React 19 + Vite + Tailwind + Recharts web app and admin console
+mobile/                         Expo Router app (TypeScript strict, TanStack Query)
+browser-extension/              Manifest V3 extension (service worker, content scripts, popup, dashboard)
 ```
 
-There is no `server/db/` or `server/models/` directory, and no hand-written
-`schema.sql` — that was an earlier, pre-Prisma version of this project. The
-one remaining reference to that era, `server/migrate.js`
-(`npm run db:migrate`), is dead code: it reads a `db/schema.sql` file that no
-longer exists and will fail if run. Use the Prisma commands above instead —
-see [03_Setup_Installation_and_Contributing.md](03_Setup_Installation_and_Contributing.md).
-
-### Directory: `server/lib/`
-
-`accountStatus.js` defines the `ACTIVE`/`BLOCKED` statuses, the `account_blocked`
-error payload and helpers shared by login, refresh and middleware; `sessions.js`
-issues, rotates and revokes refresh-token sessions (`user_sessions`) and embeds
-the `tv` token-version claim. `prisma.js` exports a single shared `PrismaClient` instance plus a `query()`
-helper that wraps `$queryRawUnsafe` for the aggregate/analytics SQL that's
-more natural to write as raw SQL than through Prisma's query builder (see
-`services/analyticsService.js`, `services/dedupService.js`).
+## 3. Data model
 
-### Directory: `server/routes/`
+PostgreSQL is the source of truth. 22 Prisma models (`server/prisma/schema.prisma`) fall into two ownership classes.
 
-**API Route Definitions** — business logic lives directly in each route
-handler (there is no separate `controllers/` layer). See
-[04_API_Reference.md](04_API_Reference.md) for the full endpoint reference,
-including the newer Job Discovery routes (`scrapeRoutes.js`) and each route's
-current auth requirements.
-
-#### `authRoutes.js` — mounted at `/api/auth`
-
-```
-POST   /api/auth/register          - Create a user
-POST   /api/auth/login             - Log in, receive a JWT (403 account_blocked for blocked users)
-POST   /api/auth/refresh           - Rotate refresh token (403 account_blocked for blocked users)
-GET    /api/auth/me                - Current user (403 account_blocked for blocked users)
-DELETE /api/auth/account           - Self-service account deletion ({ password }); always the caller
-```
-
-(also has a forgot/reset-password flow — see the route file and
-`services/emailService.js`)
-
-#### `jobRoutes.js` — mounted at `/api/jobs`
-
-```
-POST   /api/jobs                   - Create a tracked job
-GET    /api/jobs                   - Get all jobs for the logged-in user
-PUT    /api/jobs/:id                - Update a job (ownership-checked)
-DELETE /api/jobs/:id                - Delete a job (ownership-checked)
-```
-
-#### `gmailRoutes.js` — mounted at `/api/gmail`
-
-```
-GET    /api/gmail/auth-url         - Get the Google consent URL
-GET    /api/gmail/callback         - OAuth redirect target
-GET    /api/gmail/status           - Is Gmail connected?
-POST   /api/gmail/disconnect       - Remove the stored refresh token
-GET    /api/gmail/scan             - Scan inbox for interview/offer/rejection emails
-```
-
-#### `scrapeRoutes.js` — mounted at `/api/scrape`
-
-```
-POST   /api/scrape/run             - Start an async discovery run (Remotive, LinkedIn, Indeed, Naukri, Internshala, Wellfound and/or Unstop)
-GET    /api/scrape/runs            - List the caller's recent runs
-GET    /api/scrape/runs/:id        - Poll a run's status (Cache-Control: no-store — see README)
-DELETE /api/scrape/runs/:id        - Remove one of the caller's own run-history rows
-GET    /api/scrape/platforms       - Provider keys (admin only: whole router is auth + requireAdmin)
-
-#### `adminRoutes.js` — mounted at `/api/admin` (auth + requireAdmin)
-
-GET /overview · GET /users · POST /users/:id/block · POST /users/:id/unblock · DELETE /users/:id · PATCH /users/:id/role · DELETE /jobs/:id · DELETE /companies/:id · DELETE /sources/:id  (see docs/11)
-```
-
-#### Engine routes — `ingestRoutes.js`, `engineJobsRoutes.js`, `applyRoutes.js`, `analyticsRoutes.js`, `profileRoutes.js`, `companiesRoutes.js`, `sourcesRoutes.js`
-
-See [04_API_Reference.md](04_API_Reference.md) for the full list — these back the
-Intelligent Job Application Engine described in
-[02_Job_Application_Engine_Design.md](02_Job_Application_Engine_Design.md).
-All of them require the `token` header.
-
-### Directory: `server/middleware/`
-
-#### `authMiddleware.js`
-
-- Reads the JWT from the `token` request header (not `Authorization: Bearer`)
-- Verifies it and attaches the decoded payload to `req.user`
-- Looks the account up in the database on **every** authenticated request
-  (one primary-key query): missing account -> `401 token_invalid`; status
-  `BLOCKED` -> `403 account_blocked`; token `tv` claim different from
-  `users.token_version` -> `401 token_invalid`
-- Returns 401 on missing or invalid tokens
-
-`requireAdmin.js` runs after it and re-checks status and role from the database
-(fail closed). Account deletion logic lives in `services/accountDeletion.js`,
-shared by self-deletion and the admin delete endpoint.
-
-### Directories: `server/services/`, `adapters/`, `workers/`, `queue/`
-
-These power the **Intelligent Job Application Engine** — Job Discovery
-(Remotive), deduplication, TF-IDF matching, a human-in-the-loop Playwright
-apply flow, and live per-user analytics, all running as BullMQ workers
-(`npm run worker`) separate from the API process. See
-[02_Job_Application_Engine_Design.md](02_Job_Application_Engine_Design.md)
-for the full design, and the README's Architecture section for the current
-module map.
-
----
-
-## Frontend Architecture
-
-### File: `client/src/main.jsx`
-
-**Purpose**: React application entry point — mounts `<App />` to the DOM.
-
-### File: `client/src/App.jsx`
-
-**Purpose**: Route definitions
-
-```javascript
-/                    → Landing
-/login               → Login
-/register            → Register
-/forgot-password     → ForgotPassword
-/reset-password      → ResetPassword
-/dashboard           → Dashboard         (protected)
-/add-job             → JobForm           (protected)
-/edit-job/:id        → JobForm           (protected)
-/job-discovery       → JobDiscovery      (AdminRoute — admins only)
-/admin               → Admin             (AdminRoute — admins only)
-/applied-jobs        → AppliedJobs       (protected)
-/integrations        → Integrations      (protected)
-/profile             → Profile           (protected)
-/analytics           → Analytics         (protected)
-/matched-jobs        → MatchedJobs       (protected)
-/engine-applications → EngineApplications (protected)
-/companies           → Companies         (protected)
-/sources             → Sources           (protected)
-/jobs                → redirects to /applied-jobs
-*                    → NotFound
-```
-
-### Directory: `client/src/components/`
-
-**Reusable UI Components**
-
-| Component            | Purpose                                     |
-| --------------------- | -------------------------------------------- |
-| `Navbar.jsx`          | Top navigation bar                          |
-| `AuthShell.jsx`       | Shared layout wrapper for Login/Register/ForgotPassword |
-| `StateViews.jsx`      | Shared loading/empty/error state components |
-| `ThemeToggle.jsx`     | Light/dark mode toggle                      |
-| `ProtectedRoute.jsx`  | Redirects unauthenticated users to `/login` |
-
-### Directory: `client/src/pages/`
-
-**Full-Page Components** — see the route table above for the path each one
-is mounted at.
-
-### File: `client/src/api.js`
-
-**API Communication Layer**
-
-```javascript
-// Responsibilities:
-- Single Axios instance, baseURL = `${VITE_API_BASE_URL}/api`
-- Request interceptor: attaches the stored JWT as the `token` header
-- Response interceptor: on 401, clears the token and redirects to /login
-```
-
-There is no separate `services/` layer — pages call `api.js` directly.
-
-### File: `client/src/utils/`
-
-- `auth.js` — reads/writes the JWT in local/session storage
-- `emailParser.js` — parses pasted or Gmail-scanned email text into
-  company/role/status fields for the "paste an email" quick-add flow
-
-### File: `client/src/index.css`
-
-Tailwind CSS entry point (base styles + utility imports).
-
----
-
-## Data Flow
-
-### Authentication Flow
-
-```
-User Input
-    ↓
-Login/Register page component
-    ↓
-api.js → POST /api/auth/login (or /register)
-    ↓
-authRoutes.js → prisma.user.findUnique / prisma.user.create
-    ↓
-bcrypt compare/hash + jwt.sign()
-    ↓
-Token + user returned to client
-    ↓
-Stored in localStorage/sessionStorage
-    ↓
-Redirect to Dashboard
-```
-
-### Job Discovery Flow
-
-```
-User submits a search on /job-discovery
-    ↓
-api.js → POST /api/scrape/run   (token header attached automatically)
-    ↓
-scrapeRoutes.js creates a ScrapeRun row (status: queued), enqueues on BullMQ
-    ↓
-scrapeWorker.js picks it up → calls the selected Remotive, LinkedIn, and/or
-    Indeed discovery adapters
-    ↓
-Results go through ingestJob() → normalize → dedup → insert → enqueue match
-    ↓
-ScrapeRun.status moves queued → running → succeeded/failed/blocked
-    ↓
-Client polls GET /api/scrape/runs/:id (Cache-Control: no-store) until done
-    ↓
-Update UI
-```
-
-### Job Creation Flow (manual tracker)
-
-```
-User Fills Form
-    ↓
-JobForm component
-    ↓
-api.js → POST /api/jobs   (token header attached automatically)
-    ↓
-jobRoutes.js → prisma.trackedJob.create()
-    ↓
-INSERT INTO tracked_jobs ...
-    ↓
-If enough data is present, engineBridge.js fires the job into the
-    engine ingestion pipeline in the background (for matching)
-    ↓
-Return created row to client
-    ↓
-Update UI
-```
-
-### Data Fetch Flow
-
-```
-Dashboard Mounts
-    ↓
-useEffect triggers
-    ↓
-api.js → GET /api/jobs
-    ↓
-jobRoutes.js → prisma.trackedJob.findMany({ where: { userId } })
-    ↓
-Return jobs array
-    ↓
-Update component state
-    ↓
-Render jobs
-```
-
----
-
-## Technology Stack Details
-
-### Backend
-
-- **Runtime**: Node.js
-- **Framework**: Express 5
-- **Database**: PostgreSQL via **Prisma** (`@prisma/client`) — no raw `pg` model layer
-- **Queue**: BullMQ + Redis (discovery/matching/apply/analytics engine)
-- **Automation**: Playwright (human-in-the-loop apply flow)
-- **Authentication**: JWT + bcryptjs
-
-### Frontend
-
-- **Library**: React 19
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS
-- **HTTP Client**: Axios
-- **Routing**: React Router
-- **Charts**: Recharts (Analytics page)
-
-### Development Tools
-
-- **Package Manager**: npm
-- **Version Control**: Git
-- **Environment**: Node.js development server
-
----
-
-## Key Dependencies
-
-### Backend (`server/package.json`)
-
-```json
-{
-  "@prisma/client": "^5.22.0",
-  "express": "^5.2.1",
-  "pg": "^8.22.0",
-  "bcryptjs": "^3.0.3",
-  "jsonwebtoken": "^9.0.3",
-  "dotenv": "^17.4.2",
-  "cors": "^2.8.6",
-  "bullmq": "^5.80.9",
-  "ioredis": "^5.11.1",
-  "playwright": "^1.49.1",
-  "googleapis": "^173.0.0",
-  "natural": "^8.1.1"
-}
-```
-
-(`prisma` itself, the CLI, is a devDependency used for `prisma generate` /
-`prisma migrate`.)
-
-### Frontend (`client/package.json`)
-
-```json
-{
-  "react": "^19.x",
-  "react-router-dom": "^7.x",
-  "axios": "^1.16.1",
-  "vite": "^6.x",
-  "tailwindcss": "^4.x",
-  "recharts": "^2.x"
-}
-```
-
----
-
-## Security Considerations
-
-### Password Security
-
-- Hashed with bcryptjs
-- Never stored in plain text
-- Validated on login
-
-### JWT Authentication
-
-- Token generated on login (unsigned expiry — no `expiresIn` set on the main login token)
-- Sent as a plain `token` request header (not `Authorization: Bearer`)
-- Verified on every protected route via `authMiddleware.js`, which also re-loads
-  the account from the database so deleted, blocked and pre-block tokens are
-  rejected immediately (see `docs/11`)
-
-### Multi-User Data Isolation
-
-Every user-owned table is scoped by the authenticated user's id, enforced at
-the query level (not just hidden in the UI):
-
-- `tracked_jobs` — the manual tracker, Applied Jobs, and everything Analytics reads from
-- `user_profile` — one resume/skills profile per user (`user_profile.user_id`)
-- `match_scores` — scoped per `(job_id, profile_id, method)`, so two users' scores for the same job never collide
-- `scrape_runs` — Job Discovery run history, scoped per user, deletable only by its owner
-
-When an account is deleted (self-service or by an admin), exactly these
-user-owned rows are removed in one transaction, while global admin-fetched
-`jobs`, `companies` and `job_sources` are preserved (see `docs/11`). Blocking
-an account deletes nothing.
-
-`jobs`, `companies`, and `job_sources` are genuinely shared/global catalog
-data by design — every user legitimately sees the same underlying listings.
-`applications` (the automated apply engine's own record) stays global/job-
-keyed rather than per-user; ownership for actions on it is derived through
-the caller's own `tracked_jobs` row instead. See the README's Trade-offs and
-Database Design sections for the full reasoning.
-
-### CORS Protection
-
-- Configured via `CLIENT_URL` (comma-separated allowlist)
-- Also explicitly allows any `chrome-extension://` origin, for the browser extension
-- Requests with no `Origin` header (curl/Postman) are allowed through
-
-### Environment Variables
-
-- Sensitive data in `server/.env` (`DATABASE_URL`, `JWT_SECRET`, Google OAuth secrets)
-- Never committed to version control
-- Loaded via `dotenv` at application start
-
----
-
-## Scalability Considerations
-
-### Current (Modular Monolith)
-
-- One Express app serves both the manual tracker and the engine API
-- Background work (discovery, matching, applying, analytics) already runs as
-  **separate worker processes** (`npm run worker`) so a Playwright crash never
-  takes the API down
-- Good for small to medium usage
-
-### Database Optimization
-
-- Indexes on frequently queried columns (see `prisma/schema.prisma`)
-- Connection pooling via Prisma's own pool
-- Analytics are computed live per user rather than through a shared
-  precomputed rollup — see the README's Analytics section for the tradeoff
-
-### Future Directions
-
-- Split the engine (discovery/matching/apply/analytics) into its own deployable service
-- Add `pgvector` for embedding-based matching at scale (see the engine design doc)
-- Add a stage-history table so Analytics can measure historical, not just current-status, conversion
-- API gateway / rate limiting in front of both services
-
----
-
-## Environment-Specific Configuration
-
-### Development
-
-- CORS allows `localhost` explicitly via `CLIENT_URL`
-- Detailed error messages returned in JSON error responses
-
-### Production
-
-- Optimized Vite bundle (`npm run build`)
-- `CLIENT_URL` restricted to the actual deployed frontend domain(s)
-- `DATABASE_URL` points at a production-tier hosted Postgres instance
-- Migrations applied via `npx prisma migrate deploy`, not `prisma migrate dev`
-
----
-
-## File Naming Conventions
-
-### React Components
-
-- PascalCase: `JobDiscovery.jsx`, `AuthShell.jsx`
-- One component per file
-- `pages/` mirrors routes; `components/` holds shared/reusable pieces
-
-### JavaScript Files
-
-- camelCase: `authMiddleware.js`, `ingestionService.js`
-- Functions and variables: camelCase
-- Constants: UPPER_SNAKE_CASE
-
-### CSS/Styling
-
-- Tailwind utility classes, configured via `index.css`
+**Shared catalog (global, no user foreign key)**
+
+| Table | Notes |
+|---|---|
+| `jobs` | Canonical job rows. `content_hash` (exact-duplicate lookup), `canonical_job_id` self-reference (a duplicate points at the original; a new job points at itself), `owner_user_id` (NULL = global, set = private). |
+| `companies` | Unique on `normalized_name`; created with an atomic `INSERT ... ON CONFLICT` so concurrent ingests cannot fail on a race. |
+| `job_sources` | `scope` is `global` (admin-fetched) or `private` (manual / gmail / extension). |
+| `applications`, `analytics_daily` | The apply engine's per-job record and a system-wide rollup. |
+
+**Per-user (every row reachable only through `user_id`, all `ON DELETE CASCADE` from `users`)**
+
+`tracked_jobs`, `user_profile` (+ `match_scores` through the profile), `scrape_runs`, `resumes` / `resume_facts` / `job_descriptions` / `resume_analyses` / `resume_versions` / `resume_changes` / `tailoring_sessions`, `user_sessions`, `push_devices`, `notification_preferences`, `notification_log`, `notifications`, and private `jobs` (`owner_user_id`).
+
+`users` carries `role` (`user` | `admin`), `status` (`ACTIVE` | `BLOCKED`, CHECK-constrained), `blocked_at` and `token_version`.
+
+### Integrity rules enforced by the database
+
+| Rule | Mechanism (migration) |
+|---|---|
+| A job from a private source must have an owner; a job from a global source must not; an owner can never change | `enforce_job_scope` trigger (`20261004000000`) |
+| De-duplication keys differ for global and private rows | Two partial unique indexes: `(source_id, external_job_id) WHERE owner_user_id IS NULL` and `(owner_user_id, source_id, external_job_id) WHERE owner_user_id IS NOT NULL` |
+| One tracked job per (user, engine job) | `uq_tracked_jobs_user_engine_job` (`20260823000000`) |
+| Notifications exactly-once per user | Unique `(user_id, dedupe_key)` indexes |
+| Account status is one of two values | `users_status_check` (`20261006000000`) |
+| Deleting a user leaves no orphans | All user-owned FKs cascade, including `match_scores.profile_id` (`20261006000000`); the shared catalog keeps `NO ACTION` so it can never be cascaded away |
+
+### Migrations
+
+`server/prisma/migrations/` contains nine migrations, starting with an idempotent **baseline** (`20260801000000_baseline_core_tables`) so an empty database can be built from the repository alone. Every migration is written to be re-runnable (`IF NOT EXISTS`, guarded `DO` blocks). A test (`tests/accounts/migrationChain.test.js`, real PostgreSQL) applies the whole chain twice to an empty database and compares tables, columns, types, nullability, named indexes and delete rules against `schema.prisma`. Apply in production with `npx prisma migrate deploy` (never `migrate dev`).
+
+## 4. Authentication and sessions
+
+| Client | Access token | Refresh token |
+|---|---|---|
+| Web | 15-minute JWT, held in memory only | Opaque, HttpOnly `Secure` cookie scoped to `/api/auth` |
+| Mobile | 15-minute JWT | Opaque, stored in the OS keystore (Keychain / Android Keystore), returned in the JSON body |
+| Extension | 15-minute JWT | Opaque, same contract as mobile |
+| Legacy header client | 7-day JWT (no `x-client` header) | none |
+
+- Passwords: bcrypt. Login errors are generic for mobile and the admin door (no account enumeration).
+- Refresh tokens are 256-bit random values; only their SHA-256 hash is stored (`user_sessions`). Every refresh **rotates** the token; presenting an already-rotated token (after a 10-second grace window for lost responses) revokes the whole rotation family.
+- `authMiddleware` accepts only real session tokens (purpose tokens such as password-reset and OAuth `state` are rejected) and then **reads the account from the database on every request**:
+
+| Account state | Result |
+|---|---|
+| Deleted | `401 token_invalid` |
+| Blocked | `403 account_blocked` |
+| Token version mismatch (`tv` ≠ `users.token_version`) | `401 token_invalid` |
+| Lookup error | `500` (fails closed) |
+
+Blocking increments `token_version` and revokes all sessions in one transaction, so tokens issued before the block stay dead even after an unblock. A password reset also increments it.
+
+## 5. Authorization
+
+- `requireAdmin` re-reads `role` and `status` from the database per request; nothing the client sends is consulted. Admin routers (`/api/admin`, `/api/scrape`) are mounted behind `auth` **and** `requireAdmin` in `server.js`, so a handler cannot forget the check.
+- Per-user routes scope every query by `req.user.id`; foreign ids yield `404`.
+- Shared-table reads go through `services/visibility.js` (`visibleJobsWhere`, `visibleJobSql`). Admins get no exception to private-job visibility.
+- `/api/ingest` is mounted behind `auth` only and can never create a global job; a client-supplied `source` is re-classified (`normalizeOrigin`).
+
+## 6. Account lifecycle
+
+See [docs/11](11_Roles_Permissions_Platforms_and_Release_Notes.md) for the full rules, error codes and the deletion data map.
+
+## 7. Defensive defaults
+
+- Security headers on every response (`nosniff`, `X-Frame-Options: DENY`, CSP `default-src 'self'`, HSTS in production); `x-powered-by` disabled; `trust proxy` set for correct client IPs.
+- CORS allow-list from `CLIENT_URL` (required in production); disallowed origins receive `403` and no CORS headers.
+- In production every 5xx body is replaced with a generic message and only method/path/status are logged.
+- Rate limiting (`middleware/rateLimit.js`): sliding window per user or IP on login (stricter for the admin door), registration, forgot/reset password, refresh, account deletion and the costly resume endpoints. Counters are per process.
+- Uploads: memory storage, 2 MB limit, single file; type and structure validated server-side.
+- Cron endpoint `POST /api/notifications/run-reminders` requires `CRON_SECRET` (constant-time comparison) and is `404` when unset.
+
+## 8. Request flow for a captured job
+
+1. A client calls `POST /api/jobs` (tracker) or `POST /api/ingest` (extension). The origin is decided server-side.
+2. `ingestJob` normalises the payload, upserts the company atomically, computes `content_hash`.
+3. Exact-duplicate check, then a fuzzy check (title Jaro-Winkler + description TF-IDF cosine, threshold 0.85) against the same company within ±14 days. Duplicates point at the canonical row.
+4. A new job is inserted with a canonical id and a `match:score` message is enqueued.
+5. `matchWorker` scores the job against the owner's profile (global jobs: against profiles that need it) and stores score + explanation; ≥ 70 marks the job `matched`.
+6. Outcomes recorded later adjust per-skill weights (`learningService`), bounded to [0.1, 3.0].
+
+Queue retries use exponential backoff (ingest: 5 attempts). A job queued for a user who is deleted before it runs fails on the foreign key after its retries and is parked in BullMQ's failed set; no data is created.

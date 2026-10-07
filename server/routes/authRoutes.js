@@ -123,9 +123,7 @@ router.post("/register", registerLimiter, async (req, res) => {
       });
     }
 
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: "Registration failed. Please try again." });
   }
 });
 
@@ -220,9 +218,7 @@ router.post("/login", loginLimiter, (req, res, next) => (requestedPortal(req) ==
     // user data). P2021 = table missing (migration not deployed), P2022 =
     // column missing, TypeError = stale generated Prisma client.
     console.error(`[auth/login] failed: ${(error && (error.code || error.name)) || "unknown"}`);
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ message: "Sign-in failed. Please try again." });
   }
 });
 
@@ -254,7 +250,8 @@ router.post("/refresh", refreshLimiter, async (req, res) => {
       user: publicUser(r.user),
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(`[auth] request failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 });
 
@@ -266,7 +263,8 @@ router.get("/me", authMiddleware, async (req, res) => {
     if (!isActive(user)) return sendBlocked(res);
     res.json({ user: { ...publicUser(user), gmailConnected: Boolean(user.gmailRefreshToken), createdAt: user.createdAt } });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(`[auth] request failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 });
 
@@ -287,7 +285,8 @@ router.post("/logout-all", authMiddleware, async (req, res) => {
     const count = await sessions.revokeAllForUser(req.user.id);
     res.json({ message: "Signed out everywhere", revoked: count });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(`[auth] request failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 });
 
@@ -412,7 +411,8 @@ router.post("/forgot-password", forgotLimiter, async (req, res) => {
 
     res.json({ message: genericMessage });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(`[auth] request failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 });
 
@@ -449,10 +449,12 @@ router.post("/reset-password", resetLimiter, async (req, res) => {
 
     await prisma.user.update({
       where: { id: decoded.id },
-      data: { password: hashedPassword },
+      // tokenVersion + 1 also kills every access token issued before the reset (including the
+      // 7-day legacy web/extension token), not just the refresh-token sessions revoked below.
+      data: { password: hashedPassword, tokenVersion: { increment: 1 } },
     });
 
-    // A password reset must end every existing mobile session.
+    // A password reset must end every existing session.
     try {
       await sessions.revokeAllForUser(decoded.id);
     } catch (e) {
@@ -461,7 +463,8 @@ router.post("/reset-password", resetLimiter, async (req, res) => {
 
     res.json({ message: "Password has been reset. You can now log in." });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(`[auth] request failed: ${(error && (error.code || error.name)) || "unknown"}`);
+    res.status(500).json({ message: "Something went wrong. Please try again." });
   }
 });
 

@@ -1,268 +1,55 @@
-# Job Tracker — Mobile (Expo / React Native)
+# TrackTrail Mobile (Expo / React Native)
 
-Native mobile client for the **Automated Job Application Tracking System**,
-covering the same backend as `client/` (the web app) and
-`browser-extension/`. Built with Expo Router, TypeScript (strict), TanStack
-Query, React Hook Form + Zod, and Axios — no WebViews anywhere in the app.
+Native client for the TrackTrail API: Expo SDK 57, React Native 0.86, Expo Router, TypeScript (strict), TanStack Query, React Hook Form + Zod. No WebViews, no backend of its own. Design and release notes: [docs/07](../docs/07_Mobile_App_Implementation_and_Release.md).
 
-## Overview
+## Features
 
-This app talks to the existing Express/Prisma/PostgreSQL backend in
-`server/` over the same REST API the web client uses. It does not have its
-own backend, database, or duplicated business logic — every screen is a
-native UI over the same endpoints `client/` calls.
+Authentication (incl. password reset deep link), home overview, applications (add / edit / status / search / filter), job discovery view with match scores, analytics, profile, Gmail connect and inbox scan, companies, sources, resume list / activation / tailoring, push and in-app reminders, account deletion.
 
-Feature areas: authentication (incl. forgot/reset password), a home
-dashboard, applications (add/edit/status/search/filter/sort), job discovery
-(search, match scoring, apply), analytics, profile editing, Gmail
-integration (OAuth connect, inbox scan, add-to-pipeline), companies,
-sources, and a secondary "Engine Applications" queue view for the
-automated apply-engine's own records.
-
-## Architecture
-
-- **`app/`** — Expo Router file-based routes. `(tabs)/` is the main tab bar
-  (Home, Applications, Jobs, Analytics, Profile); `application/`, `job/`,
-  `account/`, `companies/`, `sources/` are separate stacks reached from the
-  tabs (kept as distinct route names from their plural tab equivalents to
-  avoid Expo Router path collisions); `(auth)/` is the logged-out stack;
-  `engine-applications.tsx` is a single secondary screen.
-- **`services/`** — one file per API area, each wrapping the shared `api`
-  Axios instance (`services/api.ts`). This is the only layer that knows
-  endpoint paths and request/response shapes.
-- **`hooks/`** — TanStack Query hooks (`useQuery`/`useMutation`) built on
-  top of `services/`. Screens call hooks, never `services/` directly.
-- **`types/`** — one file per API area, documenting the *exact* backend
-  contract each type matches (verified against `server/routes/*.js`, not
-  assumed) and any casing/shape quirks worth knowing about.
-- **`components/`** — shared UI (cards, badges, empty/loading/error states,
-  form fields) reused across screens rather than re-implemented per screen.
-- **`providers/`** — `AuthProvider` (SecureStore-backed session) and
-  `QueryProvider` (TanStack Query client).
-
-## Prerequisites
-
-- Node.js and npm
-- The backend running (`server/` — see its own README/`.env.example`) and
-  reachable from wherever you run the app (see the networking note below)
-- Expo Go (for quick device testing) or a dev/standalone build, for
-  Android/iOS
-- A modern browser, for the web target
-
-## Installation
+## Run
 
 ```bash
-cd mobile
-npm install
-cp .env.example .env
-# then edit .env — see the next section
+npm ci
+cp .env.example .env        # set EXPO_PUBLIC_API_URL
+npx expo start              # then choose Android / iOS / web
 ```
 
-## Environment variables
+`EXPO_PUBLIC_API_URL` has no trailing slash and no `/api`:
 
-Only one is required: `EXPO_PUBLIC_API_URL`, the backend's base URL
-(no trailing slash, no `/api` suffix — that's appended automatically).
-**Where this points depends on where you're running the app**, because
-`localhost` means something different on each platform:
-
-| Running on | `EXPO_PUBLIC_API_URL` |
+| Target | Value |
 |---|---|
-| Web (`npx expo start --web`) | `http://localhost:5000` |
-| Android emulator | `http://10.0.2.2:5000` (the emulator's alias for your host machine) |
-| Physical device (Expo Go / dev build) | `http://<your-computer's-LAN-IP>:5000`, same Wi-Fi, firewall open on that port |
-| Production | your deployed backend's HTTPS URL |
+| Web | `http://localhost:5000` |
+| Android emulator | `http://10.0.2.2:5000` |
+| Physical device | `http://<LAN-IP>:5000` (same Wi-Fi, firewall open) |
+| Production | HTTPS API origin |
 
-See `mobile/.env.example` for the full explanation inline. `mobile/.env` is
-gitignored — never commit real values, though for this project the only
-value here is a URL, not a secret.
+Other variables: `EXPO_PUBLIC_APP_ENV`, `EXPO_PUBLIC_WEB_URL`, `EXPO_PUBLIC_SENTRY_DSN` (optional). Use an Expo Go build matching SDK 57 or a development build.
 
-## Running
+## Verify
 
 ```bash
-npx expo start          # then choose a target from the terminal UI
-npx expo start --web    # web directly
-npx expo start --android
-npx expo start --ios
+npm run typecheck && npm run lint && npm test      # 75 tests
+npm run verify:bundle                              # requests the real Android + iOS bundles from Metro
+npx expo install --check                           # dependency versions match the SDK
 ```
 
-Static verification (what CI/a reviewer should run):
+Some tests boot server modules; run `npm ci` in `../server` first.
 
-```bash
-npx tsc --noEmit
-npx expo export --platform web
-```
+## Security
 
-## Backend setup
-
-This app has no backend of its own. Start `server/` first (see
-`server/README.md` / `server/.env.example`), then point
-`EXPO_PUBLIC_API_URL` at it as above. The mobile app uses the exact same
-`token` auth header convention, JWT format, and REST contracts as
-`client/` — nothing backend-side needs to change to support mobile, with
-one exception (Gmail OAuth, below).
-
-## Gmail integration
-
-Gmail OAuth needs one small, already-implemented backend addition beyond
-what the web client uses: `GET /api/gmail/auth-url` accepts
-`source=mobile&redirectUri=<...>` in addition to the existing
-`source=extension` the browser extension uses. This exists because,
-unlike the extension's fixed redirect URL, there's no single fixed
-redirect URI that works for mobile — Expo Go generates a different
-`exp://<lan-ip>:8081/...` URL per machine, while a standalone/dev-client
-build uses the stable `mobile://` scheme from `app.json`. The mobile app
-computes its own redirect with `Linking.createURL(...)` and sends it
-along; the backend signs it into the existing OAuth `state` JWT and
-validates it's a `mobile://` or `exp://` URL before honoring it (see
-`server/routes/gmailRoutes.js` and `mobile/hooks/use-gmail.ts`).
-
-No other backend change is required — connect/disconnect/scan/add-to-
-pipeline all use the same endpoints the web client's Integrations page
-uses.
-
-**Add to Pipeline shows exactly where the job landed.** After a scanned
-email is added, the Profile screen shows a confirmation card — "Added to
-Applications" or "Already in Applications" if the backend's own
-duplicate check (`findExistingTrackedJob` in `server/routes/jobRoutes.js`)
-matched an existing tracked job — with a "View Application" button that
-opens the real application detail screen using the actual id `POST
-/api/jobs` returned (`{ ...TrackedJobRecord, duplicate }`). No second
-detail view and no client-side duplicate guessing; the backend's decision
-is shown as-is.
-
-## Password reset
-
-`POST /api/auth/forgot-password` and `POST /api/auth/reset-password` work
-exactly as the web client uses them.
-
-**Web and Mobile have completely separate, isolated reset flows —
-separate emails, separate destinations, no cross-platform handoff.**
-This app's Forgot Password screen (`app/(auth)/forgot-password.tsx`)
-explicitly requests its own reset email:
-
-```ts
-POST /api/auth/forgot-password
-{ email, source: 'mobile', redirectUri: Linking.createURL('reset-password') }
-```
-
-`redirectUri` is this app's own deep link -- the same mechanism Gmail
-OAuth's mobile connect flow uses (`hooks/use-gmail.ts`), validated
-server-side against the same `mobile://`/`exp://` allow-list
-(`server/utils/mobileRedirect.js`, shared between both features so the
-two can't drift apart). The web app never sends `source`/`redirectUri`
-at all, so it always gets its own unchanged `${CLIENT_URL}/reset-password`
-link -- there is deliberately no "continue in the mobile app" button on
-the web page, no mobile-browser detection, and no fallback that could
-send a web user into the mobile app or vice versa.
-
-The mobile reset email links straight to `mobile://reset-password?token=...`
--- no web page in between. Tapping it in Gmail opens
-`app/(auth)/reset-password.tsx` directly, with the token pre-filled via
-`useLocalSearchParams` (read-only in that case); manual paste remains
-the fallback for anyone who reaches this screen without a token already
-in hand (e.g. copy-pasting it from a desktop email client).
-
-**Known remaining edge case:** the reset screen sits inside this app's
-"unauthenticated only" route group (`Stack.Protected guard={status ===
-'unauthenticated'}` in `app/_layout.tsx`). If the device already has an
-active session, that group is guarded out and the deep link won't
-navigate there -- the person would need to log out first. Fixing this
-would mean restructuring the auth-guard logic to make one screen
-reachable regardless of session state, which wasn't done here to avoid
-touching working auth-gating logic without dedicated testing.
-
-**Also outside this app's control:** Gmail's own webmail UI opens link
-taps in a new tab/window regardless of what the email's HTML specifies
--- there is no `target="_blank"` or `window.open` anywhere in
-`server/services/emailService.js`'s template. That's Gmail's own
-link-handling behavior, not something either the server or this app can
-override.
+Session in Expo SecureStore (Keychain / Keystore); 15-minute access token with rotating refresh token; single-flight refresh; per-account caches cleared on sign-out; blocked accounts are signed out with a clear message; Settings → Delete account needs `DELETE` plus the password; release logging redacts tokens and personal data. There is no admin UI on mobile.
 
 ## Known limitations
 
-- Password reset deep linking's already-logged-in edge case (above).
-- Push notifications: **not implemented, and correctly so** — the backend
-  has no notification/device-token/push-provider infrastructure at all
-  (confirmed by inspection, not assumed), so there is nothing to build a
-  mobile UI on top of without inventing a new backend feature.
-- `expo lint` could not be run in every development environment used to
-  build this app — some sandboxes' network restrictions block the
-  one-time ESLint config check `expo lint` performs. `npx tsc --noEmit`
-  and `npx expo export --platform web` are the verified static checks.
-- Engine Applications is intentionally a secondary, clearly-labeled screen
-  (linked from the Applications tab, not a main tab) — the web app's own
-  code marks this as a legacy view superseded by the unified Applied Jobs
-  page, and this app follows that lead rather than promoting it back to a
-  primary workflow.
-
-## Production considerations
-
-- Set `EXPO_PUBLIC_API_URL` to your deployed backend's HTTPS URL before
-  building for release.
-- The Gmail mobile redirect (`mobile://...`) only resolves correctly in a
-  standalone or dev-client build with the custom scheme registered — it
-  will not work inside Expo Go in production use, only during development.
-- Review Prisma/backend `CLIENT_URL` and CORS configuration to make sure
-  your deployed backend accepts requests from your mobile app's origin
-  where applicable.
+- Resume file upload is a hand-off to the web app.
+- The password-reset deep link does not open while a session is active; sign out first.
+- Hosted legal pages (`server/public/legal/`) are templates and must be completed before a store submission.
+- Store builds and push delivery were not exercised in the verification environment.
 
 ## Troubleshooting
 
-### `java.io.IOException: Failed to download remote update`
+"Failed to download remote update" means the bundle could not be built or fetched. Run `npm run verify:bundle` to check that Metro can build; if it can, the cause is the network (same Wi-Fi, no VPN or client isolation, or `npx expo start -c --tunnel`), an old installed dev build, or an Expo Go version that does not match SDK 57.
 
-**What it means.** The app (Expo Go or a development build) asked the Metro dev server for the JavaScript
-bundle and did not get one. The app's code is not the problem; the *bundle could not be built or fetched*.
-This project has **no over-the-air update setup at all** (`expo-updates` is not installed, and `app.json`
-has no `updates` / `runtimeVersion`), so this is not an EAS Update problem.
+## Release
 
-**The cause that was found in this repository (fixed).** Metro answered the bundle request with HTTP 500 because:
-
-1. four files imported `@react-navigation/*` directly, which Expo Router (SDK 56+) refuses to bundle; and
-2. `react-native-svg@15.13.0` imports `buffer` without declaring it (SDK 57 expects `15.15.4`).
-
-**Check that the bundle builds (no phone needed):**
-
-```bash
-cd mobile
-npm install
-npm run verify:bundle        # requests the real Android + iOS bundles; prints Metro's error if it fails
-```
-
-**If the bundle builds but the phone still shows the error** it is a network/host problem, not the project:
-
-- phone and computer must be on the same Wi-Fi (no VPN / guest network / client isolation); allow Node through the firewall;
-- otherwise use a tunnel: `npx expo start -c --tunnel`;
-- an old installed APK/dev build can keep trying a previous URL: uninstall it and reinstall;
-- use the Expo Go version that supports this SDK (57), or a development build.
-
-**Other checks**
-
-```bash
-npx expo install --check     # dependencies must match the SDK
-npx expo-doctor
-npm run test:integration     # includes static guards for the causes above
-```
-
-### Over-the-air updates (not currently used)
-
-If you later want OTA updates, install `expo-updates` (`npx expo install expo-updates`) **and** configure all of:
-`runtimeVersion` (e.g. `{ "policy": "appVersion" }`), `updates.url` (`https://u.expo.dev/<your EAS project id>`),
-and a `channel` in the `preview` and `production` profiles of `eas.json`. A test in `tests/config.test.cjs`
-fails if this is only partly configured, and if `expo-updates` is *not* installed it fails when any of those
-settings is present.
-
-## Account deletion and blocked accounts
-
-**Settings -> Delete account** (`app/account/settings.tsx`) permanently deletes the signed-in user's own account via `DELETE /api/auth/account`. The user must type `DELETE` and their password; the screen lists what is deleted (applications, private jobs, profile and match scores, resumes, sessions, push devices, notifications) and what is not (shared job data fetched by admins). On success the session, caches and local data are cleared and the app returns to login. A last active administrator gets `409 last_admin`; a blocked account gets `403 account_blocked`.
-
-If an administrator blocks the account, the app ends the session and shows the blocked message (also at login). The mobile app has **no admin user-management UI**; blocking, unblocking and deleting other users is done in the web Admin panel only.
-
-Tests: `npm run typecheck && npm run lint && npm test`.
-
-## Roles
-
-`AuthUser.role` (`'user' | 'admin'`) comes from `/api/auth/me`. The Discovery
-panel on the Sources screen is shown to admins only (the API also returns 403
-to non-admins). The Analytics funnel no longer has a "Jobs discovered"
-(scraped) stage; bars are scaled to *Matched*. `/api/gmail/scan` now returns
-pre-filtered job mail with optional `company`/`role`/`status`/`contactEmail`.
+EAS profiles (`development`, `staging`, `preview`, `production`) are in `eas.json`; `expo-updates` uses the `appVersion` runtime policy. CI and release workflows: [docs/05](../docs/05_Deployment_and_Operations.md).

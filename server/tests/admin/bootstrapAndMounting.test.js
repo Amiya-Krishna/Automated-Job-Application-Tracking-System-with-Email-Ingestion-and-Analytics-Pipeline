@@ -40,7 +40,7 @@ test("ensureAdmins promotes only EXISTING listed accounts, never demotes, never 
   const users = [{ id: 1, email: "Boss@X.com", role: "user" }, { id: 2, email: "other@x.com", role: "user" }, { id: 3, email: "old@x.com", role: "admin" }];
   const db = {
     user: {
-      findMany: async ({ where }) => users.filter((u) => where.email.in.includes(u.email.toLowerCase()) && u.role !== "admin").map((u) => ({ id: u.id })),
+      findMany: async ({ where }) => users.filter((u) => where.email.in.includes(u.email.toLowerCase())).map((u) => ({ id: u.id, email: u.email, role: u.role })),
       updateMany: async ({ where, data }) => { let n = 0; for (const u of users) if (where.id.in.includes(u.id)) { u.role = data.role; n++; } return { count: n }; },
       create: async () => { throw new Error("must not create accounts"); },
     },
@@ -52,6 +52,22 @@ test("ensureAdmins promotes only EXISTING listed accounts, never demotes, never 
   process.env.ADMIN_EMAILS = "boss@x.com,ghost@x.com";
   assert.deepEqual(await ensureAdmins(db, log), { promoted: 1 });
   assert.deepEqual(users.map((u) => u.role), ["admin", "user", "admin"]);
+  delete process.env.ADMIN_EMAILS;
+});
+
+test("ensureAdmins refuses to promote when an admin address also matches a case-variant account", async () => {
+  const { ensureAdmins } = require("../../services/adminBootstrap");
+  const users = [{ id: 1, email: "boss@x.com", role: "user" }, { id: 2, email: "Boss@X.com", role: "user" }];
+  const db = {
+    user: {
+      findMany: async ({ where }) => users.filter((u) => where.email.in.includes(u.email.toLowerCase())).map((u) => ({ ...u })),
+      updateMany: async () => { throw new Error("must not promote an ambiguous address"); },
+    },
+  };
+  const errs = [];
+  process.env.ADMIN_EMAILS = "boss@x.com";
+  assert.deepEqual(await ensureAdmins(db, { log() {}, error: (m) => errs.push(m) }), { promoted: 0 });
+  assert.match(errs[0], /differing only by letter case/);
   delete process.env.ADMIN_EMAILS;
 });
 
@@ -99,19 +115,27 @@ test("make-admin script: promotes, revokes, rejects unknown email and missing ar
   fs.writeFileSync(preload, `
     const path=require("path");
     const id=require.resolve(${JSON.stringify(path.join(root, "lib/prisma"))});
-    const rows=[{id:1,email:"boss@x.com",role:"user"}];
+    const rows=[{id:1,email:"boss@x.com",role:"user"},{id:2,email:"Dup@x.com",role:"user"},{id:3,email:"dup@x.com",role:"user"}];
     require.cache[id]={id,filename:id,loaded:true,exports:{
-      user:{findFirst:async({where})=>rows.find(r=>r.email===where.email.equals.toLowerCase())||null,
-            update:async({where,data})=>{const r=rows.find(r=>r.id===where.id);Object.assign(r,data);console.log("DB role="+r.role);return r;}},
+      user:{findMany:async({where})=>rows.filter(r=>r.email.toLowerCase()===where.email.equals.toLowerCase()).map(r=>({id:r.id,email:r.email})),
+            update:async({where,data})=>{const r=rows.find(r=>r.id===where.id);Object.assign(r,data);console.log("DB id="+r.id+" role="+r.role);return r;}},
       $disconnect:async()=>{}}};`);
   const run = (...args) => spawnSync(process.execPath, ["-r", preload, path.join(root, "scripts/makeAdmin.js"), ...args], { encoding: "utf8", cwd: root });
   try {
     let r = run("Boss@X.com");
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /DB role=admin/);
+    assert.match(r.stdout, /DB id=1 role=admin/);
     r = run("boss@x.com", "--revoke");
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /DB role=user/);
+    assert.match(r.stdout, /DB id=1 role=user/);
+    // two accounts differing only by letter case: never guess which one is meant
+    r = run("DUP@x.com");
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /ignoring letter case/);
+    assert.doesNotMatch(r.stdout, /DB id=/);
+    r = run("Dup@x.com");
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /DB id=2 role=admin/);
     r = run("nobody@x.com");
     assert.equal(r.status, 1);
     assert.match(r.stderr, /No account/);
