@@ -52,12 +52,11 @@ export function DrawerContent({ navigation }: DrawerContentComponentProps) {
   const displayEmail = profile.data?.email || user?.email || null;
 
   const go = (href: Href) => {
-    // Analytics is a drawer screen. Navigate within the drawer navigator first,
-    // then close it in the same interaction so a close-transition race cannot
-    // swallow the navigation on mobile devices.
+    // Analytics is a drawer screen: navigate through the router (keeps expo-router state in sync,
+    // unlike navigation.navigate) after closing the drawer, same as every other item.
     if (href === '/analytics') {
-      navigation.navigate('analytics');
       navigation.dispatch(DrawerActions.closeDrawer());
+      router.navigate(href);
       return;
     }
 
