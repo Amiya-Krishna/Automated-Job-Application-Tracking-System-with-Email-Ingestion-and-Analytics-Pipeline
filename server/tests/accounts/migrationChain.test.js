@@ -2,6 +2,9 @@
 // checks the result against prisma/schema.prisma: every table, column, type and nullability, every
 // named index/constraint, and the delete rules that account deletion relies on (every user-owned
 // table cascades from users; the shared catalog keeps NO ACTION so it can never be cascaded away).
+// It also replays the baseline AFTER the later migrations (what happens when it is applied to an
+// existing database) and requires the index/constraint set to be identical, so no migration can
+// resurrect an object a later one removed (for example the legacy full unique index on jobs).
 //
 //   TEST_DATABASE_URL=postgres://postgres@localhost:5432/postgres npm test
 //
@@ -50,7 +53,30 @@ test("migrations build an empty database that matches schema.prisma, idempotentl
     const migDir = path.join(ROOT, "migrations");
     const dirs = fs.readdirSync(migDir).filter((d) => fs.statSync(path.join(migDir, d)).isDirectory()).sort();
     assert.ok(dirs.length >= 9 && /baseline/.test(dirs[0]), "the chain starts with the baseline migration");
-    for (let pass = 0; pass < 2; pass++) for (const d of dirs) await c.query(fs.readFileSync(path.join(migDir, d, "migration.sql"), "utf8"));
+    const sql = (d) => fs.readFileSync(path.join(migDir, d, "migration.sql"), "utf8");
+    const snapshot = async () => (await c.query(`
+      select 'index' as kind, tablename as tbl, indexname as name, indexdef as def from pg_indexes where schemaname = 'public'
+      union all
+      select 'constraint', conrelid::regclass::text, conname, pg_get_constraintdef(oid) from pg_constraint where connamespace = 'public'::regnamespace
+      order by 1, 2, 3`)).rows;
+    const jobsUnique = async () => (await c.query("select indexname from pg_indexes where schemaname='public' and tablename='jobs' and indexdef like 'CREATE UNIQUE%' order by 1")).rows.map((r) => r.indexname);
+    const INTENDED_JOBS_UNIQUE = ["jobs_pkey", "uq_jobs_global_source_external", "uq_jobs_private_owner_source_external"];
+
+    // Scenario A: empty database, whole chain.
+    for (const d of dirs) await c.query(sql(d));
+    const fresh = await snapshot();
+    assert.deepEqual(await jobsUnique(), INTENDED_JOBS_UNIQUE, "fresh chain: exactly the intended unique indexes on jobs");
+
+    // Scenario B: the existing-database case. Migrations 2..N are already there; the baseline is
+    // applied LAST (a pending older migration). Nothing may change, in particular the legacy full
+    // unique index jobs_source_id_external_job_id_key must NOT come back.
+    await c.query(sql(dirs[0]));
+    assert.deepEqual(await jobsUnique(), INTENDED_JOBS_UNIQUE, "baseline replayed last: exactly the intended unique indexes on jobs");
+    assert.deepEqual(await snapshot(), fresh, "baseline replayed last must not add, drop or change any index or constraint");
+
+    // Whole chain a second time: idempotent.
+    for (const d of dirs) await c.query(sql(d));
+    assert.deepEqual(await snapshot(), fresh, "re-applying every migration must not change the schema");
 
     const { models, namedIndexes } = parseSchema(fs.readFileSync(path.join(ROOT, "schema.prisma"), "utf8"));
     const problems = [];

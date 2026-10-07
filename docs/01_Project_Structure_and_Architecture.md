@@ -77,7 +77,7 @@ PostgreSQL is the source of truth. 22 Prisma models (`server/prisma/schema.prism
 
 ### Migrations
 
-`server/prisma/migrations/` contains nine migrations, starting with an idempotent **baseline** (`20260801000000_baseline_core_tables`) so an empty database can be built from the repository alone. Every migration is written to be re-runnable (`IF NOT EXISTS`, guarded `DO` blocks). A test (`tests/accounts/migrationChain.test.js`, real PostgreSQL) applies the whole chain twice to an empty database and compares tables, columns, types, nullability, named indexes and delete rules against `schema.prisma`. Apply in production with `npx prisma migrate deploy` (never `migrate dev`).
+`server/prisma/migrations/` contains nine migrations, starting with an idempotent **baseline** (`20260801000000_baseline_core_tables`) so an empty database can be built from the repository alone. Every migration is written to be re-runnable (`IF NOT EXISTS`, guarded `DO` blocks). The baseline is also guarded so that, replayed after the later migrations on a database that predates it, it cannot recreate the legacy full unique index on `jobs`; the test covers that replay and asserts the exact set of unique indexes. On a database that already has the full schema, record the baseline with `prisma migrate resolve --applied` instead of running it. A test (`tests/accounts/migrationChain.test.js`, real PostgreSQL) applies the whole chain twice to an empty database and compares tables, columns, types, nullability, named indexes and delete rules against `schema.prisma`. Apply in production with `npx prisma migrate deploy` (never `migrate dev`).
 
 ## 4. Authentication and sessions
 

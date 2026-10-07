@@ -83,8 +83,16 @@ CREATE TABLE IF NOT EXISTS "jobs" (
   "scraped_at"       TIMESTAMPTZ(6) DEFAULT now(),
   "content_hash"     VARCHAR(64) NOT NULL
 );
--- Replaced by two partial unique indexes in migration 20261004000000.
-CREATE UNIQUE INDEX IF NOT EXISTS "jobs_source_id_external_job_id_key" ON "jobs" ("source_id", "external_job_id");
+-- Replaced by two partial unique indexes in migration 20261004000000. Create it only while that
+-- migration has not run: if this file is ever replayed on a database that already has the partial
+-- indexes (for example when it is applied after the later migrations), re-creating this full unique
+-- index would stop two users from saving the same posting.
+DO $$
+BEGIN
+  IF to_regclass('public.uq_jobs_global_source_external') IS NULL THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS "jobs_source_id_external_job_id_key" ON "jobs" ("source_id", "external_job_id");
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS "idx_jobs_company_title" ON "jobs" ("company_id", "normalized_title");
 CREATE INDEX IF NOT EXISTS "idx_jobs_content_hash" ON "jobs" ("content_hash");
 CREATE INDEX IF NOT EXISTS "idx_jobs_posted_at" ON "jobs" ("posted_at" DESC);

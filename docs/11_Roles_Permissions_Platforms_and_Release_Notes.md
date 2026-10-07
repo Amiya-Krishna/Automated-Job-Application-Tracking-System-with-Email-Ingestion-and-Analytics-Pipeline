@@ -118,7 +118,7 @@ Discovery and the extension support LinkedIn, Indeed, Naukri, Internshala, Wellf
 
 | Migration | Purpose |
 |---|---|
-| `20260801000000_baseline_core_tables` | Core tables, so an empty database can be built from the repository (no-op on existing databases) |
+| `20260801000000_baseline_core_tables` | Core tables, so an empty database can be built from the repository (creates only what is missing; guarded so a late replay cannot recreate the legacy full unique index on `jobs`; on a database that already has the schema, mark it with `prisma migrate resolve --applied`) |
 | `20260820000000_engine_bridge_scrape_runs_and_user_scoped_profile` | Tracked-job source fields, `scrape_runs`, per-user profiles and match scores |
 | `20260823000000_tracked_jobs_user_engine_job_unique` | One tracked job per (user, engine job) |
 | `20260919000000_resume_tailoring` · `20260920000000_resume_manager` | Resume tailoring tables; active-resume choice |
