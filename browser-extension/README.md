@@ -1,32 +1,88 @@
-# TrackTrail Browser Extension (Chrome, Manifest V3)
+# TrackTrail Browser Extension — Chrome Manifest V3
 
-Saves job postings from LinkedIn, Indeed, Naukri, Internshala, Wellfound and Unstop to your TrackTrail account, shows how well your resume matches, and starts truthful resume tailoring. Details: [docs/08](../docs/08_Browser_Extension_Status_and_Hardening.md).
+TrackTrail's Chrome extension captures job postings from supported job sites and connects them to the same account, matching, application and resume-tailoring pipeline used by the web and mobile clients.
 
-## Install (unpacked)
+Supported sites:
 
-1. Open `chrome://extensions` and enable **Developer mode**.
-2. **Load unpacked** → select this `browser-extension/` folder.
-3. Click the toolbar icon and sign in with your TrackTrail account.
+- LinkedIn
+- Indeed
+- Naukri
+- Internshala
+- Wellfound
+- Unstop
 
-The API origin is `DEFAULT_API_BASE_URL` in `config.js` and in the manifest `host_permissions`; change both to use another deployment. Not published to the Chrome Web Store.
+The extension is an unpacked development/review build and is **not published to the Chrome Web Store**.
 
-## Features
+## Install
 
-- **On-page**: "Save to TrackTrail" button and a Resume match panel (Analyze JD, Tailor Resume, Save Job).
-- **Popup**: Jobs, Add, Stats; open the full dashboard from there.
-- **Dashboard**: Matched Jobs (read-only), Applications, Analytics, Profile, Sources, Companies, Email (Gmail scan), My Resumes.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Choose this `browser-extension/` directory.
+5. Open the extension and sign in.
 
-## How extraction works
+The API origin is configured in `config.js` and the manifest host permissions.
 
-Per field: platform selectors → schema.org `JobPosting` JSON-LD → page title/meta. Selectors live in `platform-extractors.js`; the server keeps a verified copy (`cd ../server && npm run sync:extractors`). Listing/search pages are ignored. Selectors were written from public markup and fixtures and are not guaranteed against the live sites; every field is editable before saving.
+## Product surface
+
+### On-page
+
+- Save the detected job.
+- Analyze the job description.
+- View resume-match information.
+- Start resume tailoring.
+- Save/edit job details before submission.
+
+### Popup
+
+- Jobs.
+- Add.
+- Stats.
+- Link to the full dashboard.
+
+### Dashboard
+
+The extension exposes dashboard views for matched jobs, applications, analytics, profile, sources, companies, Gmail scan and resumes.
+
+## Extraction strategy
+
+The extractor resolves fields in layers:
+
+1. Platform-specific selectors.
+2. Schema.org `JobPosting` JSON-LD.
+3. Page title/meta fallback.
+
+Listing/search pages are intentionally ignored.
+
+The extension's platform extractor is synchronized with the server-side copy using:
+
+```bash
+cd ../server
+npm run sync:extractors
+```
+
+A test detects drift between the two copies.
+
+Because external job sites change their markup and may block automated access, extraction is best-effort. Missing fields are not invented, and users can edit detected values before saving.
 
 ## Security
 
-Minimal permissions (`storage`, `activeTab`, the API host); content scripts only on the six job sites; no AI logic or credentials in the extension; short-lived access token with rotating refresh token; saved jobs are always private to the user; a blocked account is signed out without retrying; admin APIs are never called.
+- Minimal browser permissions.
+- Content scripts only run on supported job sites.
+- No model credentials are stored in the extension.
+- Access tokens are short-lived.
+- Refresh tokens use the backend rotation contract.
+- Saved jobs remain user-private.
+- Blocked accounts are signed out.
+- The extension does not call admin APIs.
 
 ## Tests
 
 ```bash
 npm ci
-npm test       # 92 tests (Node test runner + jsdom); needs ../server dependencies installed
+npm test
 ```
+
+The documented verification run contains **92 extension tests**.
+
+See [`docs/08`](../docs/08_Browser_Extension_Status_and_Hardening.md) for the detailed hardening and verification notes.

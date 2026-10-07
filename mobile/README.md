@@ -1,55 +1,70 @@
-# TrackTrail Mobile (Expo / React Native)
+# TrackTrail Mobile — Expo / React Native
 
-Native client for the TrackTrail API: Expo SDK 57, React Native 0.86, Expo Router, TypeScript (strict), TanStack Query, React Hook Form + Zod. No WebViews, no backend of its own. Design and release notes: [docs/07](../docs/07_Mobile_App_Implementation_and_Release.md).
+Native TrackTrail client built with Expo SDK 57, React Native 0.86, Expo Router and strict TypeScript.
 
-## Features
+The mobile application is a client of the same REST API as the web application. It has no separate backend and uses no WebViews.
 
-Authentication (incl. password reset deep link), home overview, applications (add / edit / status / search / filter), job discovery view with match scores, analytics, profile, Gmail connect and inbox scan, companies, sources, resume list / activation / tailoring, push and in-app reminders, account deletion.
+## Product surface
 
-## Run
+- Authentication and password reset.
+- Application tracking.
+- Job discovery and match scores.
+- Analytics.
+- Profile and source/company views.
+- Gmail connection and inbox scanning.
+- Resume management and tailoring.
+- In-app and push reminder flows.
+- Account deletion.
+- Deep links for supported authentication flows.
+
+## Run locally
 
 ```bash
 npm ci
-cp .env.example .env        # set EXPO_PUBLIC_API_URL
-npx expo start              # then choose Android / iOS / web
+cp .env.example .env
+npx expo start
 ```
 
-`EXPO_PUBLIC_API_URL` has no trailing slash and no `/api`:
+Set `EXPO_PUBLIC_API_URL` to the API origin without `/api`:
 
-| Target | Value |
+| Target | Example |
 |---|---|
 | Web | `http://localhost:5000` |
 | Android emulator | `http://10.0.2.2:5000` |
-| Physical device | `http://<LAN-IP>:5000` (same Wi-Fi, firewall open) |
+| Physical device | `http://<LAN-IP>:5000` |
 | Production | HTTPS API origin |
 
-Other variables: `EXPO_PUBLIC_APP_ENV`, `EXPO_PUBLIC_WEB_URL`, `EXPO_PUBLIC_SENTRY_DSN` (optional). Use an Expo Go build matching SDK 57 or a development build.
+Optional variables include `EXPO_PUBLIC_APP_ENV`, `EXPO_PUBLIC_WEB_URL` and `EXPO_PUBLIC_SENTRY_DSN`.
 
-## Verify
+## Verification
 
 ```bash
-npm run typecheck && npm run lint && npm test      # 75 tests
-npm run verify:bundle                              # requests the real Android + iOS bundles from Metro
-npx expo install --check                           # dependency versions match the SDK
+npm run typecheck
+npm run lint
+npm test
+npm run verify:bundle
+npx expo install --check
 ```
 
-Some tests boot server modules; run `npm ci` in `../server` first.
+The documented verification run contains **75 mobile tests**.
 
 ## Security
 
-Session in Expo SecureStore (Keychain / Keystore); 15-minute access token with rotating refresh token; single-flight refresh; per-account caches cleared on sign-out; blocked accounts are signed out with a clear message; Settings → Delete account needs `DELETE` plus the password; release logging redacts tokens and personal data. There is no admin UI on mobile.
+- Session material uses Expo SecureStore backed by the platform keystore.
+- Access tokens are short-lived.
+- Refresh tokens rotate through the same backend session model.
+- Refresh is single-flight to avoid concurrent refresh races.
+- Per-account caches are cleared on sign-out.
+- Blocked accounts are signed out.
+- Account deletion requires confirmation and the current password.
+- Logging avoids tokens and personal data.
+- There is no mobile admin console.
 
 ## Known limitations
 
-- Resume file upload is a hand-off to the web app.
-- The password-reset deep link does not open while a session is active; sign out first.
-- Hosted legal pages (`server/public/legal/`) are templates and must be completed before a store submission.
-- Store builds and push delivery were not exercised in the verification environment.
+- Resume file upload is currently handed off to the web app.
+- Password-reset deep linking does not open while an active session is present; the user must sign out first.
+- Hosted legal pages are templates and require completion before store submission.
+- Store builds and live push delivery were not exercised in the verification environment.
 
-## Troubleshooting
-
-"Failed to download remote update" means the bundle could not be built or fetched. Run `npm run verify:bundle` to check that Metro can build; if it can, the cause is the network (same Wi-Fi, no VPN or client isolation, or `npx expo start -c --tunnel`), an old installed dev build, or an Expo Go version that does not match SDK 57.
-
-## Release
-
-EAS profiles (`development`, `staging`, `preview`, `production`) are in `eas.json`; `expo-updates` uses the `appVersion` runtime policy. CI and release workflows: [docs/05](../docs/05_Deployment_and_Operations.md).
+See [`docs/07`](../docs/07_Mobile_App_Implementation_and_Release.md) for implementation and release details.
